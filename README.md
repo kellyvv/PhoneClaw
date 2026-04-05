@@ -1,7 +1,5 @@
 <div align="center">
 
-<img src="Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png" width="80" height="80" style="border-radius: 18px;" />
-
 # PhoneClaw
 
 ![banner](assets/banner.jpg)
