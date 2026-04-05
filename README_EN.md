@@ -18,15 +18,26 @@ PhoneClaw is a local AI Agent that runs entirely on your iPhone. No internet con
 
 **Image Understanding (Multimodal)**: Take a photo or pick one from your library, then ask questions directly. Identify objects, read charts, describe scenes — all inference happens on your device, and your photos never leave your phone.
 
-**Calendar / Reminders / Contacts**: Create calendar events, set reminders that fire on time with a push notification, and save or update contacts — all through natural language. Every write operation stays local. Contacts are automatically deduped by phone number.
-
-**Clipboard & Device Info**: Read and write the system clipboard, query device name, OS version, and available memory. Useful as a data relay in multi-step tasks.
-
 **File-Driven Skill System**: Each capability is defined by a single Markdown file (SKILL.md). Adding or modifying a skill requires no recompilation. Skills are language-agnostic — anyone can write and share them.
 
 **100% Offline & Private**: All inference runs on the local GPU. No network connections are made by default. Your conversations, images, and personal data are never uploaded or routed through any third-party server.
 
 **Flexible Model Management**: Supports Gemma 4 E2B and E4B. Download models directly on your iPhone, or bundle them into the app at build time. Includes a built-in model switcher, system prompt editor, and automatic history trimming for iPhone memory constraints.
+
+## Built-in Skills
+
+**Calendar**: Create calendar events using natural language — title, time, and location all supported.
+
+**Reminders**: Set time-based reminders that fire a system push notification exactly on schedule.
+
+**Contacts**: Save or update contacts with name, phone, company, email, and notes. Automatically deduped by phone number.
+
+**Clipboard**: Read and write the system clipboard. Useful as a data relay in multi-step tasks.
+
+**Device Info**: Query device name, OS version, available memory, processor count, and more.
+
+**Text Tools**: Hash calculation, text reversal, and other basic text utilities.
+
 
 ## Requirements
 
