@@ -20,7 +20,7 @@ PhoneClaw is a local AI Agent that runs entirely on your iPhone. No internet con
 
 **File-Driven Skill System**: Each capability is defined by a single Markdown file (SKILL.md). Adding or modifying a skill requires no recompilation. Skills are language-agnostic — anyone can write and share them.
 
-**100% Offline & Private**: All inference runs on the local GPU. No network connections are made by default. Your conversations, images, and personal data are never uploaded or routed through any third-party server.
+**100% Offline & Private**: All inference runs entirely on your iPhone. No network connections are made by default. Your conversations, images, and personal data are never uploaded or routed through any third-party server.
 
 **Flexible Model Management**: Supports Gemma 4 E2B and E4B. Download models directly on your iPhone, or bundle them into the app at build time. Includes a built-in model switcher, system prompt editor, and automatic history trimming for iPhone memory constraints.
 
