@@ -50,7 +50,7 @@
 		4DD9808FE93325C3CE4CFA00 /* PhoneClawApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneClawApp.swift; sourceTree = "<group>"; };
 		52F30C6348B834E5D157205F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		571908036E6DCED1D58C1E9E /* Skills.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Skills.swift; sourceTree = "<group>"; };
-		772CB5029014926E172C0BF1 /* LocalLLMService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLLMService.swift; sourceTree = "<group>"; };
+
 		AA2000000000000000000001 /* LLMEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMEngine.swift; sourceTree = "<group>"; };
 		AA2000000000000000000002 /* MLXLocalLLMService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXLocalLLMService.swift; sourceTree = "<group>"; };
 		AA2000000000000000000003 /* Gemma4Config.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Gemma4Config.swift; sourceTree = "<group>"; };
@@ -146,7 +146,6 @@
 				AA2000000000000000000001 /* LLMEngine.swift */,
 				AA3000000000000000000001 /* MLX */,
 				AA2000000000000000000002 /* MLXLocalLLMService.swift */,
-				772CB5029014926E172C0BF1 /* LocalLLMService.swift */,
 				2E7C06DA449D1395217A42D5 /* PromptBuilder.swift */,
 			);
 			path = LLM;
@@ -180,7 +179,7 @@
 				98EFD7CCA7E78715F07BABE3 /* Skills */,
 				EF4D07A808616D6F13771DBE /* UI */,
 			);
-			path = PhoneClaw;
+			name = PhoneClaw;
 			sourceTree = "<group>";
 		};
 		E0660A5AE3C683B7B20600EE /* Agent */ = {
@@ -492,11 +491,11 @@
 			baseConfigurationReference = 098B30935B91CD0BEF3A5056 /* Pods-PhoneClaw.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = PhoneClaw/PhoneClaw.entitlements;
+				CODE_SIGN_ENTITLEMENTS = PhoneClaw.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = ZP4QNJ35TH;
-				INFOPLIST_FILE = PhoneClaw/Info.plist;
+				INFOPLIST_FILE = Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -504,7 +503,6 @@
 				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.zxw.phoneclaw2026;
 				SDKROOT = iphoneos;
-				SWIFT_OBJC_BRIDGING_HEADER = "PhoneClaw/PhoneClaw-Bridging-Header.h";
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
@@ -514,11 +512,11 @@
 			baseConfigurationReference = A1AB7F250BEEFF938318AA75 /* Pods-PhoneClaw.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = PhoneClaw/PhoneClaw.entitlements;
+				CODE_SIGN_ENTITLEMENTS = PhoneClaw.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = ZP4QNJ35TH;
-				INFOPLIST_FILE = PhoneClaw/Info.plist;
+				INFOPLIST_FILE = Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -526,7 +524,6 @@
 				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.zxw.phoneclaw2026;
 				SDKROOT = iphoneos;
-				SWIFT_OBJC_BRIDGING_HEADER = "PhoneClaw/PhoneClaw-Bridging-Header.h";
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
