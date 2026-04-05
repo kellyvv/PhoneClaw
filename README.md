@@ -46,12 +46,42 @@ PhoneClaw/
 
 ## Model
 
-This project uses **Gemma 4 E2B** (4-bit quantized, MLX format). Download the model directory and place it at `Models/gemma-4-e2b-it-4bit/` in the project root.
+PhoneClaw supports **Gemma 4 E2B** and **Gemma 4 E4B** (4-bit quantized, MLX format).  
+The app only shows models whose directory exists under `Models/` — **place only what you need**.
 
-You can download from Hugging Face:
+### Option A — E2B only (recommended, ~1.5 GB)
+
+```
+Models/
+└── gemma-4-e2b-it-4bit/
+```
+
+Download from Hugging Face:
 ```
 mlx-community/gemma-4-2b-it-4bit
 ```
+
+### Option B — E4B only (~3 GB, requires iPhone 15 Pro or later)
+
+```
+Models/
+└── gemma-4-e4b-it-4bit/
+```
+
+Download from Hugging Face:
+```
+mlx-community/gemma-4-4b-it-4bit
+```
+
+### Option C — Both models (user can switch in Settings)
+
+```
+Models/
+├── gemma-4-e2b-it-4bit/
+└── gemma-4-e4b-it-4bit/
+```
+
+> The `Models/` directory is gitignored. Download model files separately and place them before building.
 
 ## Getting Started
 
