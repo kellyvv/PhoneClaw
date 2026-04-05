@@ -18,7 +18,12 @@
 
 </div>
 
+## 演示视频
+
+[演示 1](https://github.com/kellyvv/PhoneClaw/issues/1#issue-4208712242) · [演示 2](https://github.com/kellyvv/PhoneClaw/issues/2#issue-4208731499)
+
 PhoneClaw 是一个运行在 iPhone 上的本地 AI Agent。它使用 Gemma 4 在设备端完成推理，不依赖云端，不上传聊天内容。
+
 
 
 ## 核心能力
