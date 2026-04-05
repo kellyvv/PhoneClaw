@@ -1,12 +1,23 @@
+<div align="center">
+
+<img src="Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png" width="80" height="80" style="border-radius: 18px;" />
+
 # PhoneClaw
 
 ![banner](assets/banner.jpg)
 
+本地运行的私人 iPhone AI Agent，不联网，不上传，完全离线。
+
+![Swift](https://img.shields.io/badge/Swift-5.10-orange?style=flat-square)
+![iOS](https://img.shields.io/badge/iOS-17%2B-blue?style=flat-square)
+![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
+
 [English](README_EN.md) · [报告问题](https://github.com/kellyvv/phoneclaw/issues) · [功能建议](https://github.com/kellyvv/phoneclaw/issues)
 
-本地运行的私人 iPhone AI Agent，不联网，不上传，完全在设备端。
+</div>
 
 PhoneClaw 是一个运行在 iPhone 上的本地 AI Agent。它使用 Gemma 4 在设备端完成推理，不依赖云端，不上传聊天内容。
+
 
 当前已经打通的原生能力：
 

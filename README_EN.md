@@ -1,10 +1,22 @@
+<div align="center">
+
+<img src="Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png" width="80" height="80" style="border-radius: 18px;" />
+
 # PhoneClaw
 
 ![banner](assets/banner.jpg)
 
+A local AI Agent for iPhone. Offline. Private. Native.
+
+![Swift](https://img.shields.io/badge/Swift-5.10-orange?style=flat-square)
+![iOS](https://img.shields.io/badge/iOS-17%2B-blue?style=flat-square)
+![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
+
 [中文](README.md) · [Report an Issue](https://github.com/kellyvv/phoneclaw/issues) · [Request a Feature](https://github.com/kellyvv/phoneclaw/issues)
 
-A local AI Agent that runs entirely on your iPhone. No cloud, no network, no data uploads.
+</div>
+
+PhoneClaw is a local AI Agent that runs entirely on your iPhone. No internet connection. No data uploads. No cloud dependency.
 
 PhoneClaw uses Gemma 4 to run inference entirely on-device. It does not depend on any cloud service and does not upload your conversations.
 
