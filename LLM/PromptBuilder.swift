@@ -108,7 +108,7 @@ struct PromptBuilder {
         // but don't carry forward the full multi-turn history.
         let systemBlock: String
         if let turnEnd = originalPrompt.range(of: "<turn|>\n") {
-            systemBlock = String(originalPrompt[originalPrompt.startIndex...turnEnd.upperBound])
+            systemBlock = String(originalPrompt[originalPrompt.startIndex..<turnEnd.upperBound])
         } else {
             systemBlock = originalPrompt
         }
@@ -140,7 +140,6 @@ struct PromptBuilder {
             不能输出空白。
             <turn|>
             <|turn>model
-
             """
         } else {
             prompt += """
@@ -154,7 +153,6 @@ struct PromptBuilder {
             不能输出空白；即使结果是 JSON，也要整理成一句或几句可读的最终回复。
             <turn|>
             <|turn>model
-
             """
         }
         return prompt
@@ -177,7 +175,6 @@ struct PromptBuilder {
         不能输出空白。
         <turn|>
         <|turn>model
-
         """
     }
 }
