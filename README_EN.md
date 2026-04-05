@@ -12,7 +12,14 @@ A local AI Agent for iPhone. Offline. Private. Native.
 
 </div>
 
+<div align="center">
+
+[Core Features](#core-features) · [Built-in Skills](#built-in-skill-examples) · [Quick Start](#5-minute-quick-start) · [Custom Skills](#custom-skills) · [FAQ](#faq) · [Roadmap](#roadmap)
+
+</div>
+
 PhoneClaw is a local AI Agent that runs entirely on your iPhone. No internet connection. No data uploads. No cloud dependency.
+
 
 ## Core Features
 
