@@ -6,7 +6,7 @@ A local AI Agent for iPhone. Offline. Private. Native.
 
 ![Swift](https://img.shields.io/badge/Swift-5.10-orange?style=flat-square)
 ![iOS](https://img.shields.io/badge/iOS-17%2B-blue?style=flat-square)
-![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
+![License](https://img.shields.io/badge/License-Apache%202.0-green?style=flat-square)
 
 [中文](README.md) · [Report an Issue](https://github.com/kellyvv/phoneclaw/issues) · [Request a Feature](https://github.com/kellyvv/phoneclaw/issues)
 
@@ -338,4 +338,4 @@ If ordered by "fastest path to meaningful experience improvement":
 
 ## License
 
-MIT
+Apache 2.0

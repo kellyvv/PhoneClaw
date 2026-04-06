@@ -6,7 +6,7 @@
 
 ![Swift](https://img.shields.io/badge/Swift-5.10-orange?style=flat-square)
 ![iOS](https://img.shields.io/badge/iOS-17%2B-blue?style=flat-square)
-![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
+![License](https://img.shields.io/badge/License-Apache%202.0-green?style=flat-square)
 
 [English](README_EN.md) · [报告问题](https://github.com/kellyvv/phoneclaw/issues) · [功能建议](https://github.com/kellyvv/phoneclaw/issues)
 
@@ -271,4 +271,4 @@ PhoneClaw 不会假设自己能像桌面系统那样任意操控所有 App，而
 
 ## License
 
-MIT
+Apache 2.0
