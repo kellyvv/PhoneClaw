@@ -149,6 +149,42 @@ public struct Gemma4ModelConfiguration: Codable, Sendable {
         imageTokenId = try c.decodeIfPresent(Int.self, forKey: .imageTokenId)
         audioTokenId = try c.decodeIfPresent(Int.self, forKey: .audioTokenId)
     }
+
+    public init(
+        textConfig: Gemma4TextConfiguration,
+        visionConfig: Gemma4VisionConfiguration?,
+        audioConfig: Gemma4AudioConfiguration?,
+        modelType: String,
+        quantization: BaseConfiguration.Quantization?,
+        tieWordEmbeddings: Bool,
+        visionSoftTokensPerImage: Int?,
+        imageTokenId: Int?,
+        audioTokenId: Int?
+    ) {
+        self.textConfig = textConfig
+        self.visionConfig = visionConfig
+        self.audioConfig = audioConfig
+        self.modelType = modelType
+        self.quantization = quantization
+        self.tieWordEmbeddings = tieWordEmbeddings
+        self.visionSoftTokensPerImage = visionSoftTokensPerImage
+        self.imageTokenId = imageTokenId
+        self.audioTokenId = audioTokenId
+    }
+
+    public func withAudioCapability(enabled: Bool) -> Gemma4ModelConfiguration {
+        Gemma4ModelConfiguration(
+            textConfig: textConfig,
+            visionConfig: visionConfig,
+            audioConfig: enabled ? audioConfig : nil,
+            modelType: modelType,
+            quantization: quantization,
+            tieWordEmbeddings: tieWordEmbeddings,
+            visionSoftTokensPerImage: visionSoftTokensPerImage,
+            imageTokenId: imageTokenId,
+            audioTokenId: audioTokenId
+        )
+    }
 }
 
 // MARK: - Gemma 4 Vision Configuration
@@ -196,6 +232,16 @@ public struct Gemma4AudioConfiguration: Codable, Sendable {
     public let hiddenSize: Int
     public let numHiddenLayers: Int
     public let numAttentionHeads: Int
+    public let subsamplingConvChannels: [Int]
+    public let convKernelSize: Int
+    public let residualWeight: Float
+    public let attentionChunkSize: Int
+    public let attentionContextLeft: Int
+    public let attentionContextRight: Int
+    public let attentionLogitCap: Float
+    public let attentionInvalidLogitsValue: Float
+    public let useClippedLinears: Bool
+    public let gradientClipping: Float
     public let outputProjDims: Int?
     public let rmsNormEps: Float
 
@@ -204,8 +250,77 @@ public struct Gemma4AudioConfiguration: Codable, Sendable {
         case hiddenSize = "hidden_size"
         case numHiddenLayers = "num_hidden_layers"
         case numAttentionHeads = "num_attention_heads"
+        case subsamplingConvChannels = "subsampling_conv_channels"
+        case convKernelSize = "conv_kernel_size"
+        case residualWeight = "residual_weight"
+        case attentionChunkSize = "attention_chunk_size"
+        case attentionContextLeft = "attention_context_left"
+        case attentionContextRight = "attention_context_right"
+        case attentionLogitCap = "attention_logit_cap"
+        case attentionInvalidLogitsValue = "attention_invalid_logits_value"
+        case useClippedLinears = "use_clipped_linears"
+        case gradientClipping = "gradient_clipping"
         case outputProjDims = "output_proj_dims"
         case rmsNormEps = "rms_norm_eps"
+    }
+
+    public init(
+        modelType: String,
+        hiddenSize: Int,
+        numHiddenLayers: Int,
+        numAttentionHeads: Int,
+        subsamplingConvChannels: [Int],
+        convKernelSize: Int,
+        residualWeight: Float,
+        attentionChunkSize: Int,
+        attentionContextLeft: Int,
+        attentionContextRight: Int,
+        attentionLogitCap: Float,
+        attentionInvalidLogitsValue: Float,
+        useClippedLinears: Bool,
+        gradientClipping: Float,
+        outputProjDims: Int?,
+        rmsNormEps: Float
+    ) {
+        self.modelType = modelType
+        self.hiddenSize = hiddenSize
+        self.numHiddenLayers = numHiddenLayers
+        self.numAttentionHeads = numAttentionHeads
+        self.subsamplingConvChannels = subsamplingConvChannels
+        self.convKernelSize = convKernelSize
+        self.residualWeight = residualWeight
+        self.attentionChunkSize = attentionChunkSize
+        self.attentionContextLeft = attentionContextLeft
+        self.attentionContextRight = attentionContextRight
+        self.attentionLogitCap = attentionLogitCap
+        self.attentionInvalidLogitsValue = attentionInvalidLogitsValue
+        self.useClippedLinears = useClippedLinears
+        self.gradientClipping = gradientClipping
+        self.outputProjDims = outputProjDims
+        self.rmsNormEps = rmsNormEps
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        modelType = try c.decodeIfPresent(String.self, forKey: .modelType) ?? "gemma4_audio"
+        hiddenSize = try c.decodeIfPresent(Int.self, forKey: .hiddenSize) ?? 1024
+        numHiddenLayers = try c.decodeIfPresent(Int.self, forKey: .numHiddenLayers) ?? 12
+        numAttentionHeads = try c.decodeIfPresent(Int.self, forKey: .numAttentionHeads) ?? 8
+        subsamplingConvChannels = try c.decodeIfPresent([Int].self, forKey: .subsamplingConvChannels)
+            ?? [128, 32]
+        convKernelSize = try c.decodeIfPresent(Int.self, forKey: .convKernelSize) ?? 5
+        residualWeight = try c.decodeIfPresent(Float.self, forKey: .residualWeight) ?? 0.5
+        attentionChunkSize = try c.decodeIfPresent(Int.self, forKey: .attentionChunkSize) ?? 12
+        attentionContextLeft = try c.decodeIfPresent(Int.self, forKey: .attentionContextLeft) ?? 13
+        attentionContextRight = try c.decodeIfPresent(Int.self, forKey: .attentionContextRight) ?? 0
+        attentionLogitCap = try c.decodeIfPresent(Float.self, forKey: .attentionLogitCap) ?? 50
+        attentionInvalidLogitsValue =
+            try c.decodeIfPresent(Float.self, forKey: .attentionInvalidLogitsValue) ?? -1_000_000_000
+        useClippedLinears = try c.decodeIfPresent(Bool.self, forKey: .useClippedLinears) ?? true
+        gradientClipping =
+            try c.decodeIfPresent(Float.self, forKey: .gradientClipping) ?? 10_000_000_000
+        outputProjDims = try c.decodeIfPresent(Int.self, forKey: .outputProjDims)
+        rmsNormEps = try c.decodeIfPresent(Float.self, forKey: .rmsNormEps) ?? 1e-6
     }
 }
 
@@ -217,6 +332,27 @@ public struct Gemma4ProcessorConfiguration: Codable, Sendable {
     public let audioSeqLength: Int
     public let audioMsPerToken: Int?
     public let imageProcessor: ImageProcessor
+    public let featureExtractor: AudioFeatureExtractor?
+
+    public struct AudioFeatureExtractor: Codable, Sendable {
+        public let featureExtractorType: String
+        public let samplingRate: Int
+        public let numMelFilters: Int
+        public let fftLength: Int
+        public let hopLength: Int
+        public let chunkDuration: Double
+        public let overlapDuration: Double
+
+        enum CodingKeys: String, CodingKey {
+            case featureExtractorType = "feature_extractor_type"
+            case samplingRate = "sampling_rate"
+            case numMelFilters = "num_mel_filters"
+            case fftLength = "fft_length"
+            case hopLength = "hop_length"
+            case chunkDuration = "chunk_duration"
+            case overlapDuration = "overlap_duration"
+        }
+    }
 
     public struct ImageProcessor: Codable, Sendable {
         public let imageProcessorType: String
@@ -275,5 +411,6 @@ public struct Gemma4ProcessorConfiguration: Codable, Sendable {
         case audioSeqLength = "audio_seq_length"
         case audioMsPerToken = "audio_ms_per_token"
         case imageProcessor = "image_processor"
+        case featureExtractor = "feature_extractor"
     }
 }

@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		20B8C55E032BA07B3E640E80 /* Skills.swift in Sources */ = {isa = PBXBuildFile; fileRef = 571908036E6DCED1D58C1E9E /* Skills.swift */; };
+		2F4A6C8E0A1B2C3D4E5F6071 /* AudioCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F4A6C8E0A1B2C3D4E5F6070 /* AudioCaptureService.swift */; };
 		45B7FEC6C4D055F44A87BFA9 /* PhoneClawApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DD9808FE93325C3CE4CFA00 /* PhoneClawApp.swift */; };
 		5084E1CD2E831BC05F5E4374 /* PromptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E7C06DA449D1395217A42D5 /* PromptBuilder.swift */; };
 		9412304167DACB86E5D60D49 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5ED928BF14864713A9A9D16 /* ContentView.swift */; };
@@ -30,6 +31,8 @@
 		AA1000000000000000000017 /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = AA5000000000000000000007 /* MLXLLM */; };
 		AA1000000000000000000018 /* Gemma4VisionModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2000000000000000000018 /* Gemma4VisionModel.swift */; };
 		AA1000000000000000000019 /* Gemma4Processor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2000000000000000000019 /* Gemma4Processor.swift */; };
+		AA1000000000000000000020 /* Gemma4AudioFeatureExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2000000000000000000020 /* Gemma4AudioFeatureExtractor.swift */; };
+		AA1000000000000000000021 /* Gemma4AudioModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2000000000000000000021 /* Gemma4AudioModel.swift */; };
 		B881A2E7F9483D5ED2AC206B /* SkillsManagerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D269F8BFCAB68D82440F704B /* SkillsManagerView.swift */; };
 		B8A84E4D0DDDE011B5929DA2 /* AgentEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = E18A47114A10132E25E220F8 /* AgentEngine.swift */; };
 		BD75E7E5620A8FF0A868E9F0 /* libPods-PhoneClaw.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 4F4ACB3F4531FF61E0AADA07 /* libPods-PhoneClaw.a */; };
@@ -37,12 +40,14 @@
 		C2B3C4D5E6F718293041B2C3 /* ToolRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2B3C4D5E6F718293041B2C4 /* ToolRegistry.swift */; };
 		C3C4D5E6F7081A2B3C52D3E4 /* ChatModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3C4D5E6F7081A2B3C52D3E5 /* ChatModels.swift */; };
 		C4D5E6F70819A2B3C463E4F5 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4D5E6F70819A2B3C463E4F6 /* Theme.swift */; };
+		D5E6F7081A2B3C4D5E6F7087 /* gemma-4-e4b-it-4bit in Resources */ = {isa = PBXBuildFile; fileRef = D5E6F7081A2B3C4D5E6F7086 /* gemma-4-e4b-it-4bit */; };
 		ICONASSETS0000000000002 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = ICONASSETS0000000000001 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		098B30935B91CD0BEF3A5056 /* Pods-PhoneClaw.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-PhoneClaw.release.xcconfig"; path = "Target Support Files/Pods-PhoneClaw/Pods-PhoneClaw.release.xcconfig"; sourceTree = "<group>"; };
 		2E7C06DA449D1395217A42D5 /* PromptBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptBuilder.swift; sourceTree = "<group>"; };
+		2F4A6C8E0A1B2C3D4E5F6070 /* AudioCaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCaptureService.swift; sourceTree = "<group>"; };
 		38FC1001EB728212335AC141 /* PhoneClaw.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = PhoneClaw.entitlements; sourceTree = "<group>"; };
 		408F2AE98EA54717A74FA4B1 /* PhoneClaw.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PhoneClaw.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4DD9808FE93325C3CE4CFA00 /* PhoneClawApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneClawApp.swift; sourceTree = "<group>"; };
@@ -61,6 +66,8 @@
 		AA2000000000000000000009 /* MLXTokenizersLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXTokenizersLoader.swift; sourceTree = "<group>"; };
 		AA2000000000000000000018 /* Gemma4VisionModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Gemma4VisionModel.swift; sourceTree = "<group>"; };
 		AA2000000000000000000019 /* Gemma4Processor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Gemma4Processor.swift; sourceTree = "<group>"; };
+		AA2000000000000000000020 /* Gemma4AudioFeatureExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Gemma4AudioFeatureExtractor.swift; sourceTree = "<group>"; };
+		AA2000000000000000000021 /* Gemma4AudioModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Gemma4AudioModel.swift; sourceTree = "<group>"; };
 		C1A2B3D4E5F607182930A1B3 /* SkillLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillLoader.swift; sourceTree = "<group>"; };
 		C2B3C4D5E6F718293041B2C4 /* ToolRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolRegistry.swift; sourceTree = "<group>"; };
 		C3C4D5E6F7081A2B3C52D3E5 /* ChatModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatModels.swift; sourceTree = "<group>"; };
@@ -137,6 +144,8 @@
 			children = (
 				AA2000000000000000000003 /* Gemma4Config.swift */,
 				AA2000000000000000000004 /* Gemma4LanguageModel.swift */,
+				AA2000000000000000000020 /* Gemma4AudioFeatureExtractor.swift */,
+				AA2000000000000000000021 /* Gemma4AudioModel.swift */,
 				AA2000000000000000000005 /* Gemma4Model.swift */,
 				AA2000000000000000000006 /* Gemma4Registration.swift */,
 				AA2000000000000000000007 /* Gemma4RoPE.swift */,
@@ -185,6 +194,7 @@
 		E0660A5AE3C683B7B20600EE /* Agent */ = {
 			isa = PBXGroup;
 			children = (
+				2F4A6C8E0A1B2C3D4E5F6070 /* AudioCaptureService.swift */,
 				E18A47114A10132E25E220F8 /* AgentEngine.swift */,
 			);
 			path = Agent;
@@ -274,14 +284,15 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		E6F7081A2B3C4D5E6F708100 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				ICONASSETS0000000000002 /* Assets.xcassets in Resources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
+			E6F7081A2B3C4D5E6F708100 /* Resources */ = {
+				isa = PBXResourcesBuildPhase;
+				buildActionMask = 2147483647;
+				files = (
+					D5E6F7081A2B3C4D5E6F7087 /* gemma-4-e4b-it-4bit in Resources */,
+					ICONASSETS0000000000002 /* Assets.xcassets in Resources */,
+				);
+				runOnlyForDeploymentPostprocessing = 0;
+			};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
@@ -314,12 +325,15 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				2F4A6C8E0A1B2C3D4E5F6071 /* AudioCaptureService.swift in Sources */,
 				B8A84E4D0DDDE011B5929DA2 /* AgentEngine.swift in Sources */,
 				C3C4D5E6F7081A2B3C52D3E4 /* ChatModels.swift in Sources */,
 				97E96A2FBFFAF609F276A896 /* ConfigurationsView.swift in Sources */,
 				9412304167DACB86E5D60D49 /* ContentView.swift in Sources */,
 				AA1000000000000000000003 /* Gemma4Config.swift in Sources */,
 				AA1000000000000000000004 /* Gemma4LanguageModel.swift in Sources */,
+				AA1000000000000000000020 /* Gemma4AudioFeatureExtractor.swift in Sources */,
+				AA1000000000000000000021 /* Gemma4AudioModel.swift in Sources */,
 				AA1000000000000000000005 /* Gemma4Model.swift in Sources */,
 				AA1000000000000000000006 /* Gemma4Registration.swift in Sources */,
 				AA1000000000000000000018 /* Gemma4VisionModel.swift in Sources */,
@@ -469,9 +483,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = PhoneClaw.entitlements;
-				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 1;
-				
 				INFOPLIST_FILE = Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -490,9 +502,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = PhoneClaw.entitlements;
-				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 1;
-				
 				INFOPLIST_FILE = Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

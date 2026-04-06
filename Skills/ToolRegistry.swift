@@ -1,3 +1,4 @@
+import AVFoundation
 import Contacts
 import EventKit
 import Foundation
@@ -9,6 +10,7 @@ import UIKit
 // SKILL.md 通过 allowed-tools 字段引用工具名。
 
 enum AppPermissionKind: String, CaseIterable, Identifiable {
+    case microphone
     case calendar
     case reminders
     case contacts
@@ -17,6 +19,7 @@ enum AppPermissionKind: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
+        case .microphone: return "麦克风"
         case .calendar: return "日历"
         case .reminders: return "提醒事项"
         case .contacts: return "通讯录"
@@ -25,6 +28,7 @@ enum AppPermissionKind: String, CaseIterable, Identifiable {
 
     var description: String {
         switch self {
+        case .microphone: return "允许录音并采集实时音频输入"
         case .calendar: return "允许创建和写入日历事项"
         case .reminders: return "允许创建提醒和待办"
         case .contacts: return "允许查询、保存和删除联系人"
@@ -33,6 +37,7 @@ enum AppPermissionKind: String, CaseIterable, Identifiable {
 
     var icon: String {
         switch self {
+        case .microphone: return "mic"
         case .calendar: return "calendar"
         case .reminders: return "bell"
         case .contacts: return "person.crop.circle"
@@ -122,6 +127,18 @@ class ToolRegistry {
 
     func authorizationStatus(for kind: AppPermissionKind) -> AppPermissionStatus {
         switch kind {
+        case .microphone:
+            switch AVAudioSession.sharedInstance().recordPermission {
+            case .granted:
+                return .granted
+            case .denied:
+                return .denied
+            case .undetermined:
+                return .notDetermined
+            @unknown default:
+                return .restricted
+            }
+
         case .calendar:
             let status = EKEventStore.authorizationStatus(for: .event)
             switch status {
@@ -179,12 +196,22 @@ class ToolRegistry {
 
     func requestAccess(for kind: AppPermissionKind) async throws -> Bool {
         switch kind {
+        case .microphone:
+            return try await requestMicrophoneAccess()
         case .calendar:
             return try await requestCalendarWriteAccess()
         case .reminders:
             return try await requestRemindersAccess()
         case .contacts:
             return try await requestContactsAccess()
+        }
+    }
+
+    private func requestMicrophoneAccess() async throws -> Bool {
+        await withCheckedContinuation { continuation in
+            AVAudioSession.sharedInstance().requestRecordPermission { granted in
+                continuation.resume(returning: granted)
+            }
         }
     }
 

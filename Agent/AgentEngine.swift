@@ -7,17 +7,31 @@ func log(_ message: String) {
     print(message)
 }
 
+private extension UserInput.Audio {
+    static func from(snapshot: AudioCaptureSnapshot) -> UserInput.Audio {
+        .pcm(
+            .init(
+                samples: snapshot.pcm,
+                sampleRate: snapshot.sampleRate,
+                channelCount: snapshot.channelCount
+            )
+        )
+    }
+}
+
 // MARK: - 模型/推理配置
 
 @Observable
 class ModelConfig {
     static let selectedModelDefaultsKey = "PhoneClaw.selectedModelID"
+    static let enableThinkingDefaultsKey = "PhoneClaw.enableThinking"
 
     var maxTokens = 4000
     var topK = 64
     var topP = 0.95
     var temperature = 1.0
     var useGPU = true
+    var enableThinking = UserDefaults.standard.bool(forKey: enableThinkingDefaultsKey)
     var selectedModelID = UserDefaults.standard.string(forKey: selectedModelDefaultsKey)
         ?? MLXLocalLLMService.defaultModel.id
     /// System prompt — 由 AgentEngine.loadSystemPrompt() 从 SYSPROMPT.md 注入，不在代码里硬编码。
@@ -52,14 +66,39 @@ ___SKILLS___
 struct ChatImageAttachment: Identifiable {
     let id = UUID()
     let data: Data
+    private static let storageMaxDimension: CGFloat = 1_024
+    private static let compressionQuality: CGFloat = 0.78
 
     init?(image: UIImage) {
-        if let jpeg = image.jpegData(compressionQuality: 0.92) {
+        let prepared = Self.preparedImage(image, maxDimension: Self.storageMaxDimension)
+        if let jpeg = prepared.jpegData(compressionQuality: Self.compressionQuality) {
             self.data = jpeg
-        } else if let png = image.pngData() {
+        } else if let png = prepared.pngData() {
             self.data = png
         } else {
             return nil
+        }
+    }
+
+    static func preparedImage(_ image: UIImage, maxDimension: CGFloat = storageMaxDimension) -> UIImage {
+        let originalSize = image.size
+        let longestSide = max(originalSize.width, originalSize.height)
+        guard longestSide > maxDimension, longestSide > 0 else {
+            return image
+        }
+
+        let scale = maxDimension / longestSide
+        let targetSize = CGSize(
+            width: max(1, floor(originalSize.width * scale)),
+            height: max(1, floor(originalSize.height * scale))
+        )
+
+        let format = UIGraphicsImageRendererFormat.default()
+        format.opaque = false
+        format.scale = 1
+        let renderer = UIGraphicsImageRenderer(size: targetSize, format: format)
+        return renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: targetSize))
         }
     }
 
@@ -85,11 +124,113 @@ struct ChatImageAttachment: Identifiable {
     }
 }
 
+struct ChatAudioAttachment: Identifiable {
+    let id = UUID()
+    let wavData: Data
+    let duration: TimeInterval
+    let sampleRate: Double
+    let waveform: [Float]
+
+    init?(snapshot: AudioCaptureSnapshot) {
+        guard !snapshot.pcm.isEmpty, snapshot.sampleRate > 0 else { return nil }
+        self.wavData = Self.makeWAVData(
+            pcm: snapshot.pcm,
+            sampleRate: snapshot.sampleRate,
+            channelCount: 1
+        )
+        self.duration = snapshot.duration
+        self.sampleRate = snapshot.sampleRate
+        self.waveform = Self.makeWaveform(from: snapshot.pcm)
+    }
+
+    var formattedDuration: String {
+        let totalSeconds = Int(duration.rounded())
+        let minutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+        return String(format: "%02d:%02d", minutes, seconds)
+    }
+
+    private static func makeWaveform(from pcm: [Float], bucketCount: Int = 36) -> [Float] {
+        guard !pcm.isEmpty else { return Array(repeating: 0.12, count: bucketCount) }
+        let samplesPerBucket = max(pcm.count / bucketCount, 1)
+        var levels: [Float] = []
+        levels.reserveCapacity(bucketCount)
+
+        var index = 0
+        while index < pcm.count {
+            let end = min(index + samplesPerBucket, pcm.count)
+            let slice = pcm[index..<end]
+            let peak = slice.reduce(Float.zero) { current, sample in
+                max(current, abs(sample))
+            }
+            levels.append(peak)
+            index = end
+        }
+
+        if levels.count < bucketCount, let last = levels.last {
+            levels.append(contentsOf: Array(repeating: last, count: bucketCount - levels.count))
+        }
+        if levels.count > bucketCount {
+            levels = Array(levels.prefix(bucketCount))
+        }
+
+        let maxLevel = max(levels.max() ?? 0, 0.001)
+        return levels.map { max($0 / maxLevel, 0.08) }
+    }
+
+    private static func makeWAVData(
+        pcm: [Float],
+        sampleRate: Double,
+        channelCount: Int
+    ) -> Data {
+        let integerSampleRate = max(Int(sampleRate.rounded()), 1)
+        let clampedSamples = pcm.map { sample -> Int16 in
+            let limited = min(max(sample, -1), 1)
+            return Int16((limited * Float(Int16.max)).rounded())
+        }
+
+        let bytesPerSample = MemoryLayout<Int16>.size
+        let dataChunkSize = clampedSamples.count * bytesPerSample
+        let riffChunkSize = 36 + dataChunkSize
+        let byteRate = integerSampleRate * channelCount * bytesPerSample
+        let blockAlign = channelCount * bytesPerSample
+
+        var data = Data()
+        data.reserveCapacity(44 + dataChunkSize)
+        data.append("RIFF".data(using: .ascii)!)
+        append(UInt32(riffChunkSize), to: &data)
+        data.append("WAVE".data(using: .ascii)!)
+        data.append("fmt ".data(using: .ascii)!)
+        append(UInt32(16), to: &data)
+        append(UInt16(1), to: &data)
+        append(UInt16(channelCount), to: &data)
+        append(UInt32(integerSampleRate), to: &data)
+        append(UInt32(byteRate), to: &data)
+        append(UInt16(blockAlign), to: &data)
+        append(UInt16(bytesPerSample * 8), to: &data)
+        data.append("data".data(using: .ascii)!)
+        append(UInt32(dataChunkSize), to: &data)
+
+        for sample in clampedSamples {
+            append(sample, to: &data)
+        }
+        return data
+    }
+
+    private static func append<T: FixedWidthInteger>(_ value: T, to data: inout Data) {
+        var littleEndian = value.littleEndian
+        withUnsafeBytes(of: &littleEndian) { bytes in
+            data.append(contentsOf: bytes)
+        }
+    }
+}
+
 struct ChatMessage: Identifiable {
     let id: UUID
     var role: Role
     var content: String
     var images: [ChatImageAttachment]
+    var audios: [ChatAudioAttachment]
     let timestamp = Date()
     var skillName: String? = nil
 
@@ -97,12 +238,14 @@ struct ChatMessage: Identifiable {
         role: Role,
         content: String,
         images: [ChatImageAttachment] = [],
+        audios: [ChatAudioAttachment] = [],
         skillName: String? = nil
     ) {
         self.id = UUID()
         self.role = role
         self.content = content
         self.images = images
+        self.audios = audios
         self.skillName = skillName
     }
 
@@ -138,6 +281,9 @@ class AgentEngine {
 
     // Skill 条目（给 UI 管理用，可开关）
     var skillEntries: [SkillEntry] = []
+
+    private let thinkingOpenMarker = "[[PHONECLAW_THINK]]"
+    private let thinkingCloseMarker = "[[/PHONECLAW_THINK]]"
 
 
     var enabledSkillInfos: [SkillInfo] {
@@ -346,6 +492,28 @@ class AgentEngine {
                 candidateNames = ["clipboard-read"]
             } else {
                 candidateNames = ["clipboard-read", "clipboard-write"]
+            }
+        case "calendar":
+            let actionKeywords = [
+                "安排", "创建", "新建", "加入", "加到", "写进", "写入", "记到"
+            ]
+            let createIntent =
+                (has("日历") || has("日程") || has("会议") || has("约会"))
+                && actionKeywords.contains(where: has)
+            candidateNames = createIntent ? ["calendar-create-event"] : []
+        case "reminders":
+            let actionKeywords = [
+                "提醒", "提醒我", "记得", "待办", "创建", "新建", "添加"
+            ]
+            let createIntent = actionKeywords.contains(where: has)
+            candidateNames = createIntent ? ["reminders-create"] : []
+        case "text":
+            if has("哈希") || has("hash") {
+                candidateNames = ["calculate-hash"]
+            } else if has("翻转") || has("反转") {
+                candidateNames = ["text-reverse"]
+            } else {
+                candidateNames = ["calculate-hash", "text-reverse"]
             }
         default:
             candidateNames = []
@@ -575,6 +743,91 @@ class AgentEngine {
         guard !text.isEmpty else { return nil }
 
         switch toolName {
+        case "calculate-hash":
+            let patterns = [
+                "(?:计算|求|生成|算一下|帮我算)(.+?)(?:的)?(?:哈希|hash)(?:值)?",
+                "(.+?)(?:的)?(?:哈希|hash)(?:值)?(?:是多少|是什么)?"
+            ]
+
+            var extracted: String?
+            for pattern in patterns {
+                guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { continue }
+                let range = NSRange(text.startIndex..., in: text)
+                if let match = regex.firstMatch(in: text, range: range),
+                   let capture = Range(match.range(at: 1), in: text) {
+                    let value = String(text[capture])
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                        .trimmingCharacters(in: CharacterSet(charactersIn: "“”\"' "))
+                    if !value.isEmpty {
+                        extracted = value
+                        break
+                    }
+                }
+            }
+
+            if extracted == nil {
+                let cleaned = text
+                    .replacingOccurrences(of: "帮我", with: "")
+                    .replacingOccurrences(of: "计算", with: "")
+                    .replacingOccurrences(of: "求", with: "")
+                    .replacingOccurrences(of: "生成", with: "")
+                    .replacingOccurrences(of: "算一下", with: "")
+                    .replacingOccurrences(of: "哈希值", with: "")
+                    .replacingOccurrences(of: "哈希", with: "")
+                    .replacingOccurrences(of: "hash", with: "", options: .caseInsensitive)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .trimmingCharacters(in: CharacterSet(charactersIn: "“”\"' "))
+                if !cleaned.isEmpty {
+                    extracted = cleaned
+                }
+            }
+
+            guard let extracted, !extracted.isEmpty else { return nil }
+            return ["text": extracted]
+
+        case "text-reverse":
+            let patterns = [
+                "(?:把|将)(.+?)(?:翻转|反转)(?:过来|一下)?",
+                "(?:翻转|反转)(.+?)(?:过来|一下)?$"
+            ]
+
+            var extracted: String?
+            for pattern in patterns {
+                guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+                let range = NSRange(text.startIndex..., in: text)
+                if let match = regex.firstMatch(in: text, range: range),
+                   let capture = Range(match.range(at: 1), in: text) {
+                    let value = String(text[capture])
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                        .trimmingCharacters(in: CharacterSet(charactersIn: "“”\"' "))
+                    if !value.isEmpty {
+                        extracted = value
+                        break
+                    }
+                }
+            }
+
+            if extracted == nil {
+                let cleaned = text
+                    .replacingOccurrences(of: "帮我", with: "")
+                    .replacingOccurrences(of: "把", with: "")
+                    .replacingOccurrences(of: "将", with: "")
+                    .replacingOccurrences(of: "翻转过来", with: "")
+                    .replacingOccurrences(of: "反转过来", with: "")
+                    .replacingOccurrences(of: "翻转一下", with: "")
+                    .replacingOccurrences(of: "反转一下", with: "")
+                    .replacingOccurrences(of: "翻转", with: "")
+                    .replacingOccurrences(of: "反转", with: "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .trimmingCharacters(in: CharacterSet(charactersIn: "“”\"' "))
+                if !cleaned.isEmpty {
+                    extracted = cleaned
+                }
+            }
+
+            guard let extracted, !extracted.isEmpty else { return nil }
+            return ["text": extracted]
+
         case "clipboard-write":
             let patterns = [
                 "(?:复制|拷贝|写入)(.+?)(?:到|进|到系统)?(?:剪贴板)",
@@ -904,6 +1157,8 @@ class AgentEngine {
             return arguments["title"] is String && arguments["start"] is String
         case "reminders-create":
             return arguments["title"] is String
+        case "calculate-hash", "text-reverse":
+            return arguments["text"] is String
         case "contacts-upsert":
             return arguments["name"] is String
         case "contacts-search", "contacts-delete":
@@ -935,25 +1190,75 @@ class AgentEngine {
             normalizedQuestion.contains(keyword)
         }
 
-        let mentionsClipboard = has("剪贴板") || has("clipboard")
-        guard mentionsClipboard else { return nil }
-
-        let readKeywords = ["读取", "读一下", "看看", "看下", "查看", "内容", "是什么"]
-        let writeKeywords = ["复制", "拷贝", "写入", "放到剪贴板", "存到剪贴板", "复制到剪贴板"]
-
-        if writeKeywords.contains(where: has),
-           let arguments = heuristicArgumentsForTool(toolName: "clipboard-write", userQuestion: userQuestion),
-           validateSingleToolArguments(toolName: "clipboard-write", arguments: arguments) {
+        if (has("哈希") || has("hash")),
+           let arguments = heuristicArgumentsForTool(toolName: "calculate-hash", userQuestion: userQuestion),
+           validateSingleToolArguments(toolName: "calculate-hash", arguments: arguments) {
             return syntheticToolCallText(
-                name: "clipboard-write",
+                name: "calculate-hash",
                 arguments: arguments
             )
         }
 
-        if readKeywords.contains(where: has) || mentionsClipboard {
+        if (has("翻转") || has("反转")),
+           let arguments = heuristicArgumentsForTool(toolName: "text-reverse", userQuestion: userQuestion),
+           validateSingleToolArguments(toolName: "text-reverse", arguments: arguments) {
+            return syntheticToolCallText(
+                name: "text-reverse",
+                arguments: arguments
+            )
+        }
+
+        let mentionsClipboard = has("剪贴板") || has("clipboard")
+        if mentionsClipboard {
+            let readKeywords = ["读取", "读一下", "看看", "看下", "查看", "内容", "是什么"]
+            let writeKeywords = ["复制", "拷贝", "写入", "放到剪贴板", "存到剪贴板", "复制到剪贴板"]
+
+            if writeKeywords.contains(where: has),
+               let arguments = heuristicArgumentsForTool(toolName: "clipboard-write", userQuestion: userQuestion),
+               validateSingleToolArguments(toolName: "clipboard-write", arguments: arguments) {
+                return syntheticToolCallText(
+                    name: "clipboard-write",
+                    arguments: arguments
+                )
+            }
+
+            if readKeywords.contains(where: has) || mentionsClipboard {
+                return syntheticToolCallText(
+                    name: "load_skill",
+                    arguments: ["skill": "clipboard"]
+                )
+            }
+        }
+
+        let calendarIntent =
+            (has("日历") || has("日程") || has("会议") || has("约会"))
+            && ["安排", "创建", "新建", "加入", "加到", "记到", "写进", "写入"].contains(where: has)
+        if calendarIntent {
+            if let arguments = heuristicArgumentsForTool(toolName: "calendar-create-event", userQuestion: userQuestion),
+               validateSingleToolArguments(toolName: "calendar-create-event", arguments: arguments) {
+                return syntheticToolCallText(
+                    name: "calendar-create-event",
+                    arguments: arguments
+                )
+            }
             return syntheticToolCallText(
                 name: "load_skill",
-                arguments: ["skill": "clipboard"]
+                arguments: ["skill": "calendar"]
+            )
+        }
+
+        let reminderIntent = ["提醒我", "提醒", "记得", "待办", "提醒事项"].contains(where: has)
+        if reminderIntent {
+            if let arguments = heuristicArgumentsForTool(toolName: "reminders-create", userQuestion: userQuestion),
+               validateSingleToolArguments(toolName: "reminders-create", arguments: arguments) {
+                return syntheticToolCallText(
+                    name: "reminders-create",
+                    arguments: arguments
+                )
+            }
+            return syntheticToolCallText(
+                name: "load_skill",
+                arguments: ["skill": "reminders"]
             )
         }
 
@@ -980,6 +1285,12 @@ class AgentEngine {
         }
 
         if tools.count == 1, let tool = tools.first {
+            if let heuristic = heuristicArgumentsForTool(toolName: tool.name, userQuestion: userQuestion),
+               validateSingleToolArguments(toolName: tool.name, arguments: heuristic) {
+                log("[Agent] load_skill heuristic 直接执行工具: \(tool.name)")
+                return .toolCall(name: tool.name, arguments: heuristic)
+            }
+
             let extractionPrompt = PromptBuilder.buildSingleToolArgumentsPrompt(
                 originalPrompt: originalPrompt,
                 userQuestion: userQuestion,
@@ -1003,10 +1314,6 @@ class AgentEngine {
                 }
             }
 
-            if let heuristic = heuristicArgumentsForTool(toolName: tool.name, userQuestion: userQuestion),
-               validateSingleToolArguments(toolName: tool.name, arguments: heuristic) {
-                return .toolCall(name: tool.name, arguments: heuristic)
-            }
             return .failed
         }
 
@@ -1364,6 +1671,51 @@ class AgentEngine {
         "Skill \(skillName) 已加载，但模型没有继续生成工具调用或最终回答。请重试，或把问题说得更具体一些。"
     }
 
+    private func shouldUseToolingPrompt(for userQuestion: String) -> Bool {
+        let normalizedQuestion = userQuestion.lowercased()
+        guard !normalizedQuestion.isEmpty else { return false }
+
+        let domainKeywords = [
+            "日历", "提醒", "提醒事项", "通讯录", "联系人", "剪贴板",
+            "设备", "系统", "相册", "照片", "蓝牙", "wifi", "电量",
+            "亮度", "音量", "电话", "短信", "邮件"
+        ]
+        let actionKeywords = [
+            "打开", "查看", "读取", "搜索", "查询", "创建",
+            "新建", "添加", "保存", "修改", "删除", "复制",
+            "拨打", "发送", "设置", "调高", "调低"
+        ]
+
+        let mentionsDomain = domainKeywords.contains { normalizedQuestion.contains($0) }
+        let mentionsAction = actionKeywords.contains { normalizedQuestion.contains($0) }
+        if mentionsDomain && mentionsAction {
+            return true
+        }
+
+        for entry in skillEntries where entry.isEnabled {
+            if normalizedQuestion.contains(entry.id.lowercased())
+                || normalizedQuestion.contains(entry.name.lowercased())
+            {
+                return true
+            }
+
+            if entry.tools.contains(where: { normalizedQuestion.contains($0.name.lowercased()) }) {
+                return true
+            }
+
+            if let definition = skillLoader.getDefinition(entry.id),
+               definition.metadata.triggers.contains(where: { trigger in
+                   let normalizedTrigger = trigger.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+                   return !normalizedTrigger.isEmpty && normalizedQuestion.contains(normalizedTrigger)
+               })
+            {
+                return true
+            }
+        }
+
+        return mentionsDomain
+    }
+
     // MARK: - 初始化
 
     /// ConfigurationsView 的"Restore default"按钮使用。
@@ -1409,6 +1761,10 @@ class AgentEngine {
         llm.samplingTopP = Float(config.topP)
         llm.samplingTemperature = Float(config.temperature)
         llm.maxOutputTokens = config.maxTokens
+        UserDefaults.standard.set(
+            config.enableThinking,
+            forKey: ModelConfig.enableThinkingDefaultsKey
+        )
     }
 
     @discardableResult
@@ -1446,45 +1802,78 @@ class AgentEngine {
 
     // MARK: - 处理用户输入（MLX 流式输出）
 
-    func processInput(_ text: String, images: [UIImage] = []) async {
+    func processInput(
+        _ text: String,
+        images: [UIImage] = [],
+        audio: AudioCaptureSnapshot? = nil
+    ) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let normalizedText = trimmed.isEmpty && !images.isEmpty ? "请描述这张图片。" : trimmed
-        guard !normalizedText.isEmpty, !isProcessing else { return }
-        guard llm.isLoaded else {
-            messages.append(ChatMessage(role: .system, content: "⏳ 模型还在加载中..."))
-            return
-        }
-
+        let displayText = trimmed
         let attachments = images.compactMap(ChatImageAttachment.init(image:))
-        messages.append(ChatMessage(role: .user, content: normalizedText, images: attachments))
+        let audioClips = audio.flatMap(ChatAudioAttachment.init(snapshot:)).map { [$0] } ?? []
+        let audioAttachment = audio.map(UserInput.Audio.from(snapshot:))
+        let normalizedText: String
+        if trimmed.isEmpty, !images.isEmpty {
+            normalizedText = "请描述这张图片。"
+        } else if trimmed.isEmpty, audio != nil {
+            normalizedText = "请直接转写这段音频内容。"
+        } else {
+            normalizedText = trimmed
+        }
+        let requiresMultimodal = !attachments.isEmpty || audioAttachment != nil
+        guard !isProcessing else { return }
+        guard !normalizedText.isEmpty || !attachments.isEmpty || audioAttachment != nil else { return }
+        messages.append(
+            ChatMessage(
+                role: .user,
+                content: displayText,
+                images: attachments,
+                audios: audioClips
+            )
+        )
         isProcessing = true
 
         applySamplingConfig()
 
-        let activeSkillInfos = attachments.isEmpty ? enabledSkillInfos : []
-        let historyDepth = attachments.isEmpty ? llm.safeHistoryDepth : 0
+        let preflightToolCall = requiresMultimodal ? nil : preflightSkillLoadCall(for: normalizedText)
+        let shouldUseFullAgentPrompt =
+            !requiresMultimodal
+            && (preflightToolCall != nil || shouldUseToolingPrompt(for: normalizedText))
+        let activeSkillInfos = shouldUseFullAgentPrompt ? enabledSkillInfos : []
+        let historyDepth = requiresMultimodal ? 0 : llm.safeHistoryDepth
         print("[MEM] safeHistoryDepth=\(historyDepth), headroom=\(llm.availableHeadroomMB) MB")
         let promptImages = promptImages(historyDepth: historyDepth, currentImages: attachments)
-        print("[VLM] userAttachments=\(attachments.count), promptImages=\(promptImages.count)")
+        print(
+            "[VLM] userAttachments=\(attachments.count), promptImages=\(promptImages.count), "
+                + "audio=\(audioAttachment == nil ? 0 : 1)"
+        )
 
         messages.append(ChatMessage(role: .assistant, content: "▍"))
         let msgIndex = messages.count - 1
 
-        if !attachments.isEmpty {
+        if requiresMultimodal {
             let multimodalChat: [Chat.Message] = [
-                .system(PromptBuilder.multimodalSystemPrompt),
+                .system(
+                    PromptBuilder.multimodalSystemPrompt(
+                        hasImages: !promptImages.isEmpty,
+                        hasAudio: audioAttachment != nil
+                    )
+                ),
                 .user(
                     normalizedText,
-                    images: promptImages.map { .ciImage($0) }
+                    images: promptImages.map { .ciImage($0) },
+                    audios: audioAttachment.map { [$0] } ?? []
                 ),
             ]
+            let multimodalContext: [String: any Sendable]? =
+                config.enableThinking ? ["enable_thinking": true] : nil
+            var multimodalBuffer = ""
 
-            llm.generateStream(chat: multimodalChat) { [weak self] token in
+            llm.generateStream(chat: multimodalChat, additionalContext: multimodalContext) { [weak self] token in
                 guard let self = self else { return }
-                let updated = self.messages[msgIndex].content == "▍"
-                    ? token
-                    : self.messages[msgIndex].content.replacingOccurrences(of: "▍", with: "") + token
-                self.messages[msgIndex].update(content: updated + "▍")
+                multimodalBuffer += token
+                let cleaned = self.cleanOutputStreaming(multimodalBuffer)
+                self.messages[msgIndex].update(content: (cleaned.isEmpty ? "" : cleaned) + "▍")
             } onComplete: { [weak self] result in
                 guard let self = self else { return }
                 switch result {
@@ -1495,6 +1884,7 @@ class AgentEngine {
                         content: cleaned.isEmpty ? "（无回复）" : cleaned
                     )
                 case .failure(let error):
+                    log("[Agent] multimodal failed: \(error.localizedDescription)")
                     self.messages[msgIndex].update(role: .system, content: "❌ \(error.localizedDescription)")
                 }
                 self.isProcessing = false
@@ -1502,16 +1892,29 @@ class AgentEngine {
             return
         }
 
-        let prompt = PromptBuilder.build(
-            userMessage: normalizedText,
-            currentImageCount: attachments.count,
-            tools: activeSkillInfos,
-            history: messages,
-            systemPrompt: config.systemPrompt,
-            historyDepth: historyDepth
-        )
+        let prompt: String
+        if shouldUseFullAgentPrompt {
+            prompt = PromptBuilder.build(
+                userMessage: normalizedText,
+                currentImageCount: attachments.count,
+                tools: activeSkillInfos,
+                history: messages,
+                systemPrompt: config.systemPrompt,
+                enableThinking: config.enableThinking,
+                historyDepth: historyDepth
+            )
+        } else {
+            prompt = PromptBuilder.buildLightweightTextPrompt(
+                userMessage: normalizedText,
+                history: messages,
+                systemPrompt: config.systemPrompt,
+                enableThinking: config.enableThinking,
+                historyDepth: historyDepth
+            )
+        }
+        log("[Agent] text prompt mode=\(shouldUseFullAgentPrompt ? "agent" : "light"), chars=\(prompt.count), skills=\(activeSkillInfos.count)")
 
-        if let preflightToolCall = preflightSkillLoadCall(for: normalizedText) {
+        if let preflightToolCall {
             log("[Agent] preflight tool path triggered")
             if messages.indices.contains(msgIndex),
                messages[msgIndex].role == .assistant,
@@ -1531,7 +1934,7 @@ class AgentEngine {
         var buffer = ""
         var bufferFlushed = false
 
-        llm.generateStream(prompt: prompt, images: promptImages) { [weak self] token in
+        llm.generateStream(prompt: prompt, images: promptImages, audios: []) { [weak self] token in
             guard let self = self else { return }
 
             if detectedToolCall {
@@ -1593,7 +1996,7 @@ class AgentEngine {
 
     private func streamLLM(prompt: String, images: [CIImage]) async -> String? {
         return await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
-            llm.generateStream(prompt: prompt, images: images) { _ in
+            llm.generateStream(prompt: prompt, images: images, audios: []) { _ in
             } onComplete: { result in
                 switch result {
                 case .success(let text):
@@ -1612,7 +2015,7 @@ class AgentEngine {
         return await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
             var toolCallDetected = false
             var bufferFlushed = false
-            llm.generateStream(prompt: prompt, images: images) { [weak self] token in
+            llm.generateStream(prompt: prompt, images: images, audios: []) { [weak self] token in
                 guard let self = self else { return }
                 buffer += token
 
@@ -2008,7 +2411,7 @@ class AgentEngine {
     }
 
     private func cleanOutputStreaming(_ text: String) -> String {
-        var result = text
+        var result = preserveThinkingChannels(in: text)
 
         if let tcRange = result.range(of: "<tool_call>") {
             result = String(result[result.startIndex..<tcRange.lowerBound])
@@ -2042,11 +2445,12 @@ class AgentEngine {
             return ""
         }
 
-        return String(result.drop(while: { $0.isWhitespace || $0.isNewline }))
+        result = String(result.drop(while: { $0.isWhitespace || $0.isNewline }))
+        return normalizeSafetyTruncation(in: result)
     }
 
     private func cleanOutput(_ text: String) -> String {
-        var result = text
+        var result = preserveThinkingChannels(in: text)
 
         if let regex = try? NSRegularExpression(pattern: "<tool_call>.*?</tool_call>", options: .dotMatchesLineSeparators) {
             result = regex.stringByReplacingMatches(in: result, range: NSRange(result.startIndex..., in: result), withTemplate: "")
@@ -2088,6 +2492,100 @@ class AgentEngine {
             result = ""
         }
 
-        return result.trimmingCharacters(in: .whitespacesAndNewlines)
+        result = result.trimmingCharacters(in: .whitespacesAndNewlines)
+        return normalizeSafetyTruncation(in: result)
+    }
+
+    private func normalizeSafetyTruncation(in text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let warningRange = trimmed.range(of: "> ⚠️ ") else {
+            return trimmed
+        }
+
+        let body = String(trimmed[..<warningRange.lowerBound])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let warning = String(trimmed[warningRange.lowerBound...])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !body.isEmpty else { return warning }
+
+        let normalizedBody = trimIncompleteTrailingBlock(in: body)
+        guard !normalizedBody.isEmpty else { return warning }
+        return normalizedBody + "\n\n" + warning
+    }
+
+    private func trimIncompleteTrailingBlock(in text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return trimmed }
+
+        if let paragraphBreak = trimmed.range(of: "\n\n", options: .backwards) {
+            let tailLength = trimmed.distance(from: paragraphBreak.upperBound, to: trimmed.endIndex)
+            if tailLength > 0 && tailLength <= 280 {
+                return String(trimmed[..<paragraphBreak.lowerBound])
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+
+        if let sentenceBoundary = lastSentenceBoundary(in: trimmed) {
+            let tailLength = trimmed.distance(from: sentenceBoundary, to: trimmed.endIndex)
+            if tailLength > 0 && tailLength <= 220 {
+                return String(trimmed[..<sentenceBoundary])
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+
+        return trimmed
+    }
+
+    private func lastSentenceBoundary(in text: String) -> String.Index? {
+        let sentenceEndings: Set<Character> = ["。", "！", "？", ".", "!", "?"]
+        var index = text.endIndex
+        while index > text.startIndex {
+            index = text.index(before: index)
+            if sentenceEndings.contains(text[index]) {
+                return text.index(after: index)
+            }
+        }
+        return nil
+    }
+
+    private func preserveThinkingChannels(in text: String) -> String {
+        let openTokens = ["<|channel|>thought\n", "<|channel>thought\n"]
+        let closeToken = "<channel|>"
+
+        var result = ""
+        var cursor = text.startIndex
+
+        while cursor < text.endIndex {
+            let nextOpen = openTokens
+                .compactMap { token -> (Range<String.Index>, String)? in
+                    guard let range = text.range(of: token, range: cursor..<text.endIndex) else {
+                        return nil
+                    }
+                    return (range, token)
+                }
+                .min(by: { $0.0.lowerBound < $1.0.lowerBound })
+
+            guard let (openRange, token) = nextOpen else {
+                result += text[cursor..<text.endIndex]
+                break
+            }
+
+            result += text[cursor..<openRange.lowerBound]
+            result += thinkingOpenMarker
+
+            let thoughtStart = openRange.lowerBound
+            let contentStart = text.index(thoughtStart, offsetBy: token.count)
+            if let closeRange = text.range(of: closeToken, range: contentStart..<text.endIndex) {
+                result += text[contentStart..<closeRange.lowerBound]
+                result += thinkingCloseMarker
+                cursor = closeRange.upperBound
+            } else {
+                result += text[contentStart..<text.endIndex]
+                break
+            }
+        }
+
+        return result
     }
 }

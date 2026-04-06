@@ -1,5 +1,6 @@
 import Foundation
 import CoreImage
+import MLXLMCommon
 
 // MARK: - LLM Engine Protocol
 
@@ -7,7 +8,11 @@ import CoreImage
 public protocol LLMEngine {
     func load() async throws
     func warmup() async throws
-    func generateStream(prompt: String, images: [CIImage]) -> AsyncThrowingStream<String, Error>
+    func generateStream(
+        prompt: String,
+        images: [CIImage],
+        audios: [UserInput.Audio]
+    ) -> AsyncThrowingStream<String, Error>
     func cancel()
     func unload()
     var stats: LLMStats { get }
@@ -17,7 +22,11 @@ public protocol LLMEngine {
 
 public extension LLMEngine {
     func generateStream(prompt: String) -> AsyncThrowingStream<String, Error> {
-        generateStream(prompt: prompt, images: [])
+        generateStream(prompt: prompt, images: [], audios: [])
+    }
+
+    func generateStream(prompt: String, images: [CIImage]) -> AsyncThrowingStream<String, Error> {
+        generateStream(prompt: prompt, images: images, audios: [])
     }
 }
 

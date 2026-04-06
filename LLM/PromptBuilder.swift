@@ -10,7 +10,22 @@ import Foundation
 struct PromptBuilder {
 
     static let defaultSystemPrompt = "你是 PhoneClaw，一个运行在本地的私人 AI 助手。你完全运行在设备上，不联网。"
-    static let multimodalSystemPrompt = "你是 PhoneClaw，一个运行在本地设备上的视觉助手。请仅根据图片和用户问题作答，优先识别图中的主要物体、用途、场景和可读文本；如果看不清或不确定，请直接说明，不要编造。用简体中文回答。这是纯图文问答，不要调用任何工具或技能。"
+    private static let thinkingOpenMarker = "[[PHONECLAW_THINK]]"
+    private static let thinkingCloseMarker = "[[/PHONECLAW_THINK]]"
+    private static let thinkingLanguageInstruction = "如果启用了思考模式，思考通道和最终回答都必须使用简体中文，不要使用英文。"
+
+    static func multimodalSystemPrompt(hasImages: Bool, hasAudio: Bool, enableThinking: Bool = false) -> String {
+        let base: String
+        if hasAudio && !hasImages {
+            base = "你是 PhoneClaw，一个运行在本地设备上的音频助手。请把用户提供的音频视为需要分析的素材，而不是用户此刻正在对你说的话。请根据音频和文本任务直接作答，不要擅自改写用户任务，也不要额外追加不存在的意图。听不清或不确定时请明确说明，不要编造。如果用户是在询问音频里说了什么，或明确要求转写、识别、逐字写出，请直接给出识别结果，不要复述用户问题，不要寒暄。如果用户明确要求逐字转写，尽量保留原话，不要改写、总结、润色，也不要把音频内容当成需要你回应的对话。用简体中文回答。这是纯音频问答，不要调用任何工具或技能。"
+        } else if hasImages && hasAudio {
+            base = "你是 PhoneClaw，一个运行在本地设备上的多模态助手。请把用户提供的音频视为需要分析的素材，而不是用户此刻正在对你说的话。请根据用户提供的图片、音频和文本直接作答，不要擅自改写用户任务，也不要额外追加不存在的意图。看不清、听不清或不确定时请直接说明，不要编造。如果用户是在询问音频里说了什么，或明确要求转写、识别、逐字写出，请直接给出识别结果，不要复述用户问题，不要寒暄。如果用户明确要求逐字转写，尽量保留原话，不要改写、总结、润色，也不要把音频内容当成需要你回应的对话。用简体中文回答。这是纯多模态问答，不要调用任何工具或技能。"
+        } else {
+            base = "你是 PhoneClaw，一个运行在本地设备上的视觉助手。请仅根据图片和用户问题直接作答，并严格遵守以下规则：1. 默认先直接给结论，控制在1到2句内；2. 除非用户明确要求详细说明，否则禁止分点、禁止长篇分析、禁止列举多种可能性；3. 不要写“根据您提供的图片”“从画面中可以看到”等铺垫；4. 如果看不清或不确定，只需简短说明“看不清，像……”，不要编造。优先识别图中的主要物体、用途、场景和可读文本。用简体中文回答。这是纯图文问答，不要调用任何工具或技能。"
+        }
+
+        return enableThinking ? base + "\n" + thinkingLanguageInstruction : base
+    }
 
     private static func imagePromptSuffix(count: Int) -> String {
         guard count > 0 else { return "" }
@@ -39,6 +54,32 @@ struct PromptBuilder {
         return head + "\n\n" + trimmedExtra + "\n<turn|>\n"
     }
 
+    private static func sanitizedAssistantHistoryContent(_ text: String) -> String {
+        var result = text
+
+        while let openRange = result.range(of: thinkingOpenMarker) {
+            if let closeRange = result.range(of: thinkingCloseMarker, range: openRange.upperBound..<result.endIndex) {
+                result.removeSubrange(openRange.lowerBound..<closeRange.upperBound)
+            } else {
+                result.removeSubrange(openRange.lowerBound..<result.endIndex)
+                break
+            }
+        }
+
+        return result.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func lightweightTextSystemPrompt(systemPrompt: String?) -> String {
+        let rawBase = (systemPrompt ?? defaultSystemPrompt).trimmingCharacters(in: .whitespacesAndNewlines)
+        let firstParagraph = rawBase
+            .components(separatedBy: "\n\n")
+            .first?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let base = (firstParagraph?.isEmpty == false ? firstParagraph! : defaultSystemPrompt)
+        return base + "\n\n当前这轮只是普通文字对话，不需要调用任何设备技能或工具。请直接回答用户，避免提到 Skill、load_skill、tool_call 或设备操作流程。用简体中文回答，默认简洁。"
+    }
+
     /// 构造完整 Prompt（包含工具定义 + 对话历史）
     static func build(
         userMessage: String,
@@ -46,15 +87,19 @@ struct PromptBuilder {
         tools: [SkillInfo],
         history: [ChatMessage] = [],
         systemPrompt: String? = nil,
+        enableThinking: Bool = false,
         historyDepth: Int = 4          // 动态传入，根据当前内存 headroom 估算
     ) -> String {
         let isMultimodalTurn = currentImageCount > 0
         var prompt = "<|turn>system\n"
+        if enableThinking {
+            prompt += "<|think|>"
+        }
 
         // ★ 使用自定义 system prompt（如果有），否则用默认
         let basePrompt =
             isMultimodalTurn
-            ? multimodalSystemPrompt
+            ? multimodalSystemPrompt(hasImages: currentImageCount > 0, hasAudio: false, enableThinking: enableThinking)
             : (systemPrompt ?? defaultSystemPrompt)
 
         // 构建 Skill 概要列表（只列名称 + 一句话描述，不暴露 Tool）
@@ -77,6 +122,10 @@ struct PromptBuilder {
             }
         }
 
+        if enableThinking && !isMultimodalTurn {
+            prompt += "\n\n" + thinkingLanguageInstruction
+        }
+
         prompt += "\n<turn|>\n"
 
         // 对话历史（动态深度，由 llm.safeHistoryDepth 控制）
@@ -95,7 +144,8 @@ struct PromptBuilder {
                 // image placeholders for the current turn and its tool follow-ups.
                 prompt += "<|turn>user\n\(msg.content)<turn|>\n"
             case .assistant:
-                prompt += "<|turn>model\n\(msg.content)<turn|>\n"
+                let assistantContent = sanitizedAssistantHistoryContent(msg.content)
+                prompt += "<|turn>model\n\(assistantContent)<turn|>\n"
             case .system:
                 if let skillName = msg.skillName {
                     prompt += "<|turn>model\n<tool_call>\n{\"name\": \"\(skillName)\", \"arguments\": {}}\n</tool_call><turn|>\n"
@@ -110,6 +160,43 @@ struct PromptBuilder {
         prompt += "<|turn>user\n\(userMessage)\(imagePromptSuffix(count: currentImageCount))<turn|>\n"
         prompt += "<|turn>model\n"
 
+        return prompt
+    }
+
+    static func buildLightweightTextPrompt(
+        userMessage: String,
+        history: [ChatMessage] = [],
+        systemPrompt: String? = nil,
+        enableThinking: Bool = false,
+        historyDepth: Int = 2
+    ) -> String {
+        var prompt = "<|turn>system\n"
+        if enableThinking {
+            prompt += "<|think|>"
+        }
+        prompt += lightweightTextSystemPrompt(systemPrompt: systemPrompt)
+        if enableThinking {
+            prompt += "\n\n" + thinkingLanguageInstruction
+        }
+        prompt += "\n<turn|>\n"
+
+        let recentHistory = history.suffix(historyDepth)
+        for msg in recentHistory {
+            if msg.role == .user && msg.id == recentHistory.last?.id { continue }
+            switch msg.role {
+            case .user:
+                prompt += "<|turn>user\n\(msg.content)<turn|>\n"
+            case .assistant:
+                let assistantContent = sanitizedAssistantHistoryContent(msg.content)
+                guard !assistantContent.isEmpty else { continue }
+                prompt += "<|turn>model\n\(assistantContent)<turn|>\n"
+            case .system, .skillResult:
+                continue
+            }
+        }
+
+        prompt += "<|turn>user\n\(userMessage)<turn|>\n"
+        prompt += "<|turn>model\n"
         return prompt
     }
 

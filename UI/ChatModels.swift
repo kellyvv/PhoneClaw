@@ -14,6 +14,7 @@ struct SkillCard: Identifiable, Equatable {
 struct ResponseBlock: Identifiable, Equatable {
     let id: UUID
     var skills: [SkillCard] = []
+    var thinkingText: String?
     var responseText: String?
     var isThinking: Bool
 }
@@ -35,6 +36,41 @@ enum DisplayItem: Identifiable {
 
 /// 用于纯思考占位的稳定 ID
 private let thinkingPlaceholderID = UUID()
+private let thinkingOpenMarker = "[[PHONECLAW_THINK]]"
+private let thinkingCloseMarker = "[[/PHONECLAW_THINK]]"
+
+private func splitThinkingAndResponse(from text: String) -> (thinking: String?, response: String?) {
+    guard !text.isEmpty else { return (nil, nil) }
+
+    var remaining = text
+    var thinkingChunks: [String] = []
+
+    while let openRange = remaining.range(of: thinkingOpenMarker) {
+        let thoughtStart = openRange.upperBound
+        if let closeRange = remaining.range(of: thinkingCloseMarker, range: thoughtStart..<remaining.endIndex) {
+            let thought = remaining[thoughtStart..<closeRange.lowerBound]
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !thought.isEmpty {
+                thinkingChunks.append(String(thought))
+            }
+            remaining.removeSubrange(openRange.lowerBound..<closeRange.upperBound)
+        } else {
+            let thought = remaining[thoughtStart..<remaining.endIndex]
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !thought.isEmpty {
+                thinkingChunks.append(String(thought))
+            }
+            remaining.removeSubrange(openRange.lowerBound..<remaining.endIndex)
+            break
+        }
+    }
+
+    let response = remaining.trimmingCharacters(in: .whitespacesAndNewlines)
+    return (
+        thinkingChunks.isEmpty ? nil : thinkingChunks.joined(separator: "\n\n"),
+        response.isEmpty ? nil : response
+    )
+}
 
 func buildDisplayItems(from messages: [ChatMessage], isProcessing: Bool) -> [DisplayItem] {
     var items: [DisplayItem] = []
@@ -72,18 +108,29 @@ func buildDisplayItems(from messages: [ChatMessage], isProcessing: Bool) -> [Dis
                     }
                     block?.skills.append(card)
                 }
+            } else if !msg.content.isEmpty {
+                if block == nil { block = ResponseBlock(id: msg.id, isThinking: false) }
+                let parsed = splitThinkingAndResponse(from: msg.content)
+                if let thinking = parsed.thinking {
+                    block?.thinkingText = thinking
+                }
+                block?.responseText = parsed.response
             }
         case .skillResult:
             break
         case .assistant:
             if block == nil { block = ResponseBlock(id: msg.id, isThinking: false) }
             if msg.content != "▍" && !msg.content.isEmpty {
-                block?.responseText = msg.content
+                let parsed = splitThinkingAndResponse(from: msg.content)
+                if let thinking = parsed.thinking {
+                    block?.thinkingText = thinking
+                }
+                block?.responseText = parsed.response
             }
         }
     }
 
-    if var b = block, !b.skills.isEmpty || b.responseText != nil {
+    if var b = block, !b.skills.isEmpty || b.thinkingText != nil || b.responseText != nil {
         if isProcessing && !b.skills.isEmpty && b.responseText == nil {
             b.isThinking = true
         }
@@ -91,7 +138,7 @@ func buildDisplayItems(from messages: [ChatMessage], isProcessing: Bool) -> [Dis
     }
 
     if isProcessing {
-        let hasAI = block.map { !$0.skills.isEmpty || $0.responseText != nil } ?? false
+        let hasAI = block.map { !$0.skills.isEmpty || $0.thinkingText != nil || $0.responseText != nil } ?? false
         if !hasAI {
             items.append(.response(ResponseBlock(id: thinkingPlaceholderID, isThinking: true)))
         }

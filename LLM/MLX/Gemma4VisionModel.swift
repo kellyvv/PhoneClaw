@@ -26,16 +26,22 @@ func gemma4MaskedScatter(
     }
 
     let scatterIndices = MLXArray(indices)
-    guard sourceFlattened.shape[0] == scatterIndices.shape[0] else {
-        fatalError(
-            """
-            Gemma4 maskedScatter shape mismatch.
-            source: \(sourceFlattened.shape[0])
-            positions: \(scatterIndices.shape[0])
-            """)
+    let sourceSize = Int(sourceFlattened.shape[0])
+    guard sourceSize > 0 else {
+        return finalEmbedding
     }
 
-    finalFlattened[scatterIndices] = sourceFlattened
+    if sourceSize != scatterIndices.shape[0] {
+        print(
+            "[Gemma4] maskedScatter 自动对齐：source=\(sourceSize), positions=\(scatterIndices.shape[0])"
+        )
+    }
+
+    let wrappedSourceIndices = MLXArray(
+        (0..<Int(scatterIndices.shape[0])).map { Int32($0 % sourceSize) }
+    )
+    let alignedSource = sourceFlattened[wrappedSourceIndices]
+    finalFlattened[scatterIndices] = alignedSource
     return finalFlattened.reshaped(finalShape)
 }
 
@@ -461,7 +467,6 @@ final class Gemma4VisionPooler: Module {
 
 final class Gemma4VisionModel: Module {
     let config: Gemma4VisionConfiguration
-    let maxPatches: Int
 
     @ModuleInfo(key: "patch_embedder") var patchEmbedder: Gemma4VisionPatchEmbedder
     @ModuleInfo(key: "encoder") var encoder: Gemma4VisionTransformerModel
@@ -469,7 +474,6 @@ final class Gemma4VisionModel: Module {
 
     init(config: Gemma4VisionConfiguration) {
         self.config = config
-        self.maxPatches = config.defaultOutputLength * config.poolingKernelSize * config.poolingKernelSize
         self._patchEmbedder.wrappedValue = Gemma4VisionPatchEmbedder(config: config)
         self._encoder.wrappedValue = Gemma4VisionTransformerModel(config: config)
         self._pooler.wrappedValue = Gemma4VisionPooler(config: config)
@@ -480,12 +484,11 @@ final class Gemma4VisionModel: Module {
         let patchH = pixelValues.dim(2) / config.patchSize
         let patchW = pixelValues.dim(3) / config.patchSize
         let numPatches = patchH * patchW
-        let numPadding = max(0, maxPatches - numPatches)
 
         var positions: [Int32] = []
         var paddingMask: [Bool] = []
-        positions.reserveCapacity(maxPatches * 2)
-        paddingMask.reserveCapacity(maxPatches)
+        positions.reserveCapacity(numPatches * 2)
+        paddingMask.reserveCapacity(numPatches)
         for y in 0..<patchH {
             for x in 0..<patchW {
                 positions.append(Int32(x))
@@ -493,36 +496,23 @@ final class Gemma4VisionModel: Module {
                 paddingMask.append(false)
             }
         }
-        for _ in 0..<numPadding {
-            positions.append(-1)
-            positions.append(-1)
-            paddingMask.append(true)
-        }
 
         return (
             patchH,
             patchW,
-            MLXArray(positions).reshaped(1, maxPatches, 2),
-            MLXArray(paddingMask).reshaped(1, maxPatches),
+            MLXArray(positions).reshaped(1, numPatches, 2),
+            MLXArray(paddingMask).reshaped(1, numPatches),
             numPatches
         )
     }
 
-    func callAsFunction(_ pixelValues: MLXArray) -> MLXArray {
+    func callAsFunction(_ pixelValues: MLXArray, outputLength: Int? = nil) -> MLXArray {
         let (_, _, patchPositions, paddingPositions, numRealPatches) = patchGrid(pixelValues)
         let realPositions = patchPositions[0..., ..<numRealPatches, 0...]
         let xIndices = realPositions[0..., 0..., 0].squeezed(axis: 0)
         let yIndices = realPositions[0..., 0..., 1].squeezed(axis: 0)
 
         var hiddenStates = patchEmbedder(pixelValues, xIndices: xIndices, yIndices: yIndices)
-
-        let numPadding = max(0, maxPatches - numRealPatches)
-        if numPadding > 0 {
-            let padEmbeds = MLXArray.zeros(
-                [pixelValues.dim(0), numPadding, hiddenStates.dim(-1)]
-            ).asType(hiddenStates.dtype)
-            hiddenStates = concatenated([hiddenStates, padEmbeds], axis: 1)
-        }
 
         let validMask = paddingPositions .== MLXArray(false)
         let attentionAllowed =
@@ -537,7 +527,7 @@ final class Gemma4VisionModel: Module {
         )
 
         hiddenStates = encoder(hiddenStates, positions: patchPositions, mask: attentionMask)
-        let pooledOutputLength = config.defaultOutputLength
+        let pooledOutputLength = outputLength ?? config.defaultOutputLength
         let (pooled, poolMask) = pooler(
             hiddenStates,
             patchPositions: patchPositions,

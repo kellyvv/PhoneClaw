@@ -49,6 +49,29 @@ public struct UserInput {
         }
     }
 
+    /// Representation of raw audio input.
+    public enum Audio {
+        case pcm(PCM)
+        case url(URL)
+
+        public struct PCM: Sendable {
+            public let samples: [Float]
+            public let sampleRate: Double
+            public let channelCount: Int
+
+            public init(samples: [Float], sampleRate: Double, channelCount: Int) {
+                self.samples = samples
+                self.sampleRate = sampleRate
+                self.channelCount = channelCount
+            }
+
+            public var duration: TimeInterval {
+                guard sampleRate > 0 else { return 0 }
+                return Double(samples.count) / sampleRate
+            }
+        }
+    }
+
     /// Representation of a video resource.
     public enum Video {
         case avAsset(AVAsset)
@@ -161,6 +184,9 @@ public struct UserInput {
                 self.videos = messages.reduce(into: []) { result, message in
                     result.append(contentsOf: message.videos)
                 }
+                self.audios = messages.reduce(into: []) { result, message in
+                    result.append(contentsOf: message.audios)
+                }
             }
         }
     }
@@ -176,6 +202,12 @@ public struct UserInput {
     /// If the ``prompt-swift.property`` is a ``Prompt-swift.enum/chat(_:)`` this will
     /// collect the videos from the chat messages, otherwise these are the stored videos with the ``UserInput``.
     public var videos = [Video]()
+
+    /// The audio clips associated with the `UserInput`.
+    ///
+    /// If the ``prompt-swift.property`` is a ``Prompt-swift.enum/chat(_:)`` this will
+    /// collect the audios from the chat messages, otherwise these are the stored audios with the ``UserInput``.
+    public var audios = [Audio]()
 
     public var tools: [ToolSpec]?
 
@@ -195,12 +227,15 @@ public struct UserInput {
     /// - ``Prompt-swift.enum/text(_:)``
     /// - ``init(chat:tools:additionalContext:)``
     public init(
-        prompt: String, images: [Image] = [Image](), videos: [Video] = [Video](),
+        prompt: String,
+        images: [Image] = [Image](),
+        videos: [Video] = [Video](),
+        audios: [Audio] = [Audio](),
         tools: [ToolSpec]? = nil,
         additionalContext: [String: any Sendable]? = nil
     ) {
         self.prompt = .chat([
-            .user(prompt, images: images, videos: videos)
+            .user(prompt, images: images, videos: videos, audios: audios)
         ])
         self.tools = tools
         self.additionalContext = additionalContext
@@ -240,13 +275,17 @@ public struct UserInput {
     /// - ``Prompt-swift.enum/text(_:)``
     /// - ``init(chat:tools:additionalContext:)``
     public init(
-        messages: [Message], images: [Image] = [Image](), videos: [Video] = [Video](),
+        messages: [Message],
+        images: [Image] = [Image](),
+        videos: [Video] = [Video](),
+        audios: [Audio] = [Audio](),
         tools: [ToolSpec]? = nil,
         additionalContext: [String: any Sendable]? = nil
     ) {
         self.prompt = .messages(messages)
         self.images = images
         self.videos = videos
+        self.audios = audios
         self.tools = tools
         self.additionalContext = additionalContext
     }
@@ -289,6 +328,9 @@ public struct UserInput {
         self.videos = chat.reduce(into: []) { result, message in
             result.append(contentsOf: message.videos)
         }
+        self.audios = chat.reduce(into: []) { result, message in
+            result.append(contentsOf: message.audios)
+        }
 
         self.processing = processing
         self.tools = tools
@@ -313,6 +355,7 @@ public struct UserInput {
         prompt: Prompt,
         images: [Image] = [Image](),
         videos: [Video] = [Video](),
+        audios: [Audio] = [Audio](),
         processing: Processing = .init(),
         tools: [ToolSpec]? = nil, additionalContext: [String: any Sendable]? = nil
     ) {
@@ -321,6 +364,7 @@ public struct UserInput {
         case .text, .messages:
             self.images = images
             self.videos = videos
+            self.audios = audios
         case .chat:
             break
         }
@@ -341,6 +385,8 @@ internal enum UserInputError: LocalizedError {
     case notImplemented
     case unableToLoad(URL)
     case arrayError(String)
+    case audioLoadingNotImplemented(URL)
+    case audioCountExceeded(Int)
 
     var errorDescription: String? {
         switch self {
@@ -350,6 +396,10 @@ internal enum UserInputError: LocalizedError {
             return String(localized: "Unable to load image from URL: \(url.path).")
         case .arrayError(let message):
             return String(localized: "Error processing image array: \(message).")
+        case .audioLoadingNotImplemented(let url):
+            return String(localized: "Audio loading from URL is not implemented yet: \(url.path).")
+        case .audioCountExceeded(let count):
+            return String(localized: "Only a single audio clip is supported right now, received \(count).")
         }
     }
 }

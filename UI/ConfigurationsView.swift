@@ -457,6 +457,8 @@ struct ConfigurationsView: View {
 
     private func permissionTitle(_ kind: AppPermissionKind) -> String {
         switch kind {
+        case .microphone:
+            return localized("麦克风", "Microphone")
         case .calendar:
             return localized("日历", "Calendar")
         case .reminders:
@@ -468,6 +470,8 @@ struct ConfigurationsView: View {
 
     private func permissionDescription(_ kind: AppPermissionKind) -> String {
         switch kind {
+        case .microphone:
+            return localized("允许录音并采集实时音频输入", "Allow recording and capturing realtime audio input")
         case .calendar:
             return localized("允许创建和写入日历事项", "Allow creating and writing calendar events")
         case .reminders:

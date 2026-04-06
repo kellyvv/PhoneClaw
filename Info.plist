@@ -42,5 +42,7 @@
 	<string>PhoneClaw 需要访问提醒事项</string>
 	<key>NSContactsUsageDescription</key>
 	<string>PhoneClaw 需要存储联系人信息</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>PhoneClaw 需要麦克风来录制语音并采集音频输入</string>
 </dict>
 </plist>

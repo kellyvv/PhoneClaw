@@ -36,6 +36,7 @@ public struct LMInput {
     public let text: Text
     public let image: ProcessedImage?
     public let video: ProcessedVideo?
+    public let audio: ProcessedAudio?
 
     /// Representation of tokenized input text.
     public struct Text {
@@ -71,12 +72,15 @@ public struct LMInput {
         public let pixels: MLXArray
         /// Time, height, and width of the images
         public let frames: [THW]?
+        /// Desired number of soft tokens after visual pooling/projecting.
+        public let softTokenCount: Int?
 
         public init(
-            pixels: MLXArray, frames: [THW]? = nil
+            pixels: MLXArray, frames: [THW]? = nil, softTokenCount: Int? = nil
         ) {
             self.pixels = pixels
             self.frames = frames
+            self.softTokenCount = softTokenCount
         }
     }
 
@@ -95,17 +99,48 @@ public struct LMInput {
         }
     }
 
+    /// Representation of prepared input audio.
+    public struct ProcessedAudio {
+        public let features: MLXArray
+        public let invalidMask: MLXArray?
+        public let sampleRate: Double
+        public let channelCount: Int
+        public let duration: TimeInterval
+        public let sampleCount: Int
+        public let tokenCount: Int
+
+        public init(
+            features: MLXArray,
+            invalidMask: MLXArray? = nil,
+            sampleRate: Double,
+            channelCount: Int,
+            duration: TimeInterval,
+            sampleCount: Int,
+            tokenCount: Int
+        ) {
+            self.features = features
+            self.invalidMask = invalidMask
+            self.sampleRate = sampleRate
+            self.channelCount = channelCount
+            self.duration = duration
+            self.sampleCount = sampleCount
+            self.tokenCount = tokenCount
+        }
+    }
+
     public init(tokens: MLXArray, mask: MLXArray? = nil) {
         self.init(text: .init(tokens: tokens, mask: mask))
     }
 
     public init(
         text: LMInput.Text, image: LMInput.ProcessedImage? = nil,
-        video: LMInput.ProcessedVideo? = nil
+        video: LMInput.ProcessedVideo? = nil,
+        audio: LMInput.ProcessedAudio? = nil
     ) {
         self.text = text
         self.image = image
         self.video = video
+        self.audio = audio
     }
 }
 

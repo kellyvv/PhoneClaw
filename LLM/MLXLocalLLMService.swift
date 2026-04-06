@@ -66,7 +66,28 @@ public class MLXLocalLLMService: LLMEngine {
         )
     ]
     static let defaultModel = availableModels[0]
-    private static let multimodalMaxOutputTokens = 4000
+    private static let multimodalMaxOutputTokens = 512
+    private static let e4bThinkingMaxOutputTokens = 1_024
+    private static let e2bThinkingMaxOutputTokens = 768
+    private static let e4bModelID = "gemma-4-e4b-it-4bit"
+    private static let e2bModelID = "gemma-4-e2b-it-4bit"
+    private static let e4bMultimodalCriticalHeadroomMB = 320
+
+    private struct MultimodalRuntimeBudget {
+        let imageSoftTokenCap: Int?
+        let maxOutputTokens: Int
+        let headroomMB: Int
+    }
+
+    private struct ThinkingRuntimeBudget {
+        let maxOutputTokens: Int
+        let headroomMB: Int
+    }
+
+    private struct TextRuntimeBudget {
+        let maxOutputTokens: Int
+        let headroomMB: Int
+    }
 
     // MARK: - State
 
@@ -98,6 +119,7 @@ public class MLXLocalLLMService: LLMEngine {
     private let foregroundStateLock = NSLock()
     private var foregroundGPUAllowed = true
     private var lifecycleObserverTokens: [NSObjectProtocol] = []
+    private var audioCapabilityEnabled = false
 
     /// Local path to the model directory
     private var modelPath: URL {
@@ -360,7 +382,7 @@ public class MLXLocalLLMService: LLMEngine {
                 self.isLoaded = false
                 self.loadedModel = nil
                 self.refreshModelInstallStates()
-                print("[MLX] Load failed: \(error)")
+                print("[MLX] Load failed: \(error.localizedDescription)")
             }
         }
     }
@@ -368,6 +390,7 @@ public class MLXLocalLLMService: LLMEngine {
     func generateStream(
         prompt: String,
         images: [CIImage] = [],
+        audios: [UserInput.Audio] = [],
         onToken: @escaping (String) -> Void,
         onComplete: @escaping (Result<String, Error>) -> Void
     ) {
@@ -375,7 +398,7 @@ public class MLXLocalLLMService: LLMEngine {
             var fullResponse = ""
 
             do {
-                for try await token in generateStream(prompt: prompt, images: images) {
+                for try await token in generateStream(prompt: prompt, images: images, audios: audios) {
                     fullResponse += token
                     await MainActor.run {
                         onToken(token)
@@ -420,6 +443,34 @@ public class MLXLocalLLMService: LLMEngine {
         }
     }
 
+    func generateStream(
+        chat: [Chat.Message],
+        additionalContext: [String: any Sendable]?,
+        onToken: @escaping (String) -> Void,
+        onComplete: @escaping (Result<String, Error>) -> Void
+    ) {
+        Task {
+            var fullResponse = ""
+
+            do {
+                for try await token in generateStream(chat: chat, additionalContext: additionalContext) {
+                    fullResponse += token
+                    await MainActor.run {
+                        onToken(token)
+                    }
+                }
+
+                await MainActor.run {
+                    onComplete(.success(fullResponse))
+                }
+            } catch {
+                await MainActor.run {
+                    onComplete(.failure(error))
+                }
+            }
+        }
+    }
+
     // MARK: - LLMEngine Protocol
 
     public func load() async throws {
@@ -433,14 +484,16 @@ public class MLXLocalLLMService: LLMEngine {
             isLoading = false
         }
         statusMessage = "正在初始化模型..."
+        await Gemma4Registration.setAudioCapabilityEnabled(audioCapabilityEnabled)
         await Gemma4Registration.register()
 
         guard Self.hasRequiredFiles(for: model, at: path) else {
-            throw MLXError.modelDirectoryMissing(path.path)
+            throw MLXError.modelDirectoryMissing(model.displayName)
         }
 
         statusMessage = "正在加载 \(model.displayName)..."
         let loadStart = CFAbsoluteTimeGetCurrent()
+        print("[MLX] load capability — audio=\(audioCapabilityEnabled ? 1 : 0)")
 
         // ── Memory diagnostics (read before load) ──────────────────────────────
         let physMB = Double(ProcessInfo.processInfo.physicalMemory) / 1_048_576
@@ -471,6 +524,21 @@ public class MLXLocalLLMService: LLMEngine {
         print("[MLX] Model loaded in \(Int(elapsed))ms — backend: mlx-gpu — model: \(model.displayName)")
     }
 
+    private func ensureAudioCapability(hasAudio: Bool) async throws {
+        guard hasAudio != audioCapabilityEnabled || !isLoaded || modelContainer == nil else {
+            return
+        }
+
+        audioCapabilityEnabled = hasAudio
+        print("[MLX] capability switch requested — audio=\(hasAudio ? 1 : 0)")
+
+        if isLoaded || modelContainer != nil {
+            await prepareForReload(cancelCurrentGeneration: false, cancelCurrentLoad: false)
+        }
+
+        try await load()
+    }
+
     /// Returns (footprint MB, jetsam limit MB) via task_info.
     private func appMemoryFootprintMB() -> (Double, Double) {
         var info = task_vm_info_data_t()
@@ -493,16 +561,23 @@ public class MLXLocalLLMService: LLMEngine {
     }
 
     /// 根据当前剩余内存推荐安全的 history 深度（消息条数）。
-    /// Gemma E2B 每 ~200 token history ≈ ~200 MB 推理峰值，保守估算：
-    ///   headroom > 1500 MB → suffix(4)  最近 2 轮
-    ///   headroom > 900  MB → suffix(2)  最近 1 轮
-    ///   headroom ≤ 900  MB → suffix(0)  无历史（临界状态）
+    /// E4B 在 1 GB 左右 headroom 时对文本 KV cache 非常敏感，因此需要更激进地收紧历史。
     public var safeHistoryDepth: Int {
         let h = availableHeadroomMB
-        switch h {
-        case 1500...: return 4
-        case  900..<1500: return 2
-        default: return 0
+        let model = loadedModel ?? Self.availableModels.first(where: { $0.id == selectedModel.id })
+
+        if model?.id == Self.e4bModelID {
+            switch h {
+            case 1_700...: return 4
+            case 1_100..<1_700: return 2
+            default: return 0
+            }
+        } else {
+            switch h {
+            case 1_500...: return 4
+            case  900..<1_500: return 2
+            default: return 0
+            }
         }
     }
 
@@ -522,27 +597,334 @@ public class MLXLocalLLMService: LLMEngine {
         statusMessage = "模型已就绪 ✅"
     }
 
-    public func generateStream(prompt: String, images: [CIImage]) -> AsyncThrowingStream<String, Error> {
+    public func generateStream(
+        prompt: String,
+        images: [CIImage],
+        audios: [UserInput.Audio]
+    ) -> AsyncThrowingStream<String, Error> {
         let input: UserInput
-        if images.isEmpty {
+        if images.isEmpty, audios.isEmpty {
             input = UserInput(prompt: prompt)
         } else {
             input = UserInput(
                 chat: [
                     .user(
                         prompt,
-                        images: images.map { .ciImage($0) }
+                        images: images.map { .ciImage($0) },
+                        audios: audios
                     )
                 ]
             )
         }
-        return generateStream(input: input, isMultimodal: !images.isEmpty)
+        return generateStream(input: input, isMultimodal: !images.isEmpty || !audios.isEmpty)
     }
 
     public func generateStream(chat: [Chat.Message]) -> AsyncThrowingStream<String, Error> {
-        let hasImages = chat.contains { !$0.images.isEmpty }
-        let input = UserInput(chat: chat)
-        return generateStream(input: input, isMultimodal: hasImages)
+        generateStream(chat: chat, additionalContext: nil)
+    }
+
+    public func generateStream(
+        chat: [Chat.Message],
+        additionalContext: [String: any Sendable]?
+    ) -> AsyncThrowingStream<String, Error> {
+        let input = UserInput(chat: chat, additionalContext: additionalContext)
+        let hasMedia = !input.images.isEmpty || !input.audios.isEmpty
+        return generateStream(input: input, isMultimodal: hasMedia)
+    }
+
+    private func dynamicMultimodalBudget(
+        hasImages: Bool,
+        hasAudio: Bool
+    ) throws -> MultimodalRuntimeBudget? {
+        guard hasImages || hasAudio else { return nil }
+        guard let model = loadedModel ?? Self.availableModels.first(where: { $0.id == selectedModel.id }) else {
+            return nil
+        }
+        let headroom = availableHeadroomMB
+
+        guard model.id == Self.e4bModelID else {
+            return MultimodalRuntimeBudget(
+                imageSoftTokenCap: hasImages ? 160 : nil,
+                maxOutputTokens: Self.multimodalMaxOutputTokens,
+                headroomMB: headroom
+            )
+        }
+
+        guard headroom > Self.e4bMultimodalCriticalHeadroomMB else {
+            let recommendation = "请关闭后台应用后重试，或减少附件数量。\(currentMultimodalFallbackRecommendation())"
+            throw MLXError.multimodalMemoryRisk(
+                model: model.displayName,
+                headroomMB: headroom,
+                recommendation: recommendation
+            )
+        }
+
+        let imageSoftTokenCap: Int?
+        let maxOutputTokens: Int
+
+        // Budget calibration (E4B, measured on-device):
+        //   Actual activation cost ≈ 1 MB/output token
+        //   (observed: 160 tokens consumed 167 MB headroom = 5311-5144 MB footprint delta)
+        //   Safety margin formula: headroom − (imageSoftTokens × 2 MB) − (maxOut × 1 MB) > 300 MB
+        switch headroom {
+        case ..<500:
+            imageSoftTokenCap = hasImages ? 48 : nil
+            maxOutputTokens = 120           // was 64 — 48×2 + 120×1 + 300 = 516, fits <500 boundary
+        case ..<700:
+            imageSoftTokenCap = hasImages ? 64 : nil
+            maxOutputTokens = 200           // was 128 — 64×2 + 200 + 300 = 628 < 700 ✓
+        case ..<900:
+            imageSoftTokenCap = hasImages ? 80 : nil
+            maxOutputTokens = 340           // was 192 — 80×2 + 340 + 300 = 800 < 900 ✓
+        case ..<1_100:
+            imageSoftTokenCap = hasImages ? 96 : nil
+            maxOutputTokens = Self.multimodalMaxOutputTokens   // 512: 96×2 + 512 + 300 = 1004 < 1100 ✓
+        case ..<1_300:
+            imageSoftTokenCap = hasImages ? 128 : nil
+            maxOutputTokens = Self.multimodalMaxOutputTokens
+        default:
+            imageSoftTokenCap = hasImages ? 160 : nil
+            maxOutputTokens = Self.multimodalMaxOutputTokens
+        }
+
+        print(
+            "[MEM] multimodal runtime budget — model=\(model.displayName), "
+                + "headroom=\(headroom) MB, "
+                + "imageSoftTokenCap=\(imageSoftTokenCap.map(String.init) ?? "n/a"), "
+                + "maxOutputTokens=\(maxOutputTokens), "
+                + "audio=\(hasAudio ? 1 : 0)"
+        )
+
+        return MultimodalRuntimeBudget(
+            imageSoftTokenCap: imageSoftTokenCap,
+            maxOutputTokens: maxOutputTokens,
+            headroomMB: headroom
+        )
+    }
+
+    private func isThinkingEnabled(for input: UserInput) -> Bool {
+        if let enabled = input.additionalContext?["enable_thinking"] as? Bool, enabled {
+            return true
+        }
+
+        switch input.prompt {
+        case .text(let text):
+            return text.contains("<|think|>")
+        case .chat(let messages):
+            return messages.contains { $0.content.contains("<|think|>") }
+        case .messages(let messages):
+            return messages.contains { message in
+                if let content = message["content"] as? String {
+                    return content.contains("<|think|>")
+                }
+                if let content = message["content"] as? [[String: any Sendable]] {
+                    return content.contains { item in
+                        (item["text"] as? String)?.contains("<|think|>") == true
+                    }
+                }
+                return false
+            }
+        }
+    }
+
+    private func dynamicThinkingBudget(
+        enabled: Bool
+    ) -> ThinkingRuntimeBudget? {
+        guard enabled else { return nil }
+        guard let model = loadedModel ?? Self.availableModels.first(where: { $0.id == selectedModel.id }) else {
+            return nil
+        }
+
+        let headroom = availableHeadroomMB
+        let maxOutputTokens: Int
+
+        if model.id == Self.e4bModelID {
+            switch headroom {
+            case ..<500:
+                maxOutputTokens = 128
+            case ..<700:
+                maxOutputTokens = 192
+            case ..<900:
+                maxOutputTokens = 256
+            case ..<1_100:
+                maxOutputTokens = 384
+            case ..<1_300:
+                maxOutputTokens = 512
+            default:
+                maxOutputTokens = Self.e4bThinkingMaxOutputTokens
+            }
+        } else {
+            switch headroom {
+            case ..<500:
+                maxOutputTokens = 192
+            case ..<800:
+                maxOutputTokens = 384
+            case ..<1_200:
+                maxOutputTokens = 512
+            default:
+                maxOutputTokens = Self.e2bThinkingMaxOutputTokens
+            }
+        }
+
+        print(
+            "[MEM] thinking runtime budget — model=\(model.displayName), "
+                + "headroom=\(headroom) MB, "
+                + "maxOutputTokens=\(maxOutputTokens)"
+        )
+
+        return ThinkingRuntimeBudget(
+            maxOutputTokens: maxOutputTokens,
+            headroomMB: headroom
+        )
+    }
+
+    private func dynamicTextBudget(
+        enabled: Bool
+    ) -> TextRuntimeBudget? {
+        guard enabled else { return nil }
+        guard let model = loadedModel ?? Self.availableModels.first(where: { $0.id == selectedModel.id }) else {
+            return nil
+        }
+
+        let headroom = availableHeadroomMB
+        let maxOutputTokens: Int
+
+        if model.id == Self.e4bModelID {
+            switch headroom {
+            case ..<500:
+                maxOutputTokens = 256
+            case ..<700:
+                maxOutputTokens = 384
+            case ..<900:
+                maxOutputTokens = 512
+            case ..<1_100:
+                maxOutputTokens = 768
+            case ..<1_300:
+                maxOutputTokens = 1_024
+            default:
+                maxOutputTokens = 1_280
+            }
+        } else {
+            switch headroom {
+            case ..<500:
+                maxOutputTokens = 384
+            case ..<800:
+                maxOutputTokens = 768
+            case ..<1_200:
+                maxOutputTokens = 1_024
+            default:
+                maxOutputTokens = 1_536
+            }
+        }
+
+        print(
+            "[MEM] text runtime budget — model=\(model.displayName), "
+                + "headroom=\(headroom) MB, "
+                + "maxOutputTokens=\(maxOutputTokens)"
+        )
+
+        return TextRuntimeBudget(
+            maxOutputTokens: maxOutputTokens,
+            headroomMB: headroom
+        )
+    }
+
+    private func adjustedTextOutputTokens(
+        baseMaxOutputTokens: Int,
+        preparedSequenceLength: Int,
+        thinkingEnabled: Bool
+    ) -> Int? {
+        guard let model = loadedModel ?? Self.availableModels.first(where: { $0.id == selectedModel.id }) else {
+            return nil
+        }
+
+        let headroom = availableHeadroomMB
+        let totalSequenceBudget: Int
+
+        if model.id == Self.e4bModelID {
+            if thinkingEnabled {
+                switch headroom {
+                case ..<500:
+                    totalSequenceBudget = 320
+                case ..<700:
+                    totalSequenceBudget = 448
+                case ..<900:
+                    totalSequenceBudget = 576
+                case ..<1_100:
+                    totalSequenceBudget = 896
+                case ..<1_300:
+                    totalSequenceBudget = 1_152
+                default:
+                    totalSequenceBudget = 1_280
+                }
+            } else {
+                switch headroom {
+                case ..<500:
+                    totalSequenceBudget = 384
+                case ..<700:
+                    totalSequenceBudget = 512
+                case ..<900:
+                    totalSequenceBudget = 640
+                case ..<1_100:
+                    totalSequenceBudget = 768
+                case ..<1_300:
+                    totalSequenceBudget = 896
+                default:
+                    totalSequenceBudget = 1_024
+                }
+            }
+        } else {
+            if thinkingEnabled {
+                switch headroom {
+                case ..<500:
+                    totalSequenceBudget = 448
+                case ..<800:
+                    totalSequenceBudget = 640
+                case ..<1_200:
+                    totalSequenceBudget = 896
+                default:
+                    totalSequenceBudget = 1_152
+                }
+            } else {
+                switch headroom {
+                case ..<500:
+                    totalSequenceBudget = 512
+                case ..<800:
+                    totalSequenceBudget = 768
+                case ..<1_200:
+                    totalSequenceBudget = 1_024
+                default:
+                    totalSequenceBudget = 1_280
+                }
+            }
+        }
+
+        let minimumOutputTokens = thinkingEnabled ? 96 : 128
+        let adjustedMaxOutputTokens = min(
+            baseMaxOutputTokens,
+            max(minimumOutputTokens, totalSequenceBudget - preparedSequenceLength)
+        )
+
+        print(
+            "[MEM] text sequence budget — model=\(model.displayName), "
+                + "headroom=\(headroom) MB, "
+                + "preparedTokens=\(preparedSequenceLength), "
+                + "totalSequenceBudget=\(totalSequenceBudget), "
+                + "adjustedMaxOutputTokens=\(adjustedMaxOutputTokens)"
+        )
+
+        return adjustedMaxOutputTokens
+    }
+
+    private func currentMultimodalFallbackRecommendation() -> String {
+        if let e2b = Self.availableModels.first(where: { $0.id == Self.e2bModelID }) {
+            if isModelAvailable(e2b) {
+                return "如仍失败，可手动切换到 \(e2b.displayName) 处理图片或音频。"
+            }
+            return "如仍失败，可先下载并手动切换到 \(e2b.displayName)。"
+        } else {
+            return "如仍失败，请改用更轻量的模型处理图片或音频。"
+        }
     }
 
     private func ensureForegroundGPUExecution() async throws {
@@ -631,6 +1013,13 @@ public class MLXLocalLLMService: LLMEngine {
                     continuation.finish(throwing: MLXError.modelNotLoaded)
                     return
                 }
+                do {
+                    try await self.ensureAudioCapability(hasAudio: !input.audios.isEmpty)
+                } catch {
+                    continuation.finish(throwing: error)
+                    return
+                }
+
                 guard let container = modelContainer else {
                     continuation.finish(throwing: MLXError.modelNotLoaded)
                     return
@@ -643,11 +1032,39 @@ public class MLXLocalLLMService: LLMEngine {
                 // exceed the 6GB jetsam limit on iPhone.
                 MLX.GPU.clearCache()
 
+                let thinkingEnabled = self.isThinkingEnabled(for: input)
+                let textBudget = self.dynamicTextBudget(enabled: !isMultimodal)
+                let runtimeBudget: MultimodalRuntimeBudget?
+                do {
+                    runtimeBudget = try self.dynamicMultimodalBudget(
+                        hasImages: !input.images.isEmpty,
+                        hasAudio: !input.audios.isEmpty
+                    )
+                } catch {
+                    continuation.finish(throwing: error)
+                    return
+                }
+                let thinkingBudget = self.dynamicThinkingBudget(enabled: thinkingEnabled)
+                Gemma4Processor.setRuntimeImageSoftTokenCap(runtimeBudget?.imageSoftTokenCap)
+                defer {
+                    Gemma4Processor.setRuntimeImageSoftTokenCap(nil)
+                }
+                let effectiveMaxOutputTokens: Int = {
+                    let multimodalCap = isMultimodal
+                        ? runtimeBudget?.maxOutputTokens ?? Self.multimodalMaxOutputTokens
+                        : maxOutputTokens
+                    let thinkingCap = thinkingBudget?.maxOutputTokens ?? maxOutputTokens
+                    let textCap = textBudget?.maxOutputTokens ?? maxOutputTokens
+                    return min(maxOutputTokens, multimodalCap, thinkingCap, textCap)
+                }()
+                var resolvedMaxOutputTokens = effectiveMaxOutputTokens
+
                 self.isGenerating = true
                 self.cancelled = false
                 let genStart = CFAbsoluteTimeGetCurrent()
                 var firstTokenTime: Double? = nil
                 var tokenCount = 0
+                var hitTokenCap = false
 
                 let (fp, _) = appMemoryFootprintMB()
                 print("[MEM] generateStream start — footprint: \(Int(fp)) MB, MLX active: \(MLX.GPU.activeMemory / 1_048_576) MB")
@@ -656,21 +1073,35 @@ public class MLXLocalLLMService: LLMEngine {
                     try await self.ensureForegroundGPUExecution()
                     _ = try await container.perform { context in
                         try await self.ensureForegroundGPUExecution()
-                        let effectiveMaxOutputTokens =
-                            isMultimodal ? min(maxOutputTokens, Self.multimodalMaxOutputTokens) : maxOutputTokens
                         if isMultimodal {
-                            print("[VLM] multimodal budget — maxOutputTokens=\(effectiveMaxOutputTokens)")
+                            print("[VLM] multimodal budget — maxOutputTokens=\(resolvedMaxOutputTokens)")
+                        } else if thinkingEnabled {
+                            print("[LLM] thinking budget — baseMaxOutputTokens=\(resolvedMaxOutputTokens)")
                         }
-                        let input = try await context.processor.prepare(input: input)
+                        let preparedInput = try await context.processor.prepare(input: input)
                         if isMultimodal {
-                            print("[VLM] prepared sequence length=\(input.text.tokens.dim(1))")
+                            print("[VLM] prepared sequence length=\(preparedInput.text.tokens.dim(1))")
+                        } else {
+                            let preparedSequenceLength = preparedInput.text.tokens.dim(1)
+                            print("[LLM] prepared sequence length=\(preparedSequenceLength)")
+                            resolvedMaxOutputTokens =
+                                self.adjustedTextOutputTokens(
+                                    baseMaxOutputTokens: resolvedMaxOutputTokens,
+                                    preparedSequenceLength: preparedSequenceLength,
+                                    thinkingEnabled: thinkingEnabled
+                                ) ?? resolvedMaxOutputTokens
+                            if textBudget != nil {
+                                print("[LLM] text budget — maxOutputTokens=\(resolvedMaxOutputTokens)")
+                            } else if thinkingEnabled {
+                                print("[LLM] thinking budget — maxOutputTokens=\(resolvedMaxOutputTokens)")
+                            }
                         }
                         try await self.ensureForegroundGPUExecution()
 
                         return try MLXLMCommon.generate(
-                            input: input,
+                            input: preparedInput,
                             parameters: .init(
-                                maxTokens: effectiveMaxOutputTokens,
+                                maxTokens: resolvedMaxOutputTokens,
                                 temperature: samplingTemperature,
                                 topP: samplingTopP,
                                 topK: samplingTopK
@@ -693,7 +1124,12 @@ public class MLXLocalLLMService: LLMEngine {
                             }
 
                             // Multimodal path uses a tighter generation budget on iPhone.
-                            return tokens.count >= effectiveMaxOutputTokens ? .stop : .more
+                            // If we hit the cap, signal truncation so the caller can append a notice.
+                            if tokens.count >= resolvedMaxOutputTokens {
+                                hitTokenCap = true
+                                return .stop
+                            }
+                            return .more
                         }
                     }
 
@@ -716,6 +1152,15 @@ public class MLXLocalLLMService: LLMEngine {
                     let (fpEnd, _) = appMemoryFootprintMB()
                     print("[MEM] generateStream end  — footprint: \(Int(fpEnd)) MB, headroom: \(self.availableHeadroomMB) MB")
 
+                    // If we hit the token cap mid-sentence, append a visible notice.
+                    // This makes truncation explicit rather than silently dropping content.
+                    if hitTokenCap {
+                        let isChinese = Locale.preferredLanguages.contains { $0.hasPrefix("zh") }
+                        let modeLabel = isChinese
+                            ? (thinkingEnabled ? "思考" : "输出")
+                            : (thinkingEnabled ? "Thinking" : "Output")
+                        continuation.yield("\n\n> ⚠️ \(modeLabel)已达内存安全上限（\(resolvedMaxOutputTokens) tokens），内容可能不完整。")
+                    }
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
@@ -741,21 +1186,44 @@ public class MLXLocalLLMService: LLMEngine {
         currentLoadTask?.cancel()
     }
 
-    public func prepareForReload() async {
-        cancel()
+    public func prepareForReload(
+        cancelCurrentGeneration: Bool = true,
+        cancelCurrentLoad: Bool = true
+    ) async {
+        cancelled = true
+        if cancelCurrentGeneration {
+            currentGenerationTask?.cancel()
+        }
+        if cancelCurrentLoad {
+            currentLoadTask?.cancel()
+        }
 
         while isGenerating || isLoading {
             try? await Task.sleep(nanoseconds: 50_000_000)
         }
 
-        unload()
+        unload(
+            cancelCurrentGeneration: cancelCurrentGeneration,
+            cancelCurrentLoad: cancelCurrentLoad
+        )
         MLX.GPU.clearCache()
         try? await Task.sleep(nanoseconds: 150_000_000)
     }
 
     public func unload() {
-        currentGenerationTask?.cancel()
-        currentLoadTask?.cancel()
+        unload(cancelCurrentGeneration: true, cancelCurrentLoad: true)
+    }
+
+    public func unload(
+        cancelCurrentGeneration: Bool = true,
+        cancelCurrentLoad: Bool = true
+    ) {
+        if cancelCurrentGeneration {
+            currentGenerationTask?.cancel()
+        }
+        if cancelCurrentLoad {
+            currentLoadTask?.cancel()
+        }
         modelContainer = nil
         isLoaded = false
         isLoading = false
@@ -776,15 +1244,18 @@ enum MLXError: LocalizedError {
     case modelNotLoaded
     case modelDirectoryMissing(String)
     case gpuExecutionRequiresForeground
+    case multimodalMemoryRisk(model: String, headroomMB: Int, recommendation: String)
 
     var errorDescription: String? {
         switch self {
         case .modelNotLoaded:
             return "MLX model not loaded. Call load() first."
-        case .modelDirectoryMissing(let path):
-            return "MLX 模型目录不存在: \(path)"
+        case .modelDirectoryMissing(let modelName):
+            return "\(modelName) 模型文件不存在，请先在配置页下载或重新安装。"
         case .gpuExecutionRequiresForeground:
             return "应用进入后台时，iPhone 不允许继续提交 GPU 推理任务。"
+        case .multimodalMemoryRisk(let model, let headroomMB, let recommendation):
+            return "\(model) 当前剩余内存仅约 \(headroomMB) MB，继续处理图片/音频很可能被系统直接杀掉。\(recommendation)"
         }
     }
 }
