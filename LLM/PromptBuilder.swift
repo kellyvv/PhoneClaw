@@ -127,6 +127,16 @@ struct PromptBuilder {
         return base + "\n\n当前这轮只是普通文字对话，不需要调用任何设备技能或工具。请直接回答用户，避免提到 Skill、load_skill、tool_call 或设备操作流程。用简体中文回答，默认简洁。"
     }
 
+    /// Preloaded skill block — Router 已经确定性匹配到 skill 时直接带它们的 body
+    /// 进第一轮 prompt, 跳过 load_skill 往返。小模型(E2B/E4B)在多轮工具调用
+    /// 上的成功率由此大幅提升。
+    struct PreloadedSkill {
+        let id: String
+        let displayName: String
+        let body: String
+        let allowedTools: [String]
+    }
+
     /// 构造完整 Prompt（包含工具定义 + 对话历史）
     static func build(
         userMessage: String,
@@ -136,7 +146,8 @@ struct PromptBuilder {
         systemPrompt: String? = nil,
         enableThinking: Bool = false,
         historyDepth: Int = 4,          // 动态传入，根据当前内存 headroom 估算
-        showListSkillsHint: Bool = false // 仅全量注入时为 true，提示模型可查询更多能力
+        showListSkillsHint: Bool = false, // 仅全量注入时为 true，提示模型可查询更多能力
+        preloadedSkills: [PreloadedSkill] = [] // Router 已锁定的 skill, 直接 inline body
     ) -> String {
         let isMultimodalTurn = currentImageCount > 0
         var prompt = "<|turn>system\n"
@@ -189,6 +200,28 @@ struct PromptBuilder {
         // 仅全量注入（无匹配命中）时，提示模型可通过 list_skills 发现更多能力
         if showListSkillsHint && !isMultimodalTurn {
             prompt += "\n如果以上列出的能力都不匹配用户需求，可以调用 list_skills 查询更多能力：\n<tool_call>\n{\"name\": \"list_skills\", \"arguments\": {\"query\": \"用户需求描述\"}}\n</tool_call>\n"
+        }
+
+        // Router 已匹配的 skill: 直接 inline 它的 body + 工具白名单, 跳过 load_skill 往返。
+        // 小模型做 "要不要 load_skill" 的 judgment call 非常不稳定; Router 既然已经
+        // 基于 trigger 确定性地匹配到了, 就别再让模型犹豫一次。
+        if !preloadedSkills.isEmpty && !isMultimodalTurn {
+            let allAllowed = Array(Set(preloadedSkills.flatMap(\.allowedTools))).sorted()
+            prompt += "\n\n━━━━━━━━━━━━━━━━━━━━\n"
+            prompt += "【已锁定能力 — 直接调用工具, 不需要先 load_skill】\n"
+            if allAllowed.isEmpty {
+                prompt += "当前锁定的 Skill 没有工具, 按 Skill 指令直接给最终答案, 禁止输出 <tool_call>。\n"
+            } else {
+                prompt += "\n可调用的工具 (只允许这些名字, 其他名字一律视为非法, 不要凭空编造):\n"
+                prompt += allAllowed.map { "- `\($0)`" }.joined(separator: "\n") + "\n"
+                prompt += "\n如果需要操作, 输出:\n<tool_call>\n{\"name\": \"<上面列表中的名字>\", \"arguments\": {...}}\n</tool_call>\n"
+                prompt += "如果不需要工具就直接给最终答案正文。**不要**再调用 load_skill, 已经加载好了。\n"
+            }
+            for sk in preloadedSkills {
+                prompt += "\n━━ Skill: \(sk.displayName) ━━\n"
+                prompt += sk.body + "\n"
+            }
+            prompt += "━━━━━━━━━━━━━━━━━━━━\n"
         }
 
         if enableThinking && !isMultimodalTurn {

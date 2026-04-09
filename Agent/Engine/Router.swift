@@ -47,7 +47,14 @@ extension AgentEngine {
 
         // Sticky routing: 当前消息没命中任何 trigger, 但最近 history 里有
         // 活跃 skill 上下文 -> 继续使用该 skill。
-        if matched.isEmpty, let stickySkillId = recentActiveSkillId() {
+        //
+        // E2B 是产品的"轻量款", 定位 = 聊天 / 翻译 / 单轮查询, 不做多轮工具
+        // 对话。默认用户只装一个模型; 选 E2B 的用户冲着小体积 + 快反应来,
+        // 不是"降级版 E4B"。对 E2B 关闭 sticky, 让多轮补全落到 light 路径
+        // 当普通聊天处理, 避免模型在不擅长的任务上翻车后产生"能调工具的
+        // 假象"。这不是 fallback, 是定位差异 —— E4B 才做多轮 agent。
+        let isLightweightModel = llm.selectedModel.id.contains("e2b")
+        if matched.isEmpty, !isLightweightModel, let stickySkillId = recentActiveSkillId() {
             matched.append(stickySkillId)
         }
 
@@ -81,7 +88,10 @@ extension AgentEngine {
                 sawCurrentUser = true
                 continue
             }
-            guard (msg.role == .skillResult || msg.role == .system),
+            // .assistant 也参与: 当 Router 在一轮里匹配到 skill 但 LLM 没调 tool
+            // (只追问澄清), 我们给 assistant message 打了 skillName, 这样 sticky
+            // 能接住下一轮的补全输入。
+            guard (msg.role == .skillResult || msg.role == .system || msg.role == .assistant),
                   let name = msg.skillName, !name.isEmpty else {
                 continue
             }
