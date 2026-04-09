@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# PhoneClaw pre-commit hook — harness 守门
+#
+# 当 staged 文件触碰到 agent 框架/skill/prompt/router 时, 自动跑 CLI harness (E4B)。
+# 不绿拒绝 commit。可用 `git commit --no-verify` 跳过 (慎用)。
+#
+# 安装: git config core.hooksPath .githooks
+# 跳过单次: PHONECLAW_SKIP_HARNESS=1 git commit ...
+
+set -e
+
+# 快速出口: 手动跳过
+if [[ -n "${PHONECLAW_SKIP_HARNESS:-}" ]]; then
+    echo "[pre-commit] PHONECLAW_SKIP_HARNESS set — harness 跳过"
+    exit 0
+fi
+
+# 守门的路径: 这些目录的任何改动都触发 harness
+GUARDED_PATHS=(
+    "Agent/"
+    "LLM/"
+    "Skills/Library/"
+    "Tools/"
+    "PhoneClawCLI/Sources/"
+    "PhoneClawCLI/Scenarios/"
+)
+
+STAGED=$(git diff --cached --name-only --diff-filter=ACMR)
+
+# 没有相关改动, 不跑
+MATCHED=""
+for path in "${GUARDED_PATHS[@]}"; do
+    if echo "$STAGED" | grep -q "^${path}"; then
+        MATCHED+="$path "
+    fi
+done
+
+if [[ -z "$MATCHED" ]]; then
+    echo "[pre-commit] 没有 agent 相关改动, harness 跳过"
+    exit 0
+fi
+
+echo "[pre-commit] 触发 harness (守门路径: $MATCHED)"
+
+REPO_ROOT=$(git rev-parse --show-toplevel)
+cd "$REPO_ROOT/PhoneClawCLI"
+
+# 只跑 E4B — E2B 多轮场景会 skip, routing 都 17/17 跑太慢没意义
+if ! ./run.sh test e4b > /tmp/phoneclaw-precommit.log 2>&1; then
+    echo ""
+    echo "❌ harness 运行失败 (build 挂了?):"
+    tail -30 /tmp/phoneclaw-precommit.log
+    echo ""
+    echo "日志完整路径: /tmp/phoneclaw-precommit.log"
+    exit 1
+fi
+
+# 检查是否 ALL GREEN
+if ! grep -q "ALL GREEN" /tmp/phoneclaw-precommit.log; then
+    echo ""
+    echo "❌ harness 报红 — commit 被阻止"
+    echo ""
+    grep -E "✗ FAIL|conversation:|routing eval" /tmp/phoneclaw-precommit.log
+    echo ""
+    echo "完整日志: /tmp/phoneclaw-precommit.log"
+    echo "紧急跳过: PHONECLAW_SKIP_HARNESS=1 git commit ..."
+    exit 1
+fi
+
+echo "[pre-commit] ✅ harness 全绿, commit 放行"
+exit 0

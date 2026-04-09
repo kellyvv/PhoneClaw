@@ -1,7 +1,19 @@
 // swift-tools-version: 6.1
 // The swift-tools-version declares the minimum version of Swift required to build this package.
+//
+// NOTE: This is a SLIMMED fork of upstream `mlx-swift-lm` for PhoneClaw.
+// PhoneClaw only uses text LLM + multimodal VLM via a custom Gemma 4 implementation,
+// so the following upstream targets have been dropped:
+//
+//   - MLXEmbedders          (embedding models — unused)
+//   - MLXHuggingFace        (Macros-based config decl — unused)
+//   - MLXHuggingFaceMacros  (macro plugin for above)
+//   - BenchmarkHelpers      (upstream benchmark harness — unused)
+//   - IntegrationTestHelpers(upstream integration test harness — unused)
+//   - MLXLMTests            (upstream unit tests — unused)
+//
+// When syncing from upstream, remember to re-apply these drops.
 
-import CompilerPluginSupport
 import PackageDescription
 
 let package = Package(
@@ -22,22 +34,9 @@ let package = Package(
         .library(
             name: "MLXLMCommon",
             targets: ["MLXLMCommon"]),
-        .library(
-            name: "MLXEmbedders",
-            targets: ["MLXEmbedders"]),
-        .library(
-            name: "MLXHuggingFace",
-            targets: ["MLXHuggingFace"]),
-        .library(
-            name: "BenchmarkHelpers",
-            targets: ["BenchmarkHelpers"]),
-        .library(
-            name: "IntegrationTestHelpers",
-            targets: ["IntegrationTestHelpers"]),
     ],
     dependencies: [
         .package(url: "https://github.com/ml-explore/mlx-swift", .upToNextMinor(from: "0.31.3")),
-        .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "600.0.0-latest"),
     ],
     targets: [
         .target(
@@ -77,74 +76,6 @@ let package = Package(
             exclude: [
                 "README.md"
             ]
-        ),
-        .target(
-            name: "MLXEmbedders",
-            dependencies: [
-                .product(name: "MLX", package: "mlx-swift"),
-                .product(name: "MLXNN", package: "mlx-swift"),
-                .target(name: "MLXLMCommon"),
-            ],
-            path: "Libraries/MLXEmbedders",
-            exclude: [
-                "README.md"
-            ]
-        ),
-        .target(
-            name: "BenchmarkHelpers",
-            dependencies: [
-                "MLXLMCommon",
-                "MLXLLM",
-                "MLXVLM",
-                "MLXEmbedders",
-                .product(name: "MLX", package: "mlx-swift"),
-            ],
-            path: "Libraries/BenchmarkHelpers"
-        ),
-        .target(
-            name: "IntegrationTestHelpers",
-            dependencies: [
-                "MLXLMCommon",
-                "MLXLLM",
-                "MLXVLM",
-                "MLXEmbedders",
-                .product(name: "MLX", package: "mlx-swift"),
-            ],
-            path: "Libraries/IntegrationTestHelpers",
-            exclude: ["README.md"]
-        ),
-        .testTarget(
-            name: "MLXLMTests",
-            dependencies: [
-                .product(name: "MLX", package: "mlx-swift"),
-                .product(name: "MLXNN", package: "mlx-swift"),
-                .product(name: "MLXOptimizers", package: "mlx-swift"),
-                "MLXLMCommon",
-                "MLXLLM",
-                "MLXVLM",
-                "MLXEmbedders",
-            ],
-            path: "Tests/MLXLMTests",
-            exclude: [
-                "README.md"
-            ],
-            resources: [.process("Resources/1080p_30.mov"), .process("Resources/audio_only.mov")]
-        ),
-        .macro(
-            name: "MLXHuggingFaceMacros",
-            dependencies: [
-                .product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
-                .product(name: "SwiftCompilerPlugin", package: "swift-syntax"),
-            ],
-            path: "Libraries/MLXHuggingFaceMacros"
-        ),
-        .target(
-            name: "MLXHuggingFace",
-            dependencies: [
-                "MLXHuggingFaceMacros",
-                "MLXLMCommon",
-            ],
-            path: "Libraries/MLXHuggingFace"
         ),
     ]
 )
