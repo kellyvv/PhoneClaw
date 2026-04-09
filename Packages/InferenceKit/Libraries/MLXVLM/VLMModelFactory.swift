@@ -73,70 +73,40 @@ private func create<C: Codable, P>(
     }
 }
 
-/// Registry of model type, e.g 'llama', to functions that can instantiate the model from configuration.
+/// Registry of VLM model type, e.g 'paligemma', to functions that can instantiate the model
+/// from configuration.
 ///
-/// Typically called via ``LLMModelFactory/load(from:configuration:progressHandler:)``.
+/// NOTE: Slimmed to Gemma multimodal family (paligemma + gemma3) only for PhoneClaw.
+/// Upstream mlx-swift-lm registers many VLM types (Qwen2-VL, Qwen3-VL, Idefics3, SmolVLM,
+/// FastVLM, Pixtral, Mistral3, LFM2-VL, GlmOcr, ...). PhoneClaw uses Gemma 4 multimodal
+/// exclusively via a custom implementation in `LLM/MLX/Gemma4/Gemma4Model.swift` which
+/// registers itself into this shared registry at runtime via
+/// `VLMTypeRegistry.shared.registerModelType("gemma4", ...)`.
 public enum VLMTypeRegistry {
 
     /// Shared instance with default model types.
     public static let shared: ModelTypeRegistry = .init(creators: [
         "paligemma": create(PaliGemmaConfiguration.self, PaliGemma.init),
-        "qwen2_vl": create(Qwen2VLConfiguration.self, Qwen2VL.init),
-        "qwen2_5_vl": create(Qwen25VLConfiguration.self, Qwen25VL.init),
-        "qwen3_vl": create(Qwen3VLConfiguration.self, Qwen3VL.init),
-        "qwen3_5": create(Qwen35Configuration.self, Qwen35.init),
-        "qwen3_5_moe": create(Qwen35Configuration.self, Qwen35MoE.init),
-        "idefics3": create(Idefics3Configuration.self, Idefics3.init),
         "gemma3": create(Gemma3Configuration.self, Gemma3.init),
-        "smolvlm": create(SmolVLM2Configuration.self, SmolVLM2.init),
-        // TODO: see if we can make it work with fastvlm rather than llava_qwen2
-        "fastvlm": create(FastVLMConfiguration.self, FastVLM.init),
-        "llava_qwen2": create(FastVLMConfiguration.self, FastVLM.init),
-        "pixtral": create(PixtralConfiguration.self, PixtralVLM.init),
-        "mistral3": create(Mistral3VLMConfiguration.self, Mistral3VLM.init),
-        "lfm2_vl": create(LFM2VLConfiguration.self, LFM2VL.init),
-        "lfm2-vl": create(LFM2VLConfiguration.self, LFM2VL.init),
-        "glm_ocr": create(GlmOcrConfiguration.self, GlmOcr.init),
     ])
 }
 
 public enum VLMProcessorTypeRegistry {
 
     /// Shared instance with default processor types.
+    /// Slimmed to match `VLMTypeRegistry` — PhoneClaw registers `Gemma4Processor` at runtime.
     public static let shared: ProcessorTypeRegistry = .init(creators: [
         "PaliGemmaProcessor": create(
             PaliGemmaProcessorConfiguration.self, PaliGemmaProcessor.init),
-        "Qwen2VLProcessor": create(
-            Qwen2VLProcessorConfiguration.self, Qwen2VLProcessor.init),
-        "Qwen2_5_VLProcessor": create(
-            Qwen25VLProcessorConfiguration.self, Qwen25VLProcessor.init),
-        "Qwen3VLProcessor": create(
-            Qwen3VLProcessorConfiguration.self, Qwen3VLProcessor.init),
-        "Idefics3Processor": create(
-            Idefics3ProcessorConfiguration.self, Idefics3Processor.init),
         "Gemma3Processor": create(
             Gemma3ProcessorConfiguration.self, Gemma3Processor.init),
-        "SmolVLMProcessor": create(
-            SmolVLMProcessorConfiguration.self, SmolVLMProcessor.init),
-        "FastVLMProcessor": create(
-            FastVLMProcessorConfiguration.self, FastVLMProcessor.init),
-        "PixtralProcessor": create(
-            PixtralProcessorConfiguration.self, PixtralProcessor.init),
-        "Mistral3Processor": create(
-            Mistral3VLMProcessorConfiguration.self, Mistral3VLMProcessor.init),
-        "Lfm2VlProcessor": create(
-            LFM2VLProcessorConfiguration.self, LFM2VLProcessor.init),
-        "Glm46VProcessor": create(
-            GlmOcrProcessorConfiguration.self, GlmOcrProcessor.init),
     ])
 }
 
 /// Registry of models and any overrides that go with them, e.g. prompt augmentation.
 /// If asked for an unknown configuration this will use the model/tokenizer as-is.
 ///
-/// The python tokenizers have a very rich set of implementations and configuration. The
-/// swift-tokenizers code handles a good chunk of that and this is a place to augment that
-/// implementation, if needed.
+/// NOTE: Slimmed to Gemma multimodal family only for PhoneClaw. See `VLMTypeRegistry` above.
 public class VLMRegistry: AbstractModelRegistry, @unchecked Sendable {
 
     /// Shared instance with default model configurations.
@@ -145,46 +115,6 @@ public class VLMRegistry: AbstractModelRegistry, @unchecked Sendable {
     static public let paligemma3bMix448_8bit = ModelConfiguration(
         id: "mlx-community/paligemma-3b-mix-448-8bit",
         defaultPrompt: "Describe the image in English"
-    )
-
-    static public let qwen2VL2BInstruct4Bit = ModelConfiguration(
-        id: "mlx-community/Qwen2-VL-2B-Instruct-4bit",
-        defaultPrompt: "Describe the image in English"
-    )
-
-    static public let qwen2_5VL3BInstruct4Bit = ModelConfiguration(
-        id: "mlx-community/Qwen2.5-VL-3B-Instruct-4bit",
-        defaultPrompt: "Describe the image in English"
-    )
-
-    static public let qwen3VL4BInstruct4Bit = ModelConfiguration(
-        id: "lmstudio-community/Qwen3-VL-4B-Instruct-MLX-4bit",
-        defaultPrompt: "Describe the image in English"
-    )
-
-    static public let qwen3VL4BInstruct8Bit = ModelConfiguration(
-        id: "mlx-community/Qwen3-VL-4B-Instruct-8bit",
-        defaultPrompt: "Write a haiku about Swift programming"
-    )
-
-    static public let smolvlminstruct4bit = ModelConfiguration(
-        id: "mlx-community/SmolVLM-Instruct-4bit",
-        defaultPrompt: "Describe the image in English"
-    )
-
-    static public let lfm2_5_vl_1_6B_4bit = ModelConfiguration(
-        id: "mlx-community/LFM2.5-VL-1.6B-4bit",
-        defaultPrompt: ""
-    )
-
-    static public let lfm2_vl_1_6B_4bit = ModelConfiguration(
-        id: "mlx-community/LFM2-VL-1.6B-4bit",
-        defaultPrompt: ""
-    )
-
-    static public let mistral3_3B_Instruct_4bit = ModelConfiguration(
-        id: "mlx-community/Ministral-3-3B-Instruct-2512-4bit",
-        defaultPrompt: ""
     )
 
     static public let gemma3_4B_qat_4bit = ModelConfiguration(
@@ -205,40 +135,12 @@ public class VLMRegistry: AbstractModelRegistry, @unchecked Sendable {
         extraEOSTokens: ["<end_of_turn>"]
     )
 
-    static public let smolvlm = ModelConfiguration(
-        id: "HuggingFaceTB/SmolVLM2-500M-Video-Instruct-mlx",
-        defaultPrompt:
-            "What is the main action or notable event happening in this segment? Describe it in one brief sentence."
-    )
-
-    static public let fastvlm = ModelConfiguration(
-        id: "mlx-community/FastVLM-0.5B-bf16",
-        defaultPrompt: "Describe this image in detail."
-    )
-
-    static public let qwen3_5_27B_4bit = ModelConfiguration(
-        id: "mlx-community/Qwen3.5-27B-4bit",
-        defaultPrompt: "Describe the image in English"
-    )
-
-    static public let qwen3_5_35B_A3B_4bit = ModelConfiguration(
-        id: "mlx-community/Qwen3.5-35B-A3B-4bit",
-        defaultPrompt: "Describe the image in English"
-    )
-
     static public func all() -> [ModelConfiguration] {
         [
             paligemma3bMix448_8bit,
-            qwen2VL2BInstruct4Bit,
-            qwen2_5VL3BInstruct4Bit,
-            qwen3VL4BInstruct4Bit,
-            qwen3VL4BInstruct8Bit,
-            smolvlminstruct4bit,
             gemma3_4B_qat_4bit,
             gemma3_12B_qat_4bit,
             gemma3_27B_qat_4bit,
-            smolvlm,
-            fastvlm,
         ]
     }
 

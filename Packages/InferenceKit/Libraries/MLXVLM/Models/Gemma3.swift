@@ -1063,8 +1063,10 @@ public struct Gemma3Processor: UserInputProcessor {
     }
 
     public func prepare(input: UserInput) async throws -> LMInput {
-        // Use structured content message generator for Gemma3's chat template
-        let messages = Qwen2VLMessageGenerator().generate(from: input)
+        // Use structured content message generator for Gemma3's chat template.
+        // Originally shared with Qwen2VL upstream; inlined here after trimming
+        // the Qwen VLM models out of the slimmed InferenceKit fork.
+        let messages = Gemma3StructuredMessageGenerator().generate(from: input)
 
         var promptTokens = try tokenizer.applyChatTemplate(
             messages: messages, tools: input.tools,
@@ -1175,5 +1177,26 @@ public struct Gemma3ProcessorConfiguration: Codable, Sendable {
 extension Gemma3: LoRAModel {
     public var loraLayers: [Module] {
         languageModel.model.layers
+    }
+}
+
+/// Structured chat-message generator used by Gemma3 VLM processor.
+///
+/// Inlined from upstream `Qwen2VLMessageGenerator` (removed as part of the
+/// slim InferenceKit fork). Produces messages in the structured content
+/// format that Gemma 3's chat template expects.
+public struct Gemma3StructuredMessageGenerator: MessageGenerator {
+    public init() {}
+
+    public func generate(message: Chat.Message) -> MLXLMCommon.Message {
+        [
+            "role": message.role.rawValue,
+            "content": [
+                ["type": "text", "text": message.content]
+            ]
+                + message.images.map { _ in ["type": "image"] }
+                + message.audios.map { _ in ["type": "audio"] }
+                + message.videos.map { _ in ["type": "video"] },
+        ]
     }
 }

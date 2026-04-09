@@ -336,7 +336,7 @@ public struct Gemma4Processor: UserInputProcessor {
 
         let promptTokens: [Int]
         if case .chat(let chatMessages) = input.prompt {
-            let messages = Qwen2VLMessageGenerator().generate(messages: chatMessages)
+            let messages = Gemma3StructuredMessageGenerator().generate(messages: chatMessages)
             let templatedTokens = try tokenizer.applyChatTemplate(
                 messages: messages,
                 tools: input.tools,
