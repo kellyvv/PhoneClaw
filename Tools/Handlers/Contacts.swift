@@ -153,8 +153,8 @@ enum ContactsTools {
         // ── contacts-delete ──
         registry.register(RegisteredTool(
             name: "contacts-delete",
-            description: "删除联系人，可按姓名、手机号、邮箱、identifier 或关键词匹配后删除",
-            parameters: "query: 搜索关键词（可选）, identifier: 联系人标识（可选）, name: 姓名（可选）, phone: 手机号（可选）, email: 邮箱（可选）",
+            description: "删除联系人，可按姓名、手机号、邮箱、identifier 或关键词匹配后删除；匹配多个时可传 all=true 批量删除",
+            parameters: "query: 搜索关键词（可选）, identifier: 联系人标识（可选）, name: 姓名（可选）, phone: 手机号（可选）, email: 邮箱（可选）, all: 多匹配时是否全部删除（可选，默认 false）",
             requiredAnyOfParameters: ["query", "identifier", "name", "phone", "email"],
             aliases: ["contacts_delete", "contacts-delete-contact"]
         ) { args in
@@ -164,6 +164,12 @@ enum ContactsTools {
             let email = (args["email"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
             let query = (args["query"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
             let name = rawName?.trimmingCharacters(in: CharacterSet(charactersIn: "，。,？！!? "))
+            // `all` 支持 bool 或字符串形式 (LLM 常出 "true" 字符串)
+            let deleteAll: Bool = {
+                if let b = args["all"] as? Bool { return b }
+                if let s = args["all"] as? String { return ["true", "yes", "1"].contains(s.lowercased()) }
+                return false
+            }()
 
             guard identifier?.isEmpty == false
                 || name?.isEmpty == false
@@ -190,26 +196,43 @@ enum ContactsTools {
                     return failurePayload(error: "未找到匹配的联系人")
                 }
 
-                if matches.count > 1 {
+                // 多匹配: 未指定 all 时拒绝并列候选; 指定 all=true 时批量删除
+                if matches.count > 1 && !deleteAll {
                     let previews = matches.prefix(5).map(contactSummaryText).joined(separator: "；")
-                    return failurePayload(error: "匹配到多个联系人，请提供更具体的信息：\(previews)")
+                    return failurePayload(error: "匹配到多个联系人，请提供更具体的信息，或传 all=true 全部删除：\(previews)")
                 }
 
-                let contact = matches[0]
-                let mutableContact = contact.mutableCopy() as! CNMutableContact
+                // 批量 / 单删统一走 CNSaveRequest 一次 commit
                 let saveRequest = CNSaveRequest()
-                saveRequest.delete(mutableContact)
+                var deletedNames: [String] = []
+                for contact in matches {
+                    let mutableContact = contact.mutableCopy() as! CNMutableContact
+                    saveRequest.delete(mutableContact)
+                    deletedNames.append(formattedContactName(contact))
+                }
                 try SystemStores.contacts.execute(saveRequest)
 
-                return successPayload(
-                    result: "已删除联系人\u{201C}\(formattedContactName(contact))\u{201D}。",
-                    extras: [
-                        "identifier": contact.identifier,
-                        "name": formattedContactName(contact),
-                        "phone": primaryPhone(contact) ?? "",
-                        "email": primaryEmail(contact) ?? ""
-                    ]
-                )
+                if matches.count == 1 {
+                    let contact = matches[0]
+                    return successPayload(
+                        result: "已删除联系人\u{201C}\(formattedContactName(contact))\u{201D}。",
+                        extras: [
+                            "identifier": contact.identifier,
+                            "name": formattedContactName(contact),
+                            "phone": primaryPhone(contact) ?? "",
+                            "email": primaryEmail(contact) ?? "",
+                            "deletedCount": "1"
+                        ]
+                    )
+                } else {
+                    return successPayload(
+                        result: "已删除 \(matches.count) 位联系人：\(deletedNames.joined(separator: "、"))。",
+                        extras: [
+                            "deletedCount": "\(matches.count)",
+                            "deletedNames": deletedNames.joined(separator: ",")
+                        ]
+                    )
+                }
             } catch {
                 return failurePayload(error: "删除联系人失败：\(error.localizedDescription)")
             }
