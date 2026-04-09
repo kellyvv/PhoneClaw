@@ -65,6 +65,7 @@
 		D3A1B2C3D4E5F60718290008 /* Calendar.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3A1B2C3D4E5F60718290108 /* Calendar.swift */; };
 		D3A1B2C3D4E5F60718290009 /* Reminders.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3A1B2C3D4E5F60718290109 /* Reminders.swift */; };
 		D3A1B2C3D4E5F60718290010 /* Contacts.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3A1B2C3D4E5F60718290110 /* Contacts.swift */; };
+		D3A1B2C3D4E5F607182900AA /* HealthKitProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3A1B2C3D4E5F607182901AA /* HealthKitProbe.swift */; };
 		ICONASSETS0000000000002 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = ICONASSETS0000000000001 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
@@ -122,6 +123,7 @@
 		D3A1B2C3D4E5F60718290108 /* Calendar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Calendar.swift; sourceTree = "<group>"; };
 		D3A1B2C3D4E5F60718290109 /* Reminders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Reminders.swift; sourceTree = "<group>"; };
 		D3A1B2C3D4E5F60718290110 /* Contacts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Contacts.swift; sourceTree = "<group>"; };
+		D3A1B2C3D4E5F607182901AA /* HealthKitProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitProbe.swift; sourceTree = "<group>"; };
 		D5E6F7081A2B3C4D5E6F7084 /* gemma-4-e2b-it-4bit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "gemma-4-e2b-it-4bit"; path = "Models/gemma-4-e2b-it-4bit"; sourceTree = "<group>"; };
 		D5E6F7081A2B3C4D5E6F7086 /* gemma-4-e4b-it-4bit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "gemma-4-e4b-it-4bit"; path = "Models/gemma-4-e4b-it-4bit"; sourceTree = "<group>"; };
 		E18A47114A10132E25E220F8 /* AgentEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentEngine.swift; sourceTree = "<group>"; };
@@ -296,6 +298,7 @@
 				D3A1B2C3D4E5F60718290102 /* AppPermissions.swift */,
 				D3A1B2C3D4E5F60718290103 /* Stores.swift */,
 				D3A1B2C3D4E5F60718290104 /* Helpers.swift */,
+				D3A1B2C3D4E5F607182901AA /* HealthKitProbe.swift */,
 				D3A1B2C3D4E5F60718290300 /* Handlers */,
 			);
 			path = Tools;
@@ -496,6 +499,7 @@
 				D3A1B2C3D4E5F60718290008 /* Calendar.swift in Sources */,
 				D3A1B2C3D4E5F60718290009 /* Reminders.swift in Sources */,
 				D3A1B2C3D4E5F60718290010 /* Contacts.swift in Sources */,
+				D3A1B2C3D4E5F607182900AA /* HealthKitProbe.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

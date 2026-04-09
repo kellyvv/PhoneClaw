@@ -44,5 +44,7 @@
 	<string>PhoneClaw 需要存储联系人信息</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>PhoneClaw 需要麦克风来录制语音并采集音频输入</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>PhoneClaw 需要读取健康数据（例如步数、睡眠）以便在本地为你生成摘要和建议, 数据不会离开本机。</string>
 </dict>
 </plist>
