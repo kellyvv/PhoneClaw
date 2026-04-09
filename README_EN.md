@@ -42,7 +42,6 @@ PhoneClaw is a local AI Agent that runs entirely on your iPhone. No internet con
 - Added Thinking Mode, available from the top-right corner in chat
 - Added chat history, with support for new sessions, switching, and deletion
 - Improved memory management and inference budgeting for long answers, multimodal requests, and model switching
-- Added a self-signable shell IPA, available from GitHub Releases
 
 ## 2026-04-06 Update
 
