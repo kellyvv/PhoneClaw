@@ -152,13 +152,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		094A760C8A6DFD5E317AF5B8 /* LiveMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveMetrics.swift; path = Agent/LiveMetrics.swift; sourceTree = SOURCE_ROOT; };
+		094A760C8A6DFD5E317AF5B8 /* LiveMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveMetrics.swift; path = Live/Core/LiveMetrics.swift; sourceTree = SOURCE_ROOT; };
 		098B30935B91CD0BEF3A5056 /* Pods-PhoneClaw.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-PhoneClaw.release.xcconfig"; path = "Target Support Files/Pods-PhoneClaw/Pods-PhoneClaw.release.xcconfig"; sourceTree = "<group>"; };
 		22A3E6DE14D68AD9C9ABF0E8 /* AudioUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AudioUI.swift; path = UI/AudioUI.swift; sourceTree = SOURCE_ROOT; };
-		2D672ACC5EAC3A11F9A0735C /* VoiceTurnController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = VoiceTurnController.swift; path = Agent/VoiceTurnController.swift; sourceTree = SOURCE_ROOT; };
+		2D672ACC5EAC3A11F9A0735C /* VoiceTurnController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = VoiceTurnController.swift; path = Live/Core/VoiceTurnController.swift; sourceTree = SOURCE_ROOT; };
 		2E7C06DA449D1395217A42D5 /* PromptBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptBuilder.swift; sourceTree = "<group>"; };
 		2F4A6C8E0A1B2C3D4E5F6070 /* AudioCaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCaptureService.swift; sourceTree = "<group>"; };
-		357644EE0B2A47696762E171 /* LiveCameraService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveCameraService.swift; path = Agent/LiveCameraService.swift; sourceTree = SOURCE_ROOT; };
+		357644EE0B2A47696762E171 /* LiveCameraService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveCameraService.swift; path = Live/Core/LiveCameraService.swift; sourceTree = SOURCE_ROOT; };
 		38FC1001EB728212335AC141 /* PhoneClaw.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = PhoneClaw.entitlements; sourceTree = "<group>"; };
 		408F2AE98EA54717A74FA4B1 /* PhoneClaw.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PhoneClaw.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4628E2A5FD49247E1D6BE283 /* ResponseUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ResponseUI.swift; path = UI/ResponseUI.swift; sourceTree = SOURCE_ROOT; };
@@ -167,9 +167,9 @@
 		52F30C6348B834E5D157205F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		571908036E6DCED1D58C1E9E /* Skills.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Skills.swift; sourceTree = "<group>"; };
 		7C500DE8A47482D5DA7DA6D3 /* ASRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ASRService.swift; path = Agent/ASRService.swift; sourceTree = SOURCE_ROOT; };
-		83C5B0E5FD420CCB6BD8D1A4 /* LiveModeEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveModeEngine.swift; path = Agent/LiveModeEngine.swift; sourceTree = SOURCE_ROOT; };
-		840B21562E52B6B93D4410D0 /* LiveModeUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveModeUI.swift; path = UI/LiveModeUI.swift; sourceTree = SOURCE_ROOT; };
-		9C503EC6B19AD0CF5515B98E /* LiveComponentTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveComponentTest.swift; path = Agent/LiveComponentTest.swift; sourceTree = SOURCE_ROOT; };
+		83C5B0E5FD420CCB6BD8D1A4 /* LiveModeEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveModeEngine.swift; path = Live/Core/LiveModeEngine.swift; sourceTree = SOURCE_ROOT; };
+		840B21562E52B6B93D4410D0 /* LiveModeUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveModeUI.swift; path = Live/UI/LiveModeUI.swift; sourceTree = SOURCE_ROOT; };
+		9C503EC6B19AD0CF5515B98E /* LiveComponentTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveComponentTest.swift; path = Live/Core/LiveComponentTest.swift; sourceTree = SOURCE_ROOT; };
 		9D80CB631331A0CA07699BDE /* OutputSanitizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OutputSanitizer.swift; path = Agent/Engine/OutputSanitizer.swift; sourceTree = SOURCE_ROOT; };
 		9DBABEB8C21E7B67E5C2516D /* SharedUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SharedUI.swift; path = UI/SharedUI.swift; sourceTree = SOURCE_ROOT; };
 		A1AB7F250BEEFF938318AA75 /* Pods-PhoneClaw.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-PhoneClaw.debug.xcconfig"; path = "Target Support Files/Pods-PhoneClaw/Pods-PhoneClaw.debug.xcconfig"; sourceTree = "<group>"; };
@@ -206,12 +206,12 @@
 		AA2000000000000000000108 /* GPULifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPULifecycle.swift; sourceTree = "<group>"; };
 		AA2000000000000000000202 /* MLXLocalLLMService+KVReuse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MLXLocalLLMService+KVReuse.swift"; sourceTree = "<group>"; };
 		B1A2C3D4E5F607182930B101 /* Library */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Library; sourceTree = "<group>"; };
-		BA48303BA25916A3A431EDE6 /* OrbBackgroundView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OrbBackgroundView.swift; path = UI/LiveOrb/OrbBackgroundView.swift; sourceTree = SOURCE_ROOT; };
+		BA48303BA25916A3A431EDE6 /* OrbBackgroundView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OrbBackgroundView.swift; path = Live/UI/LiveOrb/OrbBackgroundView.swift; sourceTree = SOURCE_ROOT; };
 		C1A2B3D4E5F607182930A1B3 /* SkillLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillLoader.swift; sourceTree = "<group>"; };
 		C1A2B3D4E5F607182930A1C3 /* SkillRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillRegistry.swift; sourceTree = "<group>"; };
 		C3C4D5E6F7081A2B3C52D3E5 /* ChatModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatModels.swift; sourceTree = "<group>"; };
 		C4D5E6F70819A2B3C463E4F6 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
-		C70EDE41C438263F820D0FCC /* OrbShaderSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OrbShaderSource.swift; path = UI/LiveOrb/OrbShaderSource.swift; sourceTree = SOURCE_ROOT; };
+		C70EDE41C438263F820D0FCC /* OrbShaderSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OrbShaderSource.swift; path = Live/UI/LiveOrb/OrbShaderSource.swift; sourceTree = SOURCE_ROOT; };
 		CEA10A9D8F9AB4A2764A1A13 /* SherpaOnnx.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SherpaOnnx.swift; path = Agent/SherpaOnnx.swift; sourceTree = SOURCE_ROOT; };
 		D269F8BFCAB68D82440F704B /* SkillsManagerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillsManagerView.swift; sourceTree = "<group>"; };
 		D3A1B2C3D4E5F60718290101 /* ToolRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolRegistry.swift; sourceTree = "<group>"; };
@@ -227,14 +227,14 @@
 		D5E6F7081A2B3C4D5E6F7086 /* gemma-4-e4b-it-4bit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "gemma-4-e4b-it-4bit"; path = "Models/gemma-4-e4b-it-4bit"; sourceTree = "<group>"; };
 		D5E6F7081A2B3C4D5E6F7088 /* sherpa-asr-zh */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "sherpa-asr-zh"; path = "Models/sherpa-asr-zh"; sourceTree = "<group>"; };
 		D5E6F7081A2B3C4D5E6F7092 /* vits-zh-hf-keqing */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "vits-zh-hf-keqing"; path = "Models/vits-zh-hf-keqing"; sourceTree = "<group>"; };
-		DAF684F9A04FAEE76440F69C /* OrbAudioAnalyser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OrbAudioAnalyser.swift; path = Agent/OrbAudioAnalyser.swift; sourceTree = SOURCE_ROOT; };
+		DAF684F9A04FAEE76440F69C /* OrbAudioAnalyser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OrbAudioAnalyser.swift; path = Live/Core/OrbAudioAnalyser.swift; sourceTree = SOURCE_ROOT; };
 		E18A47114A10132E25E220F8 /* AgentEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentEngine.swift; sourceTree = "<group>"; };
 		E62C3CEFC7AE63873D751E75 /* ConfigurationsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigurationsView.swift; sourceTree = "<group>"; };
-		F06A8F86444AB26C7373919B /* TTSService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TTSService.swift; path = Agent/TTSService.swift; sourceTree = SOURCE_ROOT; };
-		F18C7A5D1474A06400BE423D /* VADService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = VADService.swift; path = Agent/VADService.swift; sourceTree = SOURCE_ROOT; };
+		F06A8F86444AB26C7373919B /* TTSService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TTSService.swift; path = Live/Core/TTSService.swift; sourceTree = SOURCE_ROOT; };
+		F18C7A5D1474A06400BE423D /* VADService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = VADService.swift; path = Live/Core/VADService.swift; sourceTree = SOURCE_ROOT; };
 		F5ED928BF14864713A9A9D16 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
-		F73C9FFB0EEDE520F2885102 /* OrbSceneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OrbSceneView.swift; path = UI/LiveOrb/OrbSceneView.swift; sourceTree = SOURCE_ROOT; };
-		F8D921B323B9D6342A22A29E /* LiveAudioIO.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveAudioIO.swift; path = Agent/LiveAudioIO.swift; sourceTree = SOURCE_ROOT; };
+		F73C9FFB0EEDE520F2885102 /* OrbSceneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OrbSceneView.swift; path = Live/UI/LiveOrb/OrbSceneView.swift; sourceTree = SOURCE_ROOT; };
+		F8D921B323B9D6342A22A29E /* LiveAudioIO.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveAudioIO.swift; path = Live/Core/LiveAudioIO.swift; sourceTree = SOURCE_ROOT; };
 		ICONASSETS0000000000001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
