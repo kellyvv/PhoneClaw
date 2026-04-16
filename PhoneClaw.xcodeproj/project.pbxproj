@@ -166,11 +166,11 @@
 		4F4ACB3F4531FF61E0AADA07 /* libPods-PhoneClaw.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-PhoneClaw.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		52F30C6348B834E5D157205F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		571908036E6DCED1D58C1E9E /* Skills.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Skills.swift; sourceTree = "<group>"; };
-		7C500DE8A47482D5DA7DA6D3 /* ASRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ASRService.swift; path = Agent/ASRService.swift; sourceTree = SOURCE_ROOT; };
+		7C500DE8A47482D5DA7DA6D3 /* ASRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ASRService.swift; path = Shared/Audio/ASRService.swift; sourceTree = SOURCE_ROOT; };
 		83C5B0E5FD420CCB6BD8D1A4 /* LiveModeEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveModeEngine.swift; path = Live/Core/LiveModeEngine.swift; sourceTree = SOURCE_ROOT; };
 		840B21562E52B6B93D4410D0 /* LiveModeUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveModeUI.swift; path = Live/UI/LiveModeUI.swift; sourceTree = SOURCE_ROOT; };
 		9C503EC6B19AD0CF5515B98E /* LiveComponentTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveComponentTest.swift; path = Live/Core/LiveComponentTest.swift; sourceTree = SOURCE_ROOT; };
-		9D80CB631331A0CA07699BDE /* OutputSanitizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OutputSanitizer.swift; path = Agent/Engine/OutputSanitizer.swift; sourceTree = SOURCE_ROOT; };
+		9D80CB631331A0CA07699BDE /* OutputSanitizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OutputSanitizer.swift; path = Shared/Audio/OutputSanitizer.swift; sourceTree = SOURCE_ROOT; };
 		9DBABEB8C21E7B67E5C2516D /* SharedUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SharedUI.swift; path = UI/SharedUI.swift; sourceTree = SOURCE_ROOT; };
 		A1AB7F250BEEFF938318AA75 /* Pods-PhoneClaw.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-PhoneClaw.debug.xcconfig"; path = "Target Support Files/Pods-PhoneClaw/Pods-PhoneClaw.debug.xcconfig"; sourceTree = "<group>"; };
 		A31476E82F856FD700318978 /* ChatAttachments.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatAttachments.swift; sourceTree = "<group>"; };
@@ -212,7 +212,7 @@
 		C3C4D5E6F7081A2B3C52D3E5 /* ChatModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatModels.swift; sourceTree = "<group>"; };
 		C4D5E6F70819A2B3C463E4F6 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		C70EDE41C438263F820D0FCC /* OrbShaderSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OrbShaderSource.swift; path = Live/UI/LiveOrb/OrbShaderSource.swift; sourceTree = SOURCE_ROOT; };
-		CEA10A9D8F9AB4A2764A1A13 /* SherpaOnnx.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SherpaOnnx.swift; path = Agent/SherpaOnnx.swift; sourceTree = SOURCE_ROOT; };
+		CEA10A9D8F9AB4A2764A1A13 /* SherpaOnnx.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SherpaOnnx.swift; path = Shared/Audio/SherpaOnnx.swift; sourceTree = SOURCE_ROOT; };
 		D269F8BFCAB68D82440F704B /* SkillsManagerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillsManagerView.swift; sourceTree = "<group>"; };
 		D3A1B2C3D4E5F60718290101 /* ToolRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolRegistry.swift; sourceTree = "<group>"; };
 		D3A1B2C3D4E5F60718290102 /* AppPermissions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPermissions.swift; sourceTree = "<group>"; };

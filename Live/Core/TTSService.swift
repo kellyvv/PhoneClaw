@@ -114,37 +114,6 @@ class TTSService {
         return samplesToWAV(samples: audio.samples, count: Int(count), sampleRate: sr)
     }
 
-    func synthesizeChunk(_ text: String) -> AudioChunk? {
-        guard let tts else { return nil }
-
-        let audio = tts.generate(text: text, sid: defaultSid, speed: 1.0)
-        let count = Int(audio.n)
-        let sr = Int(audio.sampleRate)
-        guard count > 0 else { return nil }
-
-        let format = AVAudioFormat(
-            commonFormat: .pcmFormatFloat32,
-            sampleRate: Double(sr),
-            channels: 1,
-            interleaved: false
-        )!
-        guard let buffer = AVAudioPCMBuffer(
-            pcmFormat: format,
-            frameCapacity: AVAudioFrameCount(count)
-        ),
-        let channel = buffer.floatChannelData?[0]
-        else {
-            return nil
-        }
-
-        buffer.frameLength = AVAudioFrameCount(count)
-        for index in 0..<count {
-            channel[index] = audio.samples[index]
-        }
-
-        return AudioChunk(buffer: buffer)
-    }
-
     // MARK: - Playback (through shared AVAudioEngine)
 
     /// Play WAV through the shared engine's AVAudioPlayerNode.
