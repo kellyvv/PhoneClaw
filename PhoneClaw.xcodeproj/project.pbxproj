@@ -68,6 +68,15 @@
 		A31476F92F85741500318978 /* SessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31476F22F85741500318978 /* SessionStore.swift */; };
 		A31476FA2F85741500318978 /* ToolChain.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31476F42F85741500318978 /* ToolChain.swift */; };
 		A31476FB2F85741500318978 /* OutputCleaner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31476EF2F85741500318978 /* OutputCleaner.swift */; };
+		5E3245AC20D4A5365C4A84E8 /* LiveLocale.swift in Sources */ = {isa = PBXBuildFile; fileRef = A263EC6C9ED96F37CF99E49E /* LiveLocale.swift */; };
+		F471632F6068D441199F62BF /* LiveMarker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1CB1BD09C4BB76362ADC97 /* LiveMarker.swift */; };
+		B4BDA4D032800AFB9764956A /* LiveHistoryMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E383F793CD103FF368037A /* LiveHistoryMessage.swift */; };
+		41D5F6BA01C2365F10D7C4EA /* LiveSkillCall.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83C97FEEC133F40BDEFBD9AE /* LiveSkillCall.swift */; };
+		E9D6E75B5D98FAD1F17265D7 /* LiveOutputEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05853E0317CAA5E4BBEDD865 /* LiveOutputEvent.swift */; };
+		23D41FD1E095FCDDC5BE04EF /* LiveOutputParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1933DF0A8083223AD681A973 /* LiveOutputParser.swift */; };
+		4C01A62B1E57D91C45FFEEA8 /* LiveTurnProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BCB3AA5590B964AC46945D5 /* LiveTurnProcessor.swift */; };
+		F3B736266E38252D03E6C354 /* LiveVoiceConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6B2CA800EABEF23C3821C51 /* LiveVoiceConstants.swift */; };
+		FEFA2136332FF2B38F71C999 /* PromptBuilder+LiveVoice.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3E547AAB840AEB6F57C71A4 /* PromptBuilder+LiveVoice.swift */; };
 		A31476FC2F85741500318978 /* ToolCallParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31476F32F85741500318978 /* ToolCallParser.swift */; };
 		A340D947F4D1C7DE26F7F978 /* LiveMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 094A760C8A6DFD5E317AF5B8 /* LiveMetrics.swift */; };
 		A784E79067D36E56702AC300 /* AudioUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22A3E6DE14D68AD9C9ABF0E8 /* AudioUI.swift */; };
@@ -178,6 +187,15 @@
 		A31476E82F856FD700318978 /* ChatAttachments.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatAttachments.swift; sourceTree = "<group>"; };
 		A31476E92F856FD700318978 /* ChatMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMessage.swift; sourceTree = "<group>"; };
 		A31476EF2F85741500318978 /* OutputCleaner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutputCleaner.swift; sourceTree = "<group>"; };
+		A263EC6C9ED96F37CF99E49E /* LiveLocale.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "LiveLocale.swift"; path = "LLM/LiveVoice/LiveLocale.swift"; sourceTree = SOURCE_ROOT; };
+		2A1CB1BD09C4BB76362ADC97 /* LiveMarker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "LiveMarker.swift"; path = "Live/Turn/Types/LiveMarker.swift"; sourceTree = SOURCE_ROOT; };
+		E1E383F793CD103FF368037A /* LiveHistoryMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "LiveHistoryMessage.swift"; path = "Live/Turn/Types/LiveHistoryMessage.swift"; sourceTree = SOURCE_ROOT; };
+		83C97FEEC133F40BDEFBD9AE /* LiveSkillCall.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "LiveSkillCall.swift"; path = "Live/Turn/Types/LiveSkillCall.swift"; sourceTree = SOURCE_ROOT; };
+		05853E0317CAA5E4BBEDD865 /* LiveOutputEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "LiveOutputEvent.swift"; path = "Live/Turn/Types/LiveOutputEvent.swift"; sourceTree = SOURCE_ROOT; };
+		1933DF0A8083223AD681A973 /* LiveOutputParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "LiveOutputParser.swift"; path = "Live/Turn/LiveOutputParser.swift"; sourceTree = SOURCE_ROOT; };
+		9BCB3AA5590B964AC46945D5 /* LiveTurnProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "LiveTurnProcessor.swift"; path = "Live/Turn/LiveTurnProcessor.swift"; sourceTree = SOURCE_ROOT; };
+		C6B2CA800EABEF23C3821C51 /* LiveVoiceConstants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "LiveVoiceConstants.swift"; path = "LLM/LiveVoice/LiveVoiceConstants.swift"; sourceTree = SOURCE_ROOT; };
+		F3E547AAB840AEB6F57C71A4 /* PromptBuilder+LiveVoice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "PromptBuilder+LiveVoice.swift"; path = "LLM/LiveVoice/PromptBuilder+LiveVoice.swift"; sourceTree = SOURCE_ROOT; };
 		A31476F02F85741500318978 /* Planner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Planner.swift; sourceTree = "<group>"; };
 		A31476F12F85741500318978 /* Router.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Router.swift; sourceTree = "<group>"; };
 		A31476F22F85741500318978 /* SessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStore.swift; sourceTree = "<group>"; };
@@ -397,6 +415,15 @@
 		D21E6B56B839A63857912FE0 /* PhoneClaw */ = {
 			isa = PBXGroup;
 			children = (
+				A263EC6C9ED96F37CF99E49E /* LiveLocale.swift */,
+				2A1CB1BD09C4BB76362ADC97 /* LiveMarker.swift */,
+				E1E383F793CD103FF368037A /* LiveHistoryMessage.swift */,
+				83C97FEEC133F40BDEFBD9AE /* LiveSkillCall.swift */,
+				05853E0317CAA5E4BBEDD865 /* LiveOutputEvent.swift */,
+				1933DF0A8083223AD681A973 /* LiveOutputParser.swift */,
+				9BCB3AA5590B964AC46945D5 /* LiveTurnProcessor.swift */,
+				C6B2CA800EABEF23C3821C51 /* LiveVoiceConstants.swift */,
+				F3E547AAB840AEB6F57C71A4 /* PromptBuilder+LiveVoice.swift */,
 				7C500DE8A47482D5DA7DA6D3 /* ASRService.swift */,
 				357644EE0B2A47696762E171 /* LiveCameraService.swift */,
 				9C503EC6B19AD0CF5515B98E /* LiveComponentTest.swift */,
@@ -668,6 +695,15 @@
 				A31476F92F85741500318978 /* SessionStore.swift in Sources */,
 				A31476FA2F85741500318978 /* ToolChain.swift in Sources */,
 				A31476FB2F85741500318978 /* OutputCleaner.swift in Sources */,
+				5E3245AC20D4A5365C4A84E8 /* LiveLocale.swift in Sources */,
+				F471632F6068D441199F62BF /* LiveMarker.swift in Sources */,
+				B4BDA4D032800AFB9764956A /* LiveHistoryMessage.swift in Sources */,
+				41D5F6BA01C2365F10D7C4EA /* LiveSkillCall.swift in Sources */,
+				E9D6E75B5D98FAD1F17265D7 /* LiveOutputEvent.swift in Sources */,
+				23D41FD1E095FCDDC5BE04EF /* LiveOutputParser.swift in Sources */,
+				4C01A62B1E57D91C45FFEEA8 /* LiveTurnProcessor.swift in Sources */,
+				F3B736266E38252D03E6C354 /* LiveVoiceConstants.swift in Sources */,
+				FEFA2136332FF2B38F71C999 /* PromptBuilder+LiveVoice.swift in Sources */,
 				0F13CB63EFD6EB20B60C013B /* ASRService.swift in Sources */,
 				7BB3AC9437469CCB6929F015 /* LiveCameraService.swift in Sources */,
 				839929FB52DF6A121DCEE82C /* LiveComponentTest.swift in Sources */,

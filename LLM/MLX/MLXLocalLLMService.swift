@@ -169,6 +169,9 @@ public class MLXLocalLLMService: LLMEngine {
            let option = Self.availableModels.first(where: { $0.id == selectedModelID }) {
             self.selectedModel = option
         }
+        // 同 selectModel(id:) 里的策略 — E2B 关 KV reuse 防 multi-round
+        // tool_call 死循环. selectedModel 在 init 时已确定 (default 或 user override).
+        self.kvReuseEnabled = !self.selectedModel.id.contains("e2b")
         self.stats.backend = "mlx-gpu"
         configureLifecycleObservers()
         cleanupStalePartialDirectories()
@@ -462,7 +465,9 @@ public class MLXLocalLLMService: LLMEngine {
         print("[MLX] Warmup skipped — shaders will compile on first inference")
         statusMessage = "模型已就绪 ✅"
 
-        #if DEBUG
+        #if DEBUG && canImport(UIKit)
+        // LiveComponentTest 在 Live/Debug/ 下, iOS-only. Mac CLI 不 symlink Live/,
+        // 所以这个 opt-in Debug 分支只对 iOS build 生效.
         let isRunningXCTest = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
             || ProcessInfo.processInfo.environment["XCTestBundlePath"] != nil
             || ProcessInfo.processInfo.environment["XCTestSessionIdentifier"] != nil
@@ -509,6 +514,42 @@ public class MLXLocalLLMService: LLMEngine {
         let input = UserInput(chat: chat, additionalContext: additionalContext)
         let hasMedia = !input.images.isEmpty || !input.audios.isEmpty
         return generateStream(input: input, isMultimodal: hasMedia)
+    }
+
+    /// Raw text prompt path — 绕开 tokenizer 的 applyChatTemplate.
+    ///
+    /// 专为 Live 语音场景设计: 调用方 (PromptBuilder.buildLiveVoicePrompt)
+    /// 手写 `<|turn>system/user/model` 模板, 需要让 Gemma 4 把这段字符串**按
+    /// 原样**编码 (addSpecialTokens=false, 不再额外包装), 系统指令才能完整传达.
+    ///
+    /// 对比:
+    ///   - `generateStream(prompt:images:audios:)`: 内部包成 `.chat([.user(prompt)])`,
+    ///     Gemma4Processor 走 applyChatTemplate, 把整段字符串当 user content 再包一层.
+    ///   - `generateStream(chat:)`: 按 system/user 角色走 applyChatTemplate, 在 Gemma 4
+    ///     上 system 约束被稀释 (harness 2026-04-16 实测).
+    ///   - 本方法 (纯文本): `UserInput(prompt: .text(rawText))` 命中 Gemma4Processor 的
+    ///     text 分支, 直接 `tokenizer.encode(text:, addSpecialTokens:false)`,
+    ///     模型看到的就是调用方手写的完整 token 序列.
+    ///
+    /// 多模态分流 (真机 2026-04-16 验证):
+    ///   `.text` 分支在 E2B + vision 场景下 MLX 内部 forward graph 内存 spike 突破
+    ///   jetsam 6144 MB → 应用闪崩. `.chat` 分支同场景已验证稳定 (用户多次摄像头
+    ///   交互无崩溃). 因此**有 image 时回退到 chat path**, persona/marker 修复
+    ///   只对纯文本场景生效 — 视觉场景 user 通常问"这是什么", 不需要 persona 锚点.
+    public func generateStream(
+        rawText: String,
+        images: [CIImage] = []
+    ) -> AsyncThrowingStream<String, Error> {
+        if images.isEmpty {
+            // 纯文本: 走 .text 分支, bypass chat template, 享受 Live persona/marker 修复
+            let input = UserInput(prompt: .text(rawText))
+            return generateStream(input: input, isMultimodal: false)
+        } else {
+            // 多模态: 走 .chat 分支, 复用已验证不崩的 vision 路径
+            let chatImages: [UserInput.Image] = images.map { .ciImage($0) }
+            let input = UserInput(chat: [.user(rawText, images: chatImages)])
+            return generateStream(input: input, isMultimodal: true)
+        }
     }
 
 

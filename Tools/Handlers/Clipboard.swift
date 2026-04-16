@@ -1,3 +1,4 @@
+#if canImport(UIKit)
 import UIKit
 
 enum ClipboardTools {
@@ -144,3 +145,10 @@ enum ClipboardTools {
         )
     }
 }
+#else
+// macOS CLI: UIPasteboard iOS-only, 剪贴板 Skill 不适用. 提供 no-op stub
+// 让 ToolRegistry.registerBuiltInTools() 调用点编译通过 (整个 skill 静默跳过).
+enum ClipboardTools {
+    static func register(into registry: ToolRegistry) {}
+}
+#endif

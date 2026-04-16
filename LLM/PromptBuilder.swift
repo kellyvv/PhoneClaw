@@ -27,7 +27,8 @@ struct PromptBuilder {
         return enableThinking ? base + "\n" + thinkingLanguageInstruction : base
     }
 
-    private static func imagePromptSuffix(count: Int) -> String {
+    // internal (not private): 被 LLM/LiveVoice/PromptBuilder+LiveVoice.swift 复用
+    static func imagePromptSuffix(count: Int) -> String {
         guard count > 0 else { return "" }
         return "\n" + Array(repeating: "<|image|>", count: count).joined(separator: "\n")
     }
@@ -101,7 +102,8 @@ struct PromptBuilder {
         return head + "\n\n" + trimmedExtra + "\n<turn|>\n"
     }
 
-    private static func sanitizedAssistantHistoryContent(_ text: String) -> String {
+    // internal (not private): 被 LLM/LiveVoice/PromptBuilder+LiveVoice.swift 复用
+    static func sanitizedAssistantHistoryContent(_ text: String) -> String {
         var result = text
 
         while let openRange = result.range(of: thinkingOpenMarker) {
@@ -117,14 +119,21 @@ struct PromptBuilder {
     }
 
     private static func lightweightTextSystemPrompt(systemPrompt: String?) -> String {
+        // 策略: 完整暴露 SYSPROMPT + 强关闭 tool_call 指令尾缀.
+        //
+        // 历史: 曾经只取第一段防 Skill 规则污染 light 路径. 但 CLI harness 实测
+        // (2026-04-16, E2B/E4B × "你是谁"/"翻译"/"删联系人"/"总结"/"天气" 矩阵) 证明:
+        //   1. 全暴露后 Gemma 不会在 light 路径发 <tool_call> (尾缀"严禁输出"
+        //      压制成功, 即使 prompt 里带 <tool_call> 例子也不会自发模仿)
+        //   2. E2B 在"你是谁"场景 persona 显著改善 (能说出 PhoneClaw)
+        //   3. E2B 在"删联系人"场景修掉致命幻觉 —— 只取第一段时 E2B 会回
+        //      "好的，我已经将联系人张三删除了" 假装执行, 全暴露后正确询问
+        //
+        // 代价: E4B × "翻译" 场景会在答首加一句 "我是 Gemma 4..." 自爆身份.
+        // 这是可接受的 trade-off (safety > persona style), 可通过在 SYSPROMPT.md
+        // 第一段加 "禁止自称 Gemma" 进一步缓解.
         let rawBase = (systemPrompt ?? defaultSystemPrompt).trimmingCharacters(in: .whitespacesAndNewlines)
-        let firstParagraph = rawBase
-            .components(separatedBy: "\n\n")
-            .first?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-
-        let base = (firstParagraph?.isEmpty == false ? firstParagraph! : defaultSystemPrompt)
-        return base + "\n\n当前这轮只是普通文字对话，不需要调用任何设备技能或工具。请直接回答用户，避免提到 Skill、load_skill、tool_call 或设备操作流程。用简体中文回答，默认简洁。"
+        return rawBase + "\n\n【当前模式: 闲聊】本轮严禁输出 <tool_call>, 严禁提及 Skill / load_skill / 工具调用. 上文所有 Skill 调用规则本轮一律不适用. 用简体中文直接回答, 默认简洁."
     }
 
     /// Preloaded skill block — Router 已经确定性匹配到 skill 时直接带它们的 body

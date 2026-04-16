@@ -84,11 +84,6 @@ struct OrbSceneView: UIViewRepresentable {
             isReady = true
         }
 
-        // Active = engine 已经走到可交互态 (listening/recording/processing/speaking).
-        // 当 state == .idle 说明要么未初始化完, 要么会话结束 — Orb 保持暗灰, 提示
-        // 用户"还在准备, 别急着说话".
-        private var lastActivePushed: Bool? = nil
-
         @objc private func tick() {
             guard isReady, let webView else { return }
 
@@ -104,13 +99,6 @@ struct OrbSceneView: UIViewRepresentable {
                 output.b0, output.b1, output.b2
             )
             webView.evaluateJavaScript(script, completionHandler: nil)
-
-            // Active 状态只在变化时 push, 减少 JS bridge 调用
-            let active = state != .idle
-            if lastActivePushed != active {
-                lastActivePushed = active
-                webView.evaluateJavaScript("window.__orbSetActive(\(active));", completionHandler: nil)
-            }
         }
 
         deinit {
@@ -364,46 +352,13 @@ void main() {
     const pmremGenerator = new THREE.PMREMGenerator(renderer);
     pmremGenerator.compileEquirectangularShader();
 
-    // Two-state material: 加载/待机 dark matte, 可交互 warm amber-gold.
-    //
-    // !!! Material 必须用 "active" 参数初始化, 否则首次 WebView cold boot 时
-    //     three.js 可能编译出不包含 envMap 支路的 shader (因为 envMapIntensity:0),
-    //     之后 lerp 把 intensity 提到 1.0 也不会正常反射 HDR, 球永远黑. 第二次进入
-    //     才正常 (shader 已缓存). 解法: 初始材质用完整 active 配置 (和 session 前
-    //     一样, envMap 能正常编入 shader), 但把 lerp 目标即刻设成 inactive —
-    //     animate 循环第一帧就开始向 dim 收敛, 首帧可能有一瞬间的 active 闪烁 (<16ms
-    //     不可见), 之后一切正常切换.
-    const activeColor      = new THREE.Color(0x2a1a08);
-    const activeEmissive   = new THREE.Color(0x1a0f04);
-    const inactiveColor    = new THREE.Color(0x141418);
-    const inactiveEmissive = new THREE.Color(0x040405);
-
-    // 初始 target 就是 inactive (dim), 进入 Live 第一刻就向暗收敛
-    let activeTargetIntensity = 0.0;
-    let activeTargetEmissive  = 0.15;
-    let activeTargetRoughness = 0.80;
-
-    // Material 自己用 active (原始) 配置初始化, shader 完整编译
     const sphereMaterial = new THREE.MeshStandardMaterial({
-      color: activeColor.clone(),
+      color: 0x2a1a08,
       metalness: 0.85,
       roughness: 0.25,
-      emissive: activeEmissive.clone(),
-      emissiveIntensity: 1.2,
-      envMapIntensity: 1.0
+      emissive: 0x1a0f04,
+      emissiveIntensity: 1.2
     });
-
-    // Lerp targets 起始就指向 inactive, 让第一帧 lerp 开始推向暗态
-    window.__orbTargetColor = inactiveColor.clone();
-    window.__orbTargetEmissive = inactiveEmissive.clone();
-
-    window.__orbSetActive = (active) => {
-      activeTargetIntensity = active ? 1.0 : 0.0;
-      activeTargetEmissive  = active ? 1.3 : 0.15;
-      activeTargetRoughness = active ? 0.25 : 0.80;
-      window.__orbTargetColor.copy(active ? activeColor : inactiveColor);
-      window.__orbTargetEmissive.copy(active ? activeEmissive : inactiveEmissive);
-    };
 
     sphereMaterial.onBeforeCompile = (shader) => {
       shader.uniforms.time = { value: 0 };
@@ -487,16 +442,6 @@ void main() {
       output.z += (target.oz - output.z) * k;
 
       backdrop.material.uniforms.rand.value = Math.random() * 10000;
-
-      // Lerp material toward active/inactive target (triggered by window.__orbSetActive)
-      sphereMaterial.color.lerp(window.__orbTargetColor, 0.06);
-      sphereMaterial.emissive.lerp(window.__orbTargetEmissive, 0.06);
-      sphereMaterial.envMapIntensity +=
-        (activeTargetIntensity - sphereMaterial.envMapIntensity) * 0.06;
-      sphereMaterial.emissiveIntensity +=
-        (activeTargetEmissive - sphereMaterial.emissiveIntensity) * 0.06;
-      sphereMaterial.roughness +=
-        (activeTargetRoughness - sphereMaterial.roughness) * 0.06;
 
       if (sphereMaterial.userData.shader) {
         // 对齐原版：1 + (0.2 * data[1]) / 255

@@ -81,6 +81,7 @@ extension ToolRegistry {
     func authorizationStatus(for kind: AppPermissionKind) -> AppPermissionStatus {
         switch kind {
         case .microphone:
+            #if os(iOS)
             switch AVAudioSession.sharedInstance().recordPermission {
             case .granted:
                 return .granted
@@ -91,6 +92,10 @@ extension ToolRegistry {
             @unknown default:
                 return .restricted
             }
+            #else
+            // macOS CLI: 无 AVAudioSession, 权限系统不适用
+            return .granted
+            #endif
 
         case .camera:
             switch AVCaptureDevice.authorizationStatus(for: .video) {
@@ -164,11 +169,15 @@ extension ToolRegistry {
     func requestAccess(for kind: AppPermissionKind) async throws -> Bool {
         switch kind {
         case .microphone:
+            #if os(iOS)
             return await withCheckedContinuation { continuation in
                 AVAudioSession.sharedInstance().requestRecordPermission { granted in
                     continuation.resume(returning: granted)
                 }
             }
+            #else
+            return true
+            #endif
         case .camera:
             return await AVCaptureDevice.requestAccess(for: .video)
         case .calendar:

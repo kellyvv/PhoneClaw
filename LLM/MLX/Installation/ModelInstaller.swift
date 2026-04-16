@@ -14,6 +14,19 @@ extension MLXLocalLLMService {
         }
 
         selectedModel = option
+
+        // KV cache reuse 按模型适配 (真机 2026-04-16 验证):
+        //   E4B (4B params): multi-round tool_call follow-up 时能正确从 delta
+        //                    "消化" 新 prompt 里的 "工具已执行, 该总结" 指令,
+        //                    享受 1869ms→532ms 3.5x TTFT 加速.
+        //   E2B (2B params): 被 cached prefix 锚住, follow-up prompt 的"工具结果"
+        //                    段权重弱, **反复输出同一 tool_call**, 死循环
+        //                    (真机日志: 4 轮重复 calendar-create-event,
+        //                    E4B 同 prompt 1 轮 tool + 1 轮总结正常).
+        //
+        // 策略: E2B 模型选择时自动关 KV reuse (logic safety > 性能).
+        kvReuseEnabled = !option.id.contains("e2b")
+
         statusMessage = isLoaded
             ? "已选择 \(option.displayName)，准备重新加载..."
             : "已选择 \(option.displayName)，等待加载..."

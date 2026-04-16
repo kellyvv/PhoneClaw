@@ -24,9 +24,12 @@ struct SkillEntry: Identifiable {
     var icon: String
     var type: SkillType
     var samplePrompt: String
-    /// 欢迎页快捷 chip 文案 = 所见即所发。
-    /// 来源 SKILL.md `chip_prompt` 字段。不声明的 skill 不会出现在 chip 列表。
+    /// 欢迎页快捷 chip 的发送内容 (来源 SKILL.md `chip_prompt` 字段).
+    /// 不声明的 skill 不会出现在 chip 列表里.
     var chipPrompt: String?
+    /// 欢迎页快捷 chip 的 UI 显示短 label (来源 SKILL.md `chip_label`).
+    /// 缺省时 UI 直接显示 chipPrompt 全文.
+    var chipLabel: String?
     var tools: [ToolInfo] = []
     var isEnabled: Bool = true
     var filePath: URL?      // SKILL.md 路径（用于编辑）
@@ -40,6 +43,7 @@ struct SkillEntry: Identifiable {
         self.type = def.metadata.type
         self.samplePrompt = def.metadata.examples.first?.query ?? ""
         self.chipPrompt = def.metadata.chipPrompt?.isEmpty == true ? nil : def.metadata.chipPrompt
+        self.chipLabel = def.metadata.chipLabel?.isEmpty == true ? nil : def.metadata.chipLabel
         self.isEnabled = def.isEnabled
         self.filePath = def.filePath
         self.tools = def.metadata.allowedTools.compactMap { toolName in
@@ -59,4 +63,5 @@ struct SkillInfo {
     var type: SkillType = .device
     var samplePrompt: String = ""
     var chipPrompt: String? = nil
+    var chipLabel: String? = nil
 }

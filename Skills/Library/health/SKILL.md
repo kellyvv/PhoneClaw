@@ -6,7 +6,8 @@ version: "1.1.0"
 icon: heart.fill
 disabled: false
 type: device
-chip_prompt: "今天走了多少步"
+chip_prompt: "我今天走了多少步"
+chip_label: "今日步数"
 
 triggers:
   - 步数

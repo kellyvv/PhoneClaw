@@ -6,7 +6,8 @@ version: "1.1.0"
 icon: person.crop.circle
 disabled: false
 type: device
-chip_prompt: "帮我保存联系人"
+chip_prompt: "把王总电话 13812345678 添加到联系人"
+chip_label: "添加联系人"
 
 triggers:
   - 联系人

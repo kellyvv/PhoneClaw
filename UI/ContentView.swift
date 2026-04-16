@@ -358,31 +358,31 @@ struct ContentView: View {
 
     // MARK: - Skill 快捷标签
     //
-    // Chip 完全由 SKILL.md 数据驱动, 所见即所发:
-    //   - 显示文字 = skill.chipPrompt (来自 SKILL.md `chip_prompt` 字段)
-    //   - 点击发送 = 同上 (chip 上看到什么就发什么, 没有脱节)
+    // Chip 完全由 SKILL.md 数据驱动:
+    //   - UI 显示 = skill.chipLabel (来自 SKILL.md `chip_label`, 短) ?? chipPrompt (兜底)
+    //   - 点击发送 = skill.chipPrompt (来自 SKILL.md `chip_prompt`, 长完整命令)
     //   - 图标 = skill.icon (来自 SKILL.md `icon` 字段)
     //
-    // 没声明 chip_prompt 的 skill 不会出现在 chip 列表 — 这是"这个 skill
-    // 不想当快捷按钮"的自然表达, 不需要额外的隐藏名单。
+    // Decoupled: chip 视觉短紧凑 ("创建日程"), 发送给 LLM 的是完整意图
+    // ("帮我创建明天下午两点的产品评审会议") —— LLM 拿到具体例子能直接执行,
+    // 不用反问 "什么时间什么主题".
     //
-    // 框架不硬编任何具体 skill 名。加新 skill 只要在 SKILL.md 写一行
-    // `chip_prompt: "..."`, UI 自动显示, 不写就自动不显示。
+    // 没声明 chip_prompt 的 skill 不会出现在 chip 列表.
 
     private var skillChips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                ForEach(engine.enabledSkillInfos.compactMap { skill -> (SkillInfo, String)? in
+                ForEach(engine.enabledSkillInfos.compactMap { skill -> (SkillInfo, label: String, prompt: String)? in
                     guard let prompt = skill.chipPrompt, !prompt.isEmpty else { return nil }
-                    return (skill, prompt)
-                }, id: \.0.name) { skill, chipPrompt in
+                    let label = (skill.chipLabel?.isEmpty == false) ? skill.chipLabel! : prompt
+                    return (skill, label, prompt)
+                }, id: \.0.name) { skill, chipLabel, chipPrompt in
                     Button {
                         inputText = chipPrompt
                         Task { await send() }
                     } label: {
                         HStack(spacing: 5) {
-                            Image(systemName: skill.icon).font(.system(size: 11))
-                            Text(chipPrompt).font(.system(size: 12, weight: .medium))
+                            Text(chipLabel).font(.system(size: 12, weight: .medium))
                         }
                         .foregroundStyle(Theme.textSecondary)
                         .padding(.horizontal, 12)

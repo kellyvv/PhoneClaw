@@ -6,7 +6,8 @@ version: "1.0.0"
 icon: doc.on.clipboard
 disabled: false
 type: device
-chip_prompt: "读一下剪贴板"
+chip_prompt: "读取我的剪贴板内容"
+chip_label: "读剪贴板"
 
 triggers:
   - 剪贴板

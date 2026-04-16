@@ -6,7 +6,8 @@ version: "1.1.0"
 icon: character.bubble
 disabled: false
 type: content
-chip_prompt: "帮我翻译一段话"
+chip_prompt: "把下面这段话翻译成英文: 今天天气真好"
+chip_label: "翻译"
 
 triggers:
   - 翻译

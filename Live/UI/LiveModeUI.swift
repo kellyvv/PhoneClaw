@@ -22,6 +22,11 @@ struct LiveModeView: View {
     @State private var isCameraEnabled = false
     @State private var isCameraStarting = false
 
+    /// Live 进入前用户的模型 ID. 仅当 Live 内强制切 E2B 时才记下,
+    /// 退出 Live 在 onDisappear 切回, 让 service 恢复用户偏好.
+    /// UserDefaults 全程不动 — 用户在 Configurations 的持久化偏好不被 Live 污染.
+    @State private var preLiveModelID: String? = nil
+
     private var accentColor: Color {
         switch liveEngine.state {
         case .idle: return Theme.textTertiary
@@ -32,14 +37,25 @@ struct LiveModeView: View {
         }
     }
 
-    /// 状态提示只在"加载中"阶段显示。加载结束后 (TTS 开始说话 = 加载完成),
-    /// statusMessage 被清空, 这里返回 nil, UI 整块隐藏。
-    /// 原则: 能用语音 (TTS 说"我在听") 和 Orb 状态 (暗→亮) 表达的, 就不用文字.
+    /// 基于 engine.state 的状态文字. 对齐原始设计 (6d0b310) ——
+    /// "正在准备 Live" 特例放在 switch 之前, 覆盖任何 state 字面;
+    /// 因为 engine.start() 启动瞬间就把 state 设成 .listening, 加载期间
+    /// 这个特例是唯一能显示加载字面的路径.
+    ///
+    /// 相对原始版本两处增量 (都是你明确要求过的):
+    ///   1. .idle 分支不再显示 "LIVE 未启动" (返回 nil)
+    ///   2. "正在准备" 改叫 "正在加载"
     private var headline: String? {
         if liveEngine.statusMessage == "正在准备 Live" {
             return "正在加载"
         }
-        return nil
+        switch liveEngine.state {
+        case .idle:       return nil
+        case .listening:  return "我在听"
+        case .recording:  return "正在听你说"
+        case .processing: return "正在理解"
+        case .speaking:   return "正在回答"
+        }
     }
 
     private var liveIconName: String {
@@ -88,6 +104,19 @@ struct LiveModeView: View {
                 #endif
             }
 
+            // ── 加载蒙版 (Orb 之上、UI 之下) ──
+            // Orb 本身永远用完整 active 参数渲染金色 (shader 一次编完, 0 race).
+            // 用 SwiftUI 叠一层深黑完全遮住, 加载完 (statusMessage 被 engine 清空)
+            // easeOut 淡出 —— 视觉效果就是 "黑 → 金" 过度, 和 shader 零耦合.
+            // 相机模式下不蒙, 那时 Orb 已经被相机画面替换.
+            if !isCameraEnabled {
+                Color.black
+                    .opacity(liveEngine.statusMessage == "正在准备 Live" ? 0.85 : 0)
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+                    .animation(.easeOut(duration: 0.6), value: liveEngine.statusMessage)
+            }
+
             // ── 前景 UI 层 ──
             VStack(spacing: 0) {
                 // ── 顶栏 ──
@@ -105,11 +134,26 @@ struct LiveModeView: View {
                     .frame(maxHeight: 140)
 
                 // ── 底部按钮 ──
-                endButton
+                bottomBar
             }
         }
         .preferredColorScheme(.dark)
         .task {
+            // E4B 在 Live 模式下物理超 jetsam (真机 2026-04-16 验证):
+            //   E4B 权重 4 GB + Live runtime (TTS Keqing/AudioIO/VAD/Orb) ~800 MB
+            //   + KV cache prefill 临时 buffer ~500 MB ≈ 5.3 GB baseline,
+            //   推理任意 spike 都突破 jetsam 6144. 不论是否开摄像头.
+            //
+            // 强制切 E2B (~2.5 GB), Live runtime + 推理总 < 4.5 GB, 安全.
+            // 退出 Live (LiveModeView 销毁) 后, 用户原选模型保留在 ChatUI 不丢.
+            // 注意: 这是单向切换 — 我们不在 onDisappear 回切, 因为 Live 退出
+            // 后用户回到 ChatUI 自己选, MLXLocalLLMService 还是 E2B 没问题.
+            // 如果用户想用 E4B 文本, 在 Configurations 里手动切回去即可.
+            if llm.loadedModelID?.contains("e4b") == true {
+                print("[Live] ⚠️ E4B 在 Live 模式内存超限, 自动切到 E2B")
+                _ = llm.selectModel(id: "gemma-4-e2b-it-4bit")
+                try? await llm.load()
+            }
             liveEngine.setup(llm: llm)
             liveEngine.userSystemPrompt = userSystemPrompt
             await liveEngine.start()
@@ -132,6 +176,8 @@ struct LiveModeView: View {
     // MARK: - 顶栏
 
     private var topBar: some View {
+        // 摄像头按钮已移到底部 bottomBar 里, 顶栏只留 X 关闭
+        // (close 和底部"结束"功能等价, 都触发 close() — 给用户右上和左下两个退出入口)
         HStack {
             Button(action: close) {
                 Image(systemName: "xmark")
@@ -143,15 +189,6 @@ struct LiveModeView: View {
             .buttonStyle(.plain)
 
             Spacer()
-
-            Button(action: toggleCamera) {
-                Image(systemName: isCameraEnabled ? "camera.fill" : "camera")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(isCameraEnabled ? Theme.accent : .white)
-                    .frame(width: 40, height: 40)
-                    .background(.ultraThinMaterial, in: Circle())
-            }
-            .buttonStyle(.plain)
         }
         .padding(.horizontal, 20)
         .padding(.top, 12)
@@ -161,18 +198,28 @@ struct LiveModeView: View {
 
     private var statusCapsule: some View {
         // 极简: 无图标, 极细字体 + condensed + tracking = 冷静的科技感
-        // 只在加载阶段 ("正在加载") 显示, 其它时间隐藏 —— 靠 TTS 语音和 Orb 色变表达状态
+        // speaking/processing 时在主文字下方挂一行 "可以直接打断" 提示 (原始行为)
         Group {
             if let text = headline {
-                Text(text)
-                    .font(.system(size: 14, weight: .thin))
-                    .fontWidth(.condensed)
-                    .tracking(2.0)
-                    .foregroundStyle(.white.opacity(0.55))
-                    .transition(.opacity)
+                VStack(spacing: 4) {
+                    Text(text)
+                        .font(.system(size: 14, weight: .thin))
+                        .fontWidth(.condensed)
+                        .tracking(2.0)
+                        .foregroundStyle(.white.opacity(0.55))
+
+                    if liveEngine.state == .speaking || liveEngine.state == .processing {
+                        Text("可以直接打断")
+                            .font(.system(size: 10, weight: .light, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.4))
+                            .transition(.opacity)
+                    }
+                }
+                .transition(.opacity)
             }
         }
         .animation(.easeInOut(duration: 0.3), value: headline)
+        .animation(.easeInOut(duration: 0.3), value: liveEngine.state)
     }
 
     // MARK: - 对话文字区
@@ -285,20 +332,40 @@ struct LiveModeView: View {
 
     // MARK: - 底部按钮
 
-    private var endButton: some View {
-        Button(action: close) {
-            HStack(spacing: 10) {
-                Image(systemName: "phone.down.fill")
-                    .font(.system(size: 14, weight: .bold))
-                Text("结束")
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
+    private var bottomBar: some View {
+        // 双按钮: 左 = 摄像头 toggle, 右 = 结束 Live.
+        // 左按钮承担两个状态 (开/关), 文案随 isCameraEnabled 变化.
+        HStack(spacing: 12) {
+            // 左: 摄像头开关
+            Button(action: toggleCamera) {
+                HStack(spacing: 8) {
+                    Image(systemName: isCameraEnabled ? "camera.fill" : "camera")
+                        .font(.system(size: 14, weight: .bold))
+                    Text(isCameraEnabled ? "关闭摄像头" : "开摄像头")
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                }
+                .foregroundStyle(isCameraEnabled ? Theme.accent : .white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 52)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18))
             }
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity)
-            .frame(height: 52)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18))
+            .buttonStyle(.plain)
+
+            // 右: 结束 Live
+            Button(action: close) {
+                HStack(spacing: 8) {
+                    Image(systemName: "phone.down.fill")
+                        .font(.system(size: 14, weight: .bold))
+                    Text("结束")
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 52)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18))
+            }
+            .buttonStyle(.plain)
         }
-        .buttonStyle(.plain)
         .padding(.horizontal, 20)
         .padding(.bottom, 28)
         .padding(.top, 16)

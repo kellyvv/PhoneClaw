@@ -1,7 +1,16 @@
 import CoreImage
 import Foundation
 import MLXLMCommon
+#if canImport(UIKit)
 import UIKit
+// 跨平台 image 类型别名 —— iOS 真编 UIKit 路径, macOS CLI 自动走 CIImage.
+// AgentEngine 的 processInput(images:) 签名用这个别名, 调用端在各自平台用
+// 自己的自然类型; iOS 二进制行为零改变 (UIImage == PlatformImage).
+typealias PlatformImage = UIImage
+#else
+// macOS CLI: 不测图像输入场景, PlatformImage 只是签名占位.
+typealias PlatformImage = CIImage
+#endif
 
 func log(_ message: String) {
     print(message)
@@ -97,7 +106,8 @@ class AgentEngine {
             SkillInfo(name: $0.id, description: $0.description,
                      displayName: $0.name, icon: $0.icon,
                      type: $0.type, samplePrompt: $0.samplePrompt,
-                     chipPrompt: $0.chipPrompt)
+                     chipPrompt: $0.chipPrompt,
+                     chipLabel: $0.chipLabel)
         }
     }
 
@@ -237,6 +247,13 @@ class AgentEngine {
 
     func reloadModel() {
         let selectedModelID = config.selectedModelID
+        // 持久化用户选择 — 单一入口, 任何 caller (ConfigurationsView.applySettings,
+        // 未来其它切模型路径) 调 reloadModel 后, UserDefaults 自动同步,
+        // 下次 app 启动 ModelConfig.selectedModelID 能恢复正确值.
+        UserDefaults.standard.set(
+            selectedModelID,
+            forKey: ModelConfig.selectedModelDefaultsKey
+        )
         Task { [weak self] in
             guard let self else { return }
             self.isProcessing = false
@@ -263,7 +280,7 @@ class AgentEngine {
 
     func processInput(
         _ text: String,
-        images: [UIImage] = [],
+        images: [PlatformImage] = [],
         audio: AudioCaptureSnapshot? = nil,
         replayImageAttachments: [ChatImageAttachment]? = nil
     ) async {

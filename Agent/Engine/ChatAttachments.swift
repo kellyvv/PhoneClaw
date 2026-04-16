@@ -1,7 +1,9 @@
 import CoreImage
 import Foundation
 import MLXLMCommon
+#if canImport(UIKit)
 import UIKit
+#endif
 
 extension UserInput.Audio {
     static func from(snapshot: AudioCaptureSnapshot) -> UserInput.Audio {
@@ -26,7 +28,11 @@ struct ChatImageAttachment: Identifiable, Codable {
         self.data = data
     }
 
-    init?(image: UIImage) {
+    // 签名用 PlatformImage (iOS = UIImage, macOS CLI = CIImage).
+    // 保证 AgentEngine.processInput 里 images.compactMap(ChatImageAttachment.init(image:))
+    // 在两个平台都能编译; macOS 下实际走 CLI 占位分支 (不测图像场景).
+    init?(image: PlatformImage) {
+        #if canImport(UIKit)
         let prepared = Self.preparedImage(image, maxDimension: Self.storageMaxDimension)
         if let jpeg = prepared.jpegData(compressionQuality: Self.compressionQuality) {
             self.id = UUID()
@@ -37,8 +43,13 @@ struct ChatImageAttachment: Identifiable, Codable {
         } else {
             return nil
         }
+        #else
+        // macOS CLI: harness 不测图像输入, 不应走到这里
+        return nil
+        #endif
     }
 
+    #if canImport(UIKit)
     static func preparedImage(_ image: UIImage, maxDimension: CGFloat = storageMaxDimension) -> UIImage {
         let originalSize = image.size
         let longestSide = max(originalSize.width, originalSize.height)
@@ -64,6 +75,7 @@ struct ChatImageAttachment: Identifiable, Codable {
     var uiImage: UIImage? {
         UIImage(data: data)
     }
+    #endif
 
     var ciImage: CIImage? {
         if let image = CIImage(
@@ -72,6 +84,7 @@ struct ChatImageAttachment: Identifiable, Codable {
         ) {
             return image
         }
+        #if canImport(UIKit)
         guard let uiImage else { return nil }
         if let ciImage = uiImage.ciImage {
             return ciImage
@@ -80,6 +93,10 @@ struct ChatImageAttachment: Identifiable, Codable {
             return CIImage(cgImage: cgImage)
         }
         return CIImage(image: uiImage)
+        #else
+        // macOS CLI: CIImage(data:) 已失败, 没有 UIKit fallback
+        return nil
+        #endif
     }
 }
 

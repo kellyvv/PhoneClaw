@@ -6,7 +6,8 @@ version: "1.0.0"
 icon: bell
 disabled: false
 type: device
-chip_prompt: "帮我创建提醒事项"
+chip_prompt: "提醒我今晚八点发文件"
+chip_label: "创建提醒"
 
 triggers:
   - 提醒

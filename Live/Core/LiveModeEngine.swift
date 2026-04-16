@@ -796,8 +796,24 @@ class LiveModeEngine {
         guard turnPhase == .processing, turnGeneration == gen else { return }
 
         // Step 2: LLM streaming with context
-        // Vision 需要额外 ~500-800MB，headroom 不足时主动跳过图片，避免 jetsam 闪退
-        let visionHeadroomThreshold = 2000 // MB
+        // Vision 实测内存特征 (真机 2026-04-16, E2B + chat path + 单 placeholder):
+        //   Turn 1 vision: footprint 4281 → 4756 (spike +475 MB)
+        //   全程 footprint < 5054, 离 jetsam 6144 还有 1090 MB 余量, 从未崩.
+        //
+        // 阈值按模型分级:
+        //   E2B: 500 MB. baseline ~4.3 GB, headroom 通常 1-2 GB, 阈值 500 让 vision
+        //        几乎总能触发, 同时给 spike +500 留 margin (5644+500=6144=jetsam).
+        //   E4B: 100 MB. baseline ~5.8 GB (权重 4 GB + Live runtime ~1.8 GB),
+        //        headroom 经常只有 200-400 MB. 阈值 500 会一直 skip vision —
+        //        用户感知"看不到图". 100 MB 算激进 (margin 紧), trade-off:
+        //        宁可偶尔崩重启, 也比永远看不到图体验好. 长期解法是 Live + 摄像头
+        //        强制切 E2B, 这里先按真机当前模型做差异阈值.
+        let visionHeadroomThreshold: Int = {
+            if llm.loadedModelID?.contains("e4b") == true {
+                return 100
+            }
+            return 500
+        }()
         let currentHeadroom = MemoryStats.headroomMB
         var frame: CIImage? = nil
         if frameProvider != nil {
@@ -814,25 +830,34 @@ class LiveModeEngine {
                 liveCaption = "内存不足，已跳过画面识别"
             }
         } else {
-            print("[Live] 📷 frameProvider is nil — camera button not pressed, or UI hook-up broken")
+            print("[Live] 📷 frameProvider is nil")
         }
-        // 构建 Chat.Message 数组（复用 AgentEngine 已验证的多模态模式，避免 buildLightweightTextPrompt 的双重模板化问题）
-        let liveHint = "\n[语音模式] 回答会被朗读出来。用纯中文口语回答，根据用户意图决定详略（默认简短，用户明确要求详细/展开时可多说几句），禁止英文和markdown符号。多用中文逗号和句号，方便语音自然分段播放。不要在回答开头自报名字。"
-        var chatMessages: [Chat.Message] = [
-            .system(liveSystemPrompt(hasVision: frame != nil))
-        ]
-        for msg in liveHistory.suffix(maxLiveHistoryDepth) {
-            switch msg.role {
-            case .user:      chatMessages.append(.user(msg.content))
-            case .assistant: chatMessages.append(.assistant(msg.content))
-            default:         break
+
+        // ── 单轮处理: 委托给 LiveTurnProcessor ──────────────────────────
+        //
+        // 原本这里直接调 `llm.generateStream(chat: chatMessages)` 走 chat path,
+        // 但 harness (2026-04-16) 实测在 Gemma 4 上 system role 被 applyChatTemplate
+        // 稀释 — E2B 丢 persona (自称"大型语言模型"), marker 失效, 简短约束失控.
+        //
+        // LiveTurnProcessor 内部走 MLXLocalLLMService.generateStream(rawText:images:)
+        // 的 `.text` 路径, bypass applyChatTemplate. Prompt 由 PromptBuilder
+        // .buildLiveVoicePrompt 手写 <|turn>system/user/model 模板, 模型看到
+        // 完整的 system 指令 (含 marker 规则 + persona), 输出 token 流由
+        // LiveOutputParser 解析成 LiveOutputEvent (marker / speechToken / done /
+        // 预留 skillCall / skillResult).
+        let historyForTurn: [LiveHistoryMessage] = liveHistory
+            .suffix(maxLiveHistoryDepth)
+            .compactMap { msg in
+                switch msg.role {
+                case .user:      return LiveHistoryMessage(role: .user, content: msg.content)
+                case .assistant: return LiveHistoryMessage(role: .assistant, content: msg.content)
+                default:         return nil
+                }
             }
-        }
-        if let frame {
-            chatMessages.append(.user(transcript + liveHint, images: [.ciImage(frame)]))
-        } else {
-            chatMessages.append(.user(transcript + liveHint))
-        }
+
+        let processor = LiveTurnProcessor(llm: llm)
+        processor.historyDepth = maxLiveHistoryDepth
+        processor.enableSkillInvocation = false   // 阶段 1 MVP, 阶段 3 再打开
 
         metrics.llmStartedAt = CFAbsoluteTimeGetCurrent()
         startSynthesisPipeline(generation: gen)
@@ -840,11 +865,17 @@ class LiveModeEngine {
         var rawBuffer = ""
         var sentenceBuffer = ""
         var sanitizer = StreamingSanitizer(mode: .liveVoice)
-        var completionParser = LiveTurnCompletionParser()
         var incompleteType: LiveIncompleteTurnType?
+        var sawCompleteMarker = false    // ✓ marker 是否实际出现, 影响历史拼接前缀
         var isFirstToken = true
         var isFirstSentence = true
-        let stream = llm.generateStream(chat: chatMessages)
+
+        let eventStream = processor.processTurn(
+            transcript: transcript,
+            frame: frame,
+            history: historyForTurn,
+            userSystemPrompt: userSystemPrompt
+        )
 
         do {
             try await withThrowingTaskGroup(of: Void.self) { group in
@@ -852,69 +883,80 @@ class LiveModeEngine {
                     try await Task.sleep(nanoseconds: 15_000_000_000)
                     throw CancellationError()
                 }
-                // 整个 token loop 挂 @MainActor — 每次 `await token` 期间 main actor
-                // 可以处理 SwiftUI 的 body redraw, lastReply 写入后能当帧看到.
-                // 原来把 subtask 丢在后台 actor, @Observable 跨 actor 的 observer
-                // propagation 会被 coalesce, Text view 只在 turn 结束时重绘一次.
-                // 每个 token 处理逻辑 O(几微秒), 不会 block UI.
+                // 整个 event loop 挂 @MainActor — 每次 `await` 期间 main actor
+                // 可以处理 SwiftUI body redraw, lastReply 写入后能当帧看到.
                 group.addTask { @MainActor [weak self] in
                     guard let self else { return }
-                    for try await token in stream {
+                    for try await event in eventStream {
                         guard self.turnPhase == .processing, self.turnGeneration == gen else { break }
 
-                        if isFirstToken {
-                            metrics.llmFirstTokenAt = CFAbsoluteTimeGetCurrent()
-                            isFirstToken = false
-                        }
-                        metrics.tokenCount += 1
-
-                        let parseResult = completionParser.consume(token)
-                        if let detectedIncompleteType = parseResult.incompleteType {
-                            incompleteType = detectedIncompleteType
-                            self.llm?.cancel()
-                            break
-                        }
-
-                        guard !parseResult.speakableText.isEmpty else { continue }
-
-                        rawBuffer += parseResult.speakableText
-                        self.lastReply = OutputSanitizer.sanitizeFinal(rawBuffer, mode: .liveVoice)
-                        let delta = sanitizer.feed(rawBuffer)
-                        guard !delta.isEmpty else { continue }
-
-                        sentenceBuffer += delta
-                        let (sentences, remainder) = self.extractSpeakableSegments(from: sentenceBuffer)
-                        sentenceBuffer = remainder
-
-                        for s in sentences where !s.isEmpty {
-                            guard self.turnPhase == .processing, self.turnGeneration == gen else { break }
-                            if isFirstSentence {
-                                metrics.firstSentenceAt = CFAbsoluteTimeGetCurrent()
-                                isFirstSentence = false
+                        switch event {
+                        case .marker(let marker):
+                            if isFirstToken {
+                                metrics.llmFirstTokenAt = CFAbsoluteTimeGetCurrent()
+                                isFirstToken = false
                             }
-                            self.synthesisPipeline?.yield(s)
+                            switch marker {
+                            case .complete:
+                                sawCompleteMarker = true   // ✓, 继续接 speechToken 作为正常回答
+                            case .interrupted:
+                                incompleteType = .short
+                                self.llm?.cancel()
+                            case .thinking:
+                                incompleteType = .long
+                                self.llm?.cancel()
+                            }
+
+                        case .speechToken(let delta):
+                            if isFirstToken {
+                                metrics.llmFirstTokenAt = CFAbsoluteTimeGetCurrent()
+                                isFirstToken = false
+                            }
+                            metrics.tokenCount += 1
+                            rawBuffer += delta
+                            self.lastReply = OutputSanitizer.sanitizeFinal(rawBuffer, mode: .liveVoice)
+                            let sanitized = sanitizer.feed(rawBuffer)
+                            guard !sanitized.isEmpty else { continue }
+
+                            sentenceBuffer += sanitized
+                            let (sentences, remainder) = self.extractSpeakableSegments(from: sentenceBuffer)
+                            sentenceBuffer = remainder
+
+                            for s in sentences where !s.isEmpty {
+                                guard self.turnPhase == .processing, self.turnGeneration == gen else { break }
+                                if isFirstSentence {
+                                    metrics.firstSentenceAt = CFAbsoluteTimeGetCurrent()
+                                    isFirstSentence = false
+                                }
+                                self.synthesisPipeline?.yield(s)
+                            }
+
+                        case .skillCall(let call):
+                            // 阶段 1 MVP 不应触发 (enableSkillInvocation=false).
+                            // 但 SYSPROMPT.md 里有 <tool_call> 调用格式示例, 偶尔模型
+                            // 会自发 invoke. PromptBuilder.defaultLiveSkillSuppressionInstruction
+                            // 已经在 system prompt 末尾强压制, 但小模型有时仍漏网.
+                            // Fallback: 朗读简短歉意, 不进 history.
+                            // 阶段 3 实装: 这里调 toolRegistry.execute(call), 再启第二轮 LLM 总结.
+                            print("[Live] ⚠️ unexpected tool_call in MVP: \(call.name)")
+                            let fallback = processor.fallbackUtterance
+                            self.lastReply = fallback
+                            sentenceBuffer = ""
+                            rawBuffer = fallback   // 防 history append 时 lastReply 是空导致 history 不记 turn
+                            self.synthesisPipeline?.yield(fallback)
+                            self.llm?.cancel()
+
+                        case .skillResult(let summary):
+                            // 同上, 阶段 3 才会触发 — 第二轮 LLM 对工具结果的口语总结.
+                            print("[Live] ⚠️ unexpected skill result: \(summary.prefix(40))")
+
+                        case .done:
+                            break
                         }
                     }
 
+                    // 流结束, flush sanitizer 残余 (只在完整轮 — incomplete turn 不朗读)
                     if self.turnPhase == .processing, self.turnGeneration == gen, incompleteType == nil {
-                        let markerFallback = completionParser.finalizeWithoutMarker()
-                        if !markerFallback.isEmpty {
-                            rawBuffer += markerFallback
-                            let delta = sanitizer.feed(rawBuffer)
-                            if !delta.isEmpty {
-                                sentenceBuffer += delta
-                                let (sentences, remainder) = self.extractSpeakableSegments(from: sentenceBuffer)
-                                sentenceBuffer = remainder
-                                for s in sentences where !s.isEmpty {
-                                    if isFirstSentence {
-                                        metrics.firstSentenceAt = CFAbsoluteTimeGetCurrent()
-                                        isFirstSentence = false
-                                    }
-                                    self.synthesisPipeline?.yield(s)
-                                }
-                            }
-                        }
-
                         let remaining = sanitizer.finalize(rawBuffer)
                         sentenceBuffer += remaining
                         let trimmed = sentenceBuffer.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -993,7 +1035,7 @@ class LiveModeEngine {
         // Only commit to history if turn completed without interruption
         if !transcript.isEmpty && !lastReply.isEmpty {
             appendLiveHistory(role: .user, content: transcript)
-            let assistantHistory = completionParser.sawCompleteMarker ? "✓ \(lastReply)" : lastReply
+            let assistantHistory = sawCompleteMarker ? "✓ \(lastReply)" : lastReply
             appendLiveHistory(role: .assistant, content: assistantHistory)
         }
 

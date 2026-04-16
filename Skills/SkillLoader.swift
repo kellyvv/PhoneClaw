@@ -46,10 +46,15 @@ struct SkillMetadata {
     let triggers: [String]
     let allowedTools: [String]
     let examples: [SkillExample]
-    /// 欢迎页快捷 chip 的文字 = 所见即所发。
-    /// 来源 SKILL.md 的 `chip_prompt` 字段 (可选)。
-    /// 不声明的 skill 不会出现在 chip 列表里。
+    /// 欢迎页快捷 chip 的发送内容. 来源 SKILL.md 的 `chip_prompt` 字段 (可选).
+    /// 不声明的 skill 不会出现在 chip 列表里.
     let chipPrompt: String?
+
+    /// 欢迎页快捷 chip 的 UI 显示短 label. 来源 SKILL.md 的 `chip_label` 字段 (可选).
+    /// 缺省时 UI 直接显示 chipPrompt 全文 (向后兼容旧 skill).
+    /// Decoupled 设计: UI 短 label ("创建日程") + 点击发送长 prompt
+    /// ("帮我创建明天下午两点的产品评审会议"), 节约 chip 横向空间, 同时给 LLM 完整意图.
+    let chipLabel: String?
 
     var displayName: String {
         if Locale.preferredLanguages.contains(where: { $0.lowercased().hasPrefix("zh") }),
@@ -122,7 +127,8 @@ enum SkillLoader {
             triggers: frontmatter["triggers"] as? [String] ?? [],
             allowedTools: frontmatter["allowed-tools"] as? [String] ?? [],
             examples: parseExamples(frontmatter["examples"]),
-            chipPrompt: (frontmatter["chip_prompt"] as? String)?.trimmingCharacters(in: .whitespaces)
+            chipPrompt: (frontmatter["chip_prompt"] as? String)?.trimmingCharacters(in: .whitespaces),
+            chipLabel: (frontmatter["chip_label"] as? String)?.trimmingCharacters(in: .whitespaces)
         )
 
         return SkillDefinition(
