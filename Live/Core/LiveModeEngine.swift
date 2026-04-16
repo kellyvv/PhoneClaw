@@ -789,10 +789,18 @@ class LiveModeEngine {
         if frameProvider != nil {
             if currentHeadroom >= visionHeadroomThreshold {
                 frame = frameProvider?()
+                if frame == nil {
+                    print("[Live] 📷 frameProvider returned nil (camera not ready?)")
+                } else {
+                    let ext = frame!.extent
+                    print("[Live] 📷 captured frame \(Int(ext.width))x\(Int(ext.height)), headroom=\(currentHeadroom) MB")
+                }
             } else {
                 print("[Live] ⚠️ Skipping camera frame — headroom \(currentHeadroom) MB < \(visionHeadroomThreshold) MB threshold")
                 liveCaption = "内存不足，已跳过画面识别"
             }
+        } else {
+            print("[Live] 📷 frameProvider is nil — camera button not pressed, or UI hook-up broken")
         }
         var liveHint = "\n[语音模式] 回答会被朗读出来。用纯中文口语回答，根据用户意图决定详略（默认简短，用户明确要求详细/展开时可多说几句），禁止英文和markdown符号。多用中文逗号和句号，方便语音自然分段播放。不要在回答开头自报名字。"
         if frame != nil {
