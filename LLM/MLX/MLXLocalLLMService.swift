@@ -169,11 +169,14 @@ public class MLXLocalLLMService: LLMEngine {
            let option = Self.availableModels.first(where: { $0.id == selectedModelID }) {
             self.selectedModel = option
         }
-        // F3 (2026-04-17): R2 prompt 改为 R1 conversation continuation 形式后,
-        // 模型物理上看到 "我刚 emit 了 tool_call → tool_result → 继续生成"
-        // 训练数据格式, 不再 5 轮重复 emit tool_call. KV reuse 对 E2B 也安全.
-        // baseline 数据 E4B 6% hit, F3 目标 99%+, E2B 从 0% 拉到同等档位.
-        self.kvReuseEnabled = true
+        // F3 + KV reuse 对 E4B 工作良好 (cache hit 89-96%, 真机不再闪崩),
+        // 但 E2B + F3 + KV reuse 组合实测**所有 R2 follow-up 0 token 空输出**
+        // (真机 2026-04-17 验证), 用户感知是助理"沉默". E4B 同 prompt 正常.
+        // 推测: E2B 在 KV cache 复用 R1 prefix 时, 模型状态包含 R1 end-of-turn
+        // 信号, 跟 F3 follow-up 的 prompt 交互导致提前 emit EOS. 还需深查.
+        // 暂时 E2B 仍关 KV reuse, F3 prompt 结构对 E2B 仍有效 (R2 lean follow-up
+        // 替代成 continuation 形式的好处保留, 只是没 cache 加速).
+        self.kvReuseEnabled = !self.selectedModel.id.contains("e2b")
         self.stats.backend = "mlx-gpu"
         configureLifecycleObservers()
         cleanupStalePartialDirectories()

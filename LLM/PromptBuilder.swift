@@ -410,16 +410,15 @@ struct PromptBuilder {
     ) -> String {
         // R1 prompt 末尾是 "<|turn>model\n" — caller 已经 emit r1Output 之后, 我们
         // 补 turn 关闭 + tool_result user turn + 新的 model turn 起手.
+        //
+        // Prompt 设计**极简** (Anthropic tool_use 风格): 模型见过这种训练格式
+        // (assistant tool_call → user tool_result → assistant text), 自然知道接下来
+        // 该用文本回答. 长 anti-repeat / "严禁 X / 不要 Y / 不能 Z" 指令链实测让 E2B
+        // 直接 emit EOS (0 token 空回复, 真机验证).
         return r1Prompt + r1Output + """
         <turn|>
         <|turn>user
-        工具 \(toolName) 已执行完成, 返回结果:
         \(toolResultSummary)
-
-        【严禁】不要再输出 `<tool_call>` 任何形式. 工具已经执行过, 你看到的就是最终结果.
-
-        用一句简短中文告诉我结果. 不反问. 不提 tool 名 / Skill / status / arguments 等字段.
-        不输出 Markdown / JSON. 不能空白.
         <turn|>
         <|turn>model
 

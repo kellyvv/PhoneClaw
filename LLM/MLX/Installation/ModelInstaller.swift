@@ -24,10 +24,11 @@ extension MLXLocalLLMService {
         //                    (真机日志: 4 轮重复 calendar-create-event,
         //                    E4B 同 prompt 1 轮 tool + 1 轮总结正常).
         //
-        // F3 (2026-04-17): R2 改为 R1 conversation continuation 形式后, 模型物理上
-        // 看到 "我刚 emit tool_call → tool_result → 继续生成" 训练格式, 不再 5 轮
-        // 重复. KV reuse 对 E2B 也安全启用. 历史"E2B 关 KV reuse"策略已废弃.
-        kvReuseEnabled = true
+        // F3 + KV reuse: E4B 验证 OK (cache hit 89-96%, 真机不闪崩); E2B 实测
+        // R2 follow-up 0 token 空输出 (推测 KV cache 复用 R1 prefix 时模型状态
+        // 包含 end-of-turn 信号, F3 follow-up prompt 交互导致提前 EOS).
+        // E2B 暂关 KV reuse, F3 prompt 结构本身仍生效.
+        kvReuseEnabled = !option.id.contains("e2b")
 
         statusMessage = isLoaded
             ? "已选择 \(option.displayName)，准备重新加载..."
