@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # PhoneClaw pre-commit hook — harness 守门
 #
-# 当 staged 文件触碰到 agent 框架/skill/prompt/router 时, 自动跑 CLI harness (E4B)。
+# 当 staged 文件触碰到 agent 框架/skill/prompt/router 时, 自动跑 CLI harness
+# **两个模型都跑 (E2B + E4B)** — 用户部署默认只有 E2B, E4B-only 验证等于没验证.
 # 不绿拒绝 commit。可用 `git commit --no-verify` 跳过 (慎用)。
 #
 # 安装: git config core.hooksPath .githooks
@@ -45,27 +46,33 @@ echo "[pre-commit] 触发 harness (守门路径: $MATCHED)"
 REPO_ROOT=$(git rev-parse --show-toplevel)
 cd "$REPO_ROOT/PhoneClawCLI"
 
-# 只跑 E4B — E2B 多轮场景会 skip, routing 都 17/17 跑太慢没意义
-if ! ./run.sh test e4b > /tmp/phoneclaw-precommit.log 2>&1; then
-    echo ""
-    echo "❌ harness 运行失败 (build 挂了?):"
-    tail -30 /tmp/phoneclaw-precommit.log
-    echo ""
-    echo "日志完整路径: /tmp/phoneclaw-precommit.log"
-    exit 1
-fi
+# 跑两个模型 — E2B 是默认部署模型, E4B 是升级选项, 任何一个红就拒绝
+FAILED_MODELS=()
+for M in e2b e4b; do
+    LOG="/tmp/phoneclaw-precommit-${M}.log"
+    echo "[pre-commit] 跑 ${M} ..."
+    if ! ./run.sh test "${M}" > "${LOG}" 2>&1; then
+        echo "❌ ${M} harness 运行失败 (build 挂了?):"
+        tail -20 "${LOG}"
+        FAILED_MODELS+=("${M}")
+        continue
+    fi
+    if ! grep -q "ALL GREEN" "${LOG}"; then
+        echo "❌ ${M} harness 报红:"
+        grep -E "✗ FAIL|conversation:|routing eval" "${LOG}"
+        FAILED_MODELS+=("${M}")
+    else
+        echo "[pre-commit] ✅ ${M} 全绿"
+    fi
+done
 
-# 检查是否 ALL GREEN
-if ! grep -q "ALL GREEN" /tmp/phoneclaw-precommit.log; then
+if [[ ${#FAILED_MODELS[@]} -gt 0 ]]; then
     echo ""
-    echo "❌ harness 报红 — commit 被阻止"
-    echo ""
-    grep -E "✗ FAIL|conversation:|routing eval" /tmp/phoneclaw-precommit.log
-    echo ""
-    echo "完整日志: /tmp/phoneclaw-precommit.log"
+    echo "❌ 以下模型失败: ${FAILED_MODELS[*]}"
+    echo "日志: /tmp/phoneclaw-precommit-{e2b,e4b}.log"
     echo "紧急跳过: PHONECLAW_SKIP_HARNESS=1 git commit ..."
     exit 1
 fi
 
-echo "[pre-commit] ✅ harness 全绿, commit 放行"
+echo "[pre-commit] ✅ E2B + E4B 全绿, commit 放行"
 exit 0
