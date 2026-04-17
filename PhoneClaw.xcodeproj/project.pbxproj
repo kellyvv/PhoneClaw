@@ -949,7 +949,7 @@
 				CODE_SIGN_ENTITLEMENTS = PhoneClaw.entitlements;
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = ZP4QNJ35TH;
+				DEVELOPMENT_TEAM = "";
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(SRCROOT)/Frameworks/onnxruntime.xcframework/Headers",
@@ -977,7 +977,7 @@
 				CODE_SIGN_ENTITLEMENTS = PhoneClaw.entitlements;
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = ZP4QNJ35TH;
+				DEVELOPMENT_TEAM = "";
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(SRCROOT)/Frameworks/onnxruntime.xcframework/Headers",

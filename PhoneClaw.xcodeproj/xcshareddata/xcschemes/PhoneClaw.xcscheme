@@ -21,20 +21,6 @@
                ReferencedContainer = "container:PhoneClaw.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
-         <BuildActionEntry
-            buildForTesting = "YES"
-            buildForRunning = "NO"
-            buildForProfiling = "NO"
-            buildForArchiving = "NO"
-            buildForAnalyzing = "NO">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "AA6000000000000000000401"
-               BuildableName = "PhoneClawTests.xctest"
-               BlueprintName = "PhoneClawTests"
-               ReferencedContainer = "container:PhoneClaw.xcodeproj">
-            </BuildableReference>
-         </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction
@@ -42,29 +28,7 @@
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       shouldUseLaunchSchemeArgsEnv = "YES"
-      shouldAutocreateTestPlan = "NO">
-      <Testables>
-         <TestableReference
-            skipped = "NO"
-            parallelizable = "YES">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "AA6000000000000000000401"
-               BuildableName = "PhoneClawTests.xctest"
-               BlueprintName = "PhoneClawTests"
-               ReferencedContainer = "container:PhoneClaw.xcodeproj">
-            </BuildableReference>
-         </TestableReference>
-      </Testables>
-      <MacroExpansion>
-         <BuildableReference
-            BuildableIdentifier = "primary"
-            BlueprintIdentifier = "DC4DB8CD35E6335C6F8AC3D7"
-            BuildableName = "PhoneClaw.app"
-            BlueprintName = "PhoneClaw"
-            ReferencedContainer = "container:PhoneClaw.xcodeproj">
-         </BuildableReference>
-      </MacroExpansion>
+      shouldAutocreateTestPlan = "YES">
    </TestAction>
    <LaunchAction
       buildConfiguration = "Debug"
@@ -77,13 +41,6 @@
       debugServiceExtension = "internal"
       allowLocationSimulation = "YES"
       queueDebuggingEnableBacktraceRecording = "Yes">
-      <EnvironmentVariables>
-         <EnvironmentVariable
-            key = "PHONECLAW_RUN_LIVE_COMPONENT_TEST"
-            value = "1"
-            isEnabled = "NO">
-         </EnvironmentVariable>
-      </EnvironmentVariables>
       <BuildableProductRunnable
          runnableDebuggingMode = "0">
          <BuildableReference
