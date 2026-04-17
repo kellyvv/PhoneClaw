@@ -765,30 +765,36 @@ struct PromptBuilder {
     ) -> String {
         let systemBlock = extractSystemBlock(from: originalPrompt)
 
-        let completedBlock: String
+        // 关键: prior step 结果用三引号包裹明确隔离, 让 SKILL (例如 translate) 按
+        // 自己规则准确识别"源文本". 之前 prior result 跟 user 原问题混在一起,
+        // model 错把 user 原话当源文本翻译了 — 真机 E4B "读剪贴板, 翻译成英文"
+        // 输出 "Read clipboard, translate to English." 复述用户原话, 没翻译剪贴板内容.
+        let priorResultBlock: String
         if completedStepSummary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            completedBlock = ""
+            priorResultBlock = ""
         } else {
-            completedBlock = """
+            priorResultBlock = """
 
-                已完成步骤的结果 (按需引用):
+                上游步骤的输出 (这是本步的输入数据):
+                \"\"\"
                 \(completedStepSummary)
+                \"\"\"
 
                 """
         }
 
         return systemBlock + extractHistoryBlock(from: originalPrompt) + """
         <|turn>user
-        用户原问题:
-        \(userQuestion)\(imagePromptSuffix(count: currentImageCount))
-
-        当前步骤目标: \(stepIntent)
-
-        要求按下面 Skill 指令处理 (这一步没有 tool 可调, 你直接给最终文本结果):
+        本步目标 (Skill 任务): \(stepIntent)
+        \(priorResultBlock)
+        按下面 Skill 指令处理上述输入数据 (这一步没有 tool 可调, 直接输出最终文本结果):
 
         \(skillInstructions)
-        \(completedBlock)
-        请直接输出最终结果文本, 不要 emit `<tool_call>`, 不要解释思路, 不要 Markdown 代码块.
+
+        重要:
+        - 输入数据是上面三引号里的内容, 不是用户原问.
+        - 直接输出最终文本结果, 不复述输入, 不解释过程.
+        - 不要 emit `<tool_call>`, 不要 Markdown 代码块.
         <turn|>
         <|turn>model
 
