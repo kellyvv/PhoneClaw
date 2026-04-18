@@ -166,7 +166,6 @@ struct ContentView: View {
                                 isThinkingExpanded: expandedThoughts.contains(block.id),
                                 onToggle: { toggleExpand($0) },
                                 onToggleThinking: { toggleThinking(block.id) },
-                                renderMarkdown: !(item.id == displayItems.last?.id && engine.isProcessing),
                                 onRetry: canRetry(item: item, block: block)
                                     ? { Task { await engine.retryLastResponse() } }
                                     : nil

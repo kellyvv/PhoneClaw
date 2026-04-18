@@ -9,7 +9,6 @@ struct AIResponseView: View {
     let isThinkingExpanded: Bool
     let onToggle: (UUID) -> Void
     let onToggleThinking: () -> Void
-    let renderMarkdown: Bool
     let onRetry: (() -> Void)?
 
     private var hasSkill: Bool { !block.skills.isEmpty }
@@ -54,27 +53,15 @@ struct AIResponseView: View {
                 }
 
                 if let text = block.responseText {
-                    if renderMarkdown {
-                        Markdown(text)
-                            .markdownTextStyle {
-                                FontSize(15)
-                                ForegroundColor(Theme.textPrimary)
-                            }
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(.leading, 4)
-                    } else {
-                        Text(Self.inlineMarkdown(text))
-                            .font(.system(size: 15))
-                            .foregroundStyle(Theme.textPrimary)
-                            .textSelection(.enabled)
-                            .lineSpacing(5)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(.leading, 4)
-                            .animation(nil, value: text)
-                    }
+                    Markdown(text)
+                        .markdownTextStyle {
+                            FontSize(15)
+                            ForegroundColor(Theme.textPrimary)
+                        }
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.leading, 4)
                 }
 
                 if let onRetry, !block.isThinking {
@@ -98,12 +85,6 @@ struct AIResponseView: View {
         }
     }
 
-    private static func inlineMarkdown(_ text: String) -> AttributedString {
-        (try? AttributedString(
-            markdown: text,
-            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        )) ?? AttributedString(text)
-    }
 }
 
 // MARK: - Thinking Card
