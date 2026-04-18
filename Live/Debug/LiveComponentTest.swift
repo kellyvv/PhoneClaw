@@ -70,13 +70,13 @@ enum LiveComponentTest {
     }
 
     /// E2E Live loop: VAD → Gemma 4 ASR+LLM → TTS, 30 秒测试
-    static func runLiveLoop(llm: MLXLocalLLMService) async {
+    static func runLiveLoop(inference: InferenceService) async {
         print("[LiveTest] ════════════════════════════════════")
         print("[LiveTest] Live Loop E2E Test (30 seconds)")
         print("[LiveTest] ════════════════════════════════════")
 
         let engine = LiveModeEngine()
-        engine.setup(llm: llm)
+        engine.setup(inference: inference)
         await engine.start()
 
         // Run for 30 seconds

@@ -1,21 +1,8 @@
 import CoreImage
 import Foundation
-import MLXLMCommon
 #if canImport(UIKit)
 import UIKit
 #endif
-
-extension UserInput.Audio {
-    static func from(snapshot: AudioCaptureSnapshot) -> UserInput.Audio {
-        .pcm(
-            .init(
-                samples: snapshot.pcm,
-                sampleRate: snapshot.sampleRate,
-                channelCount: snapshot.channelCount
-            )
-        )
-    }
-}
 
 struct ChatImageAttachment: Identifiable, Codable {
     let id: UUID

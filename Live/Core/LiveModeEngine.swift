@@ -1,7 +1,6 @@
 import Foundation
 import AVFoundation
 import CoreImage
-import MLXLMCommon
 
 enum LiveIncompleteTurnType: Equatable {
     case short
@@ -150,7 +149,7 @@ class LiveModeEngine {
     private let asr = ASRService()
     private var audioIO: LiveAudioIO?
     private var ttsQueue: AudioPlaybackQueue?
-    private weak var llm: MLXLocalLLMService?
+    private weak var inference: (any InferenceService)?
 
     private var turnPhase: TurnPhase = .inactive
     private var turnGeneration: UInt64 = 0
@@ -199,8 +198,8 @@ class LiveModeEngine {
     /// 摄像头帧提供器，由 UI 层注入。Engine 不直接依赖 LiveCameraService。
     var frameProvider: (() -> CIImage?)?
 
-    func setup(llm: MLXLocalLLMService) {
-        self.llm = llm
+    func setup(inference: InferenceService) {
+        self.inference = inference
     }
 
     /// 调用方注入的用户 SYSPROMPT.md 内容（来自 AgentEngine.config.systemPrompt）。
@@ -375,17 +374,16 @@ class LiveModeEngine {
         // Kick off LLM shader warmup concurrently with TTS greeting.
         // Only for small models (E2B) where warmup is safe; E4B skips due to OOM risk.
         let warmupTask: Task<Void, Never>? = {
-            guard let llm = self.llm,
-                  llm.loadedModelID?.contains("e2b") == true else { return nil }
+            guard let inference = self.inference, inference.isLoaded else { return nil }
             return Task {
                 let t0 = CFAbsoluteTimeGetCurrent()
-                let stream = llm.generateStream(prompt: "你好")
+                let stream = inference.generate(prompt: "你好")
                 do {
                     for try await _ in stream {
-                        break  // 1 token is enough to compile shaders
+                        break  // 1 token is enough to warm up
                     }
                 } catch {}
-                llm.cancel()
+                inference.cancel()
                 let ms = (CFAbsoluteTimeGetCurrent() - t0) * 1000
                 print("[Live] ⚡ LLM warmup done in \(Int(ms))ms")
             }
@@ -655,7 +653,7 @@ class LiveModeEngine {
         for type: LiveIncompleteTurnType,
         transcript: String
     ) async -> (spokenText: String, historyText: String) {
-        guard let llm, llm.isLoaded else {
+        guard let inference, inference.isLoaded else {
             let fallback = fallbackIncompleteTurnFollowUp(for: type)
             return (fallback, "✓ \(fallback)")
         }
@@ -676,10 +674,10 @@ class LiveModeEngine {
 
         var text = ""
         do {
-            for try await token in llm.generateStream(prompt: prompt, images: [], audios: []) {
+            for try await token in inference.generate(prompt: prompt) {
                 text += token
                 if text.count >= 48 {
-                    llm.cancel()
+                    inference.cancel()
                     break
                 }
             }
@@ -769,7 +767,7 @@ class LiveModeEngine {
 
         await ttsQueue?.reset()
 
-        guard let llm, llm.isLoaded else {
+        guard let inference, inference.isLoaded else {
             print("[Live] ❌ LLM not loaded")
             guard turnPhase == .processing, turnGeneration == gen else { return }
             turnPhase = .listening
@@ -817,12 +815,7 @@ class LiveModeEngine {
         //        用户感知"看不到图". 100 MB 算激进 (margin 紧), trade-off:
         //        宁可偶尔崩重启, 也比永远看不到图体验好. 长期解法是 Live + 摄像头
         //        强制切 E2B, 这里先按真机当前模型做差异阈值.
-        let visionHeadroomThreshold: Int = {
-            if llm.loadedModelID?.contains("e4b") == true {
-                return 100
-            }
-            return 500
-        }()
+        let visionHeadroomThreshold: Int = 500  // TODO: per-model tuning via catalog
         let currentHeadroom = MemoryStats.headroomMB
         var frame: CIImage? = nil
         if frameProvider != nil {
@@ -848,7 +841,7 @@ class LiveModeEngine {
         // 但 harness (2026-04-16) 实测在 Gemma 4 上 system role 被 applyChatTemplate
         // 稀释 — E2B 丢 persona (自称"大型语言模型"), marker 失效, 简短约束失控.
         //
-        // LiveTurnProcessor 内部走 MLXLocalLLMService.generateStream(rawText:images:)
+        // LiveTurnProcessor 内部走 InferenceService.generateRaw(text:images:)
         // 的 `.text` 路径, bypass applyChatTemplate. Prompt 由 PromptBuilder
         // .buildLiveVoicePrompt 手写 <|turn>system/user/model 模板, 模型看到
         // 完整的 system 指令 (含 marker 规则 + persona), 输出 token 流由
@@ -864,7 +857,7 @@ class LiveModeEngine {
                 }
             }
 
-        let processor = LiveTurnProcessor(llm: llm)
+        let processor = LiveTurnProcessor(inference: inference)
         processor.historyDepth = maxLiveHistoryDepth
         processor.enableSkillInvocation = false   // 阶段 1 MVP, 阶段 3 再打开
 

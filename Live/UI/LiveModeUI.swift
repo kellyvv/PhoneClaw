@@ -11,7 +11,8 @@ import UIKit
 struct LiveModeView: View {
     @Binding var isPresented: Bool
 
-    let llm: MLXLocalLLMService
+    let inference: InferenceService
+    let catalog: ModelCatalog
     /// 用户在 SYSPROMPT.md 编辑的 system prompt（来自 AgentEngine.config.systemPrompt）。
     /// 透传到 LiveModeEngine，与 live voice 强约束拼接成完整 system prompt。
     let userSystemPrompt: String?
@@ -147,14 +148,16 @@ struct LiveModeView: View {
             // 强制切 E2B (~2.5 GB), Live runtime + 推理总 < 4.5 GB, 安全.
             // 退出 Live (LiveModeView 销毁) 后, 用户原选模型保留在 ChatUI 不丢.
             // 注意: 这是单向切换 — 我们不在 onDisappear 回切, 因为 Live 退出
-            // 后用户回到 ChatUI 自己选, MLXLocalLLMService 还是 E2B 没问题.
+            // 后用户回到 ChatUI 自己选, InferenceService 还是 E2B 没问题.
             // 如果用户想用 E4B 文本, 在 Configurations 里手动切回去即可.
-            if llm.loadedModelID?.contains("e4b") == true {
+            // E4B 在 Live 模式下物理超 jetsam, 强制切 E2B.
+            if catalog.loadedModel?.id.contains("e4b") == true {
                 print("[Live] ⚠️ E4B 在 Live 模式内存超限, 自动切到 E2B")
-                _ = llm.selectModel(id: "gemma-4-e2b-it-4bit")
-                try? await llm.load()
+                _ = catalog.select(modelID: "gemma-4-e2b-it-litert")
+                inference.unload()
+                try? await inference.load(modelID: "gemma-4-e2b-it-litert")
             }
-            liveEngine.setup(llm: llm)
+            liveEngine.setup(inference: inference)
             liveEngine.userSystemPrompt = userSystemPrompt
             await liveEngine.start()
         }
