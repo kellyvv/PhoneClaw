@@ -651,7 +651,7 @@ public class MLXLocalLLMService: LLMEngine {
                         "[MEM] multimodal runtime budget — model=\(currentModel.displayName), "
                             + "headroom=\(headroom) MB, "
                             + "imageSoftTokenCap=\(runtimeBudget.imageSoftTokenCap.map(String.init) ?? "n/a"), "
-                            + "maxOutputTokens=\(runtimeBudget.maxOutputTokens), "
+                            + "outputCap=dynamic(headroomFloor=\(profile.headroomFloorMB)MB), "
                             + "audio=\(!input.audios.isEmpty ? 1 : 0)"
                     )
                 }
@@ -668,12 +668,11 @@ public class MLXLocalLLMService: LLMEngine {
                     Gemma4Processor.setRuntimeImageSoftTokenCap(nil)
                 }
                 let effectiveMaxOutputTokens: Int = {
-                    let multimodalCap = isMultimodal
-                        ? runtimeBudget?.maxOutputTokens ?? profile.multimodalOutputTiers.last?.maxOutputTokens ?? maxOutputTokens
-                        : maxOutputTokens
+                    // 多模态不再有独立的静态 token 上限 — 完全依赖 headroomFloorMB 运行时检测。
+                    // 只保留 thinking/text budget 的公式约束和 UI 滑块上限。
                     let thinkingCap = thinkingBudget?.maxOutputTokens ?? maxOutputTokens
                     let textCap = textBudget?.maxOutputTokens ?? maxOutputTokens
-                    return min(maxOutputTokens, multimodalCap, thinkingCap, textCap)
+                    return min(maxOutputTokens, thinkingCap, textCap)
                 }()
                 var resolvedMaxOutputTokens = effectiveMaxOutputTokens
 
@@ -683,6 +682,8 @@ public class MLXLocalLLMService: LLMEngine {
                 var firstTokenTime: Double? = nil
                 var tokenCount = 0
                 var hitTokenCap = false
+                var hitMemoryFloor = false
+                let headroomFloor = profile.headroomFloorMB
 
                 let (fp, _) = MemoryStats.footprintMB()
                 let mlxMemory = Self.isSimulatorRuntime ? "simulator-skip" : "\(MLX.GPU.activeMemory / 1_048_576) MB"
@@ -793,6 +794,19 @@ public class MLXLocalLLMService: LLMEngine {
                                 hitTokenCap = true
                                 return .stop
                             }
+
+                            // 实时内存地板检测: 每 32 token 查一次 headroom,
+                            // 低于地板值立即停止, 防止 jetsam 闪崩。
+                            // 每个 token 都查太贵 (task_info syscall), 32 是合理间隔。
+                            if tokens.count % 32 == 0 {
+                                let currentHeadroom = MemoryStats.headroomMB
+                                if currentHeadroom < headroomFloor {
+                                    print("[MEM] ⚠️ headroom \(currentHeadroom) MB < floor \(headroomFloor) MB at token \(tokens.count), stopping")
+                                    hitMemoryFloor = true
+                                    return .stop
+                                }
+                            }
+
                             return .more
                         }
 
@@ -828,12 +842,19 @@ public class MLXLocalLLMService: LLMEngine {
 
                     // If we hit the token cap mid-sentence, append a visible notice.
                     // This makes truncation explicit rather than silently dropping content.
-                    if hitTokenCap {
+                    if hitTokenCap || hitMemoryFloor {
                         let isChinese = Locale.preferredLanguages.contains { $0.hasPrefix("zh") }
-                        let modeLabel = isChinese
-                            ? (thinkingEnabled ? "思考" : "输出")
-                            : (thinkingEnabled ? "Thinking" : "Output")
-                        continuation.yield("\n\n> ⚠️ \(modeLabel)已达单次输出上限（\(resolvedMaxOutputTokens) tokens），内容可能不完整。")
+                        if hitMemoryFloor {
+                            let msg = isChinese
+                                ? "\n\n> ⚠️ 内存不足，已在 \(tokenCount) tokens 处停止生成。请关闭后台应用释放内存后重试。"
+                                : "\n\n> ⚠️ Low memory, stopped at \(tokenCount) tokens. Close background apps and retry."
+                            continuation.yield(msg)
+                        } else {
+                            let modeLabel = isChinese
+                                ? (thinkingEnabled ? "思考" : "输出")
+                                : (thinkingEnabled ? "Thinking" : "Output")
+                            continuation.yield("\n\n> ⚠️ \(modeLabel)已达单次输出上限（\(resolvedMaxOutputTokens) tokens），内容可能不完整。")
+                        }
                     }
                     continuation.finish()
                 } catch {

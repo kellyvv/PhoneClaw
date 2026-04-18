@@ -386,30 +386,38 @@ class AgentEngine {
         let msgIndex = messages.count - 1
 
         if requiresMultimodal {
-            let multimodalChat: [Chat.Message] = [
-                .system(
-                    PromptBuilder.multimodalSystemPrompt(
-                        hasImages: !promptImages.isEmpty,
-                        hasAudio: audioAttachment != nil
-                    )
-                ),
+            // Pure-vision path 默认返回空 system prompt (见 PromptBuilder.multimodalSystemPrompt),
+            // 空字符串时跳过 .system(...) 注入, 让 Gemma 4 只看 image + user text,
+            // 避免任何 system 框架把小模型带进"请提供图片"漂移.
+            let systemPrompt = PromptBuilder.multimodalSystemPrompt(
+                hasImages: !promptImages.isEmpty,
+                hasAudio: audioAttachment != nil
+            )
+            var multimodalChat: [Chat.Message] = []
+            if !systemPrompt.isEmpty {
+                multimodalChat.append(.system(systemPrompt))
+            }
+            multimodalChat.append(
                 .user(
                     normalizedText,
                     images: promptImages.map { .ciImage($0) },
                     audios: audioAttachment.map { [$0] } ?? []
-                ),
-            ]
+                )
+            )
             let multimodalContext: [String: any Sendable]? =
                 config.enableThinking ? ["enable_thinking": true] : nil
             var multimodalBuffer = ""
 
             llm.generateStream(chat: multimodalChat, additionalContext: multimodalContext) { [weak self] token in
-                guard let self = self else { return }
+                guard let self = self,
+                      self.messages.indices.contains(msgIndex) else { return }
                 multimodalBuffer += token
                 let cleaned = self.cleanOutputStreaming(multimodalBuffer)
                 self.messages[msgIndex].update(content: (cleaned.isEmpty ? "" : cleaned) + "▍")
             } onComplete: { [weak self] result in
                 guard let self = self else { return }
+                defer { self.isProcessing = false }
+                guard self.messages.indices.contains(msgIndex) else { return }
                 switch result {
                 case .success(let fullText):
                     log("[Agent] 1st raw: \(fullText.prefix(300))")
@@ -421,7 +429,6 @@ class AgentEngine {
                     log("[Agent] multimodal failed: \(error.localizedDescription)")
                     self.messages[msgIndex].update(role: .system, content: "❌ \(error.localizedDescription)")
                 }
-                self.isProcessing = false
             }
             return
         }
@@ -517,7 +524,8 @@ class AgentEngine {
         var bufferFlushed = false
 
         llm.generateStream(prompt: streamingPrompt, images: promptImages, audios: []) { [weak self] token in
-            guard let self = self else { return }
+            guard let self = self,
+                  self.messages.indices.contains(msgIndex) else { return }
 
             if detectedToolCall {
                 buffer += token
@@ -546,6 +554,8 @@ class AgentEngine {
             }
         } onComplete: { [weak self] result in
             guard let self = self else { return }
+            defer { self.isProcessing = false }
+            guard self.messages.indices.contains(msgIndex) else { return }
             switch result {
             case .success(let fullText):
                 log("[Agent] 1st raw: \(fullText.prefix(300))")
@@ -570,7 +580,6 @@ class AgentEngine {
             case .failure(let error):
                 self.messages[msgIndex].update(role: .system, content: "❌ \(error.localizedDescription)")
             }
-            self.isProcessing = false
         }
     }
 
@@ -598,7 +607,8 @@ class AgentEngine {
             var toolCallDetected = false
             var bufferFlushed = false
             llm.generateStream(prompt: prompt, images: images, audios: []) { [weak self] token in
-                guard let self = self else { return }
+                guard let self = self,
+                      self.messages.indices.contains(msgIndex) else { return }
                 buffer += token
 
                 if toolCallDetected { return }
@@ -631,7 +641,9 @@ class AgentEngine {
                     log("[Agent] LLM raw: \(text.prefix(300))")
                     continuation.resume(returning: text)
                 case .failure(let error):
-                    self.messages[msgIndex].update(role: .system, content: "❌ \(error.localizedDescription)")
+                    if self.messages.indices.contains(msgIndex) {
+                        self.messages[msgIndex].update(role: .system, content: "❌ \(error.localizedDescription)")
+                    }
                     continuation.resume(returning: nil)
                 }
             }

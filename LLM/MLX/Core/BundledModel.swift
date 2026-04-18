@@ -2,17 +2,19 @@ import Foundation
 
 // MARK: - Runtime Profile 类型
 //
-// 设计目标: 把"哪个模型在 headroom X 时给 Y token"的所有业务参数, 从硬编码
-// switch / tier 表迁移成**连续的线性公式**。原因:
-//   1. tier 表是 step function, 在边界附近 1 MB 差距导致几百 token 跳变, 不直观
-//   2. 标定 tier 表需要逐档调数字, 校准成本高; 公式只调 4 个参数
-//   3. chunked prefill 已让 prepared 长度对峰值内存影响极小, 可以用线性外推
+// 双层内存安全架构 (2026-04-18 重构):
 //
-// 所有 token 预算 = clamp(min, max(0, headroom - safetyMargin) * tokensPerMB, max)
+// 第一层 — 线性公式 (宽松初始预估):
+//   tokens = clamp(min, max(0, headroom - safetyMargin) * tokensPerMB, max)
+//   maxTokens 放开到 4096, 让 UI 滑块 (maxOutputTokens) 成为实际上限。
+//   公式不再是主要限制因素, 只做粗粒度预算。
 //
-// 多模态和 historyDepth 仍保留 tier 表, 因为:
-//   - 多模态: imageSoftCap + maxOut 双约束, 而且有硬天花板 512, 不是单调线性
-//   - historyDepth: 整数消息数, 只有 4 个离散值
+// 第二层 — 实时 headroom 地板检测 (真正安全网):
+//   生成循环中每 32 token 检查 MemoryStats.headroomMB,
+//   低于 headroomFloorMB (E2B=150, E4B=200) 立即停止。
+//   这比公式更精确, 因为它看的是真实内存而不是预测值。
+//
+// 多模态和 historyDepth 仍保留 tier 表 (语义不适合线性化)。
 
 /// 线性预算公式:
 ///   tokens = clamp(minTokens, max(0, headroom - safetyMarginMB) * tokensPerMB, maxTokens)
@@ -47,16 +49,15 @@ public struct BudgetTier: Sendable, Equatable {
     }
 }
 
-/// 多模态单档预算: 双约束 (image cap + max output) + 硬天花板
+/// 多模态单档预算: 仅约束 imageSoftTokenCap (vision encoder token 预算)。
+/// 输出 token 上限不在此处设定 — 由生成循环的 headroomFloorMB 运行时检测动态控制。
 public struct MultimodalTier: Sendable, Equatable {
     public let headroomMaxMB: Int
     public let imageSoftTokenCap: Int?
-    public let maxOutputTokens: Int
 
-    public init(headroomMaxMB: Int, imageSoftTokenCap: Int?, maxOutputTokens: Int) {
+    public init(headroomMaxMB: Int, imageSoftTokenCap: Int?) {
         self.headroomMaxMB = headroomMaxMB
         self.imageSoftTokenCap = imageSoftTokenCap
-        self.maxOutputTokens = maxOutputTokens
     }
 }
 
@@ -82,12 +83,17 @@ public struct ModelRuntimeProfile: Sendable {
     /// thinking 输出 token 上限
     public let thinkingOutputBudget: LinearBudgetFormula
 
-    /// 多模态输出: 保留 tier 表 (双约束 + 硬天花板, 不适合线性化)
+    /// 多模态: 保留 tier 表用于 image soft token cap (随 headroom 调节图像精度)
+    /// 输出 token 上限不再在 tier 中设定, 完全由 headroomFloorMB 动态控制
     public let multimodalOutputTiers: [MultimodalTier]
 
     /// 多模态严格下限 (headroom <= 此值直接 throw multimodalMemoryRisk)
     /// 0 = 不做严格下限检查
     public let multimodalCriticalHeadroomMB: Int
+
+    /// 运行时内存地板 (MB): 生成过程中实时检测 headroom, 低于此值立即停止
+    /// 这是真正的安全网, 取代了之前公式中过于保守的 tokensPerMB 预测。
+    public let headroomFloorMB: Int
 
     /// safeHistoryDepth: 整数离散映射, 保留 tier 表
     public let historyDepthTiers: [BudgetTier]
@@ -98,6 +104,7 @@ public struct ModelRuntimeProfile: Sendable {
         thinkingOutputBudget: LinearBudgetFormula,
         multimodalOutputTiers: [MultimodalTier],
         multimodalCriticalHeadroomMB: Int,
+        headroomFloorMB: Int,
         historyDepthTiers: [BudgetTier]
     ) {
         self.thinkingMarker = thinkingMarker
@@ -105,6 +112,7 @@ public struct ModelRuntimeProfile: Sendable {
         self.thinkingOutputBudget = thinkingOutputBudget
         self.multimodalOutputTiers = multimodalOutputTiers
         self.multimodalCriticalHeadroomMB = multimodalCriticalHeadroomMB
+        self.headroomFloorMB = headroomFloorMB
         self.historyDepthTiers = historyDepthTiers
     }
 }
@@ -125,23 +133,22 @@ public enum MLXModelProfiles {
     public static let gemma4_e2b = ModelRuntimeProfile(
         thinkingMarker: "<|think|>",
 
-        // 单次输出 token 上限
-        // @500: 1.4*250=350→min384;  @1000: 1.4*750=1050;  @1500: 1.4*1250=1750;  @2000: cap 2048
+        // 文本/思考预算: maxTokens 放开到 4096, 让 UI maxOutputTokens 滑块成为
+        // 真正上限。实际安全由生成循环中的 headroomFloorMB 实时检测保障。
+        // 公式仍保留 safetyMarginMB 做初始预估, 但不再是主要限制因素。
         textOutputBudget: LinearBudgetFormula(
-            safetyMarginMB: 250, tokensPerMB: 1.4, minTokens: 384, maxTokens: 2_048
+            safetyMarginMB: 150, tokensPerMB: 4.0, minTokens: 512, maxTokens: 4_096
         ),
-
-        // thinking 输出比文本更紧 (避免思考占满预算把答案挤掉)
-        // @500: min;  @1000: 1.1*750=825;  @1500: 1.1*1250=1375;  @2000: cap 1536
         thinkingOutputBudget: LinearBudgetFormula(
-            safetyMarginMB: 250, tokensPerMB: 1.1, minTokens: 256, maxTokens: 1_536
+            safetyMarginMB: 150, tokensPerMB: 4.0, minTokens: 512, maxTokens: 4_096
         ),
 
         // 多模态: E2B 不像 E4B 那么吃内存, 平表
         multimodalOutputTiers: [
-            MultimodalTier(headroomMaxMB: .max, imageSoftTokenCap: 160, maxOutputTokens: 512),
+            MultimodalTier(headroomMaxMB: .max, imageSoftTokenCap: 160),
         ],
         multimodalCriticalHeadroomMB: 0,
+        headroomFloorMB: 150,
 
         historyDepthTiers: [
             BudgetTier(headroomMaxMB: 500,    tokens: 0),
@@ -156,28 +163,25 @@ public enum MLXModelProfiles {
     public static let gemma4_e4b = ModelRuntimeProfile(
         thinkingMarker: "<|think|>",
 
-        // 单次输出 token 上限
-        // 实测验证 @1500: 1.0*1200=1200 vs 旧 tier 1280 (基本持平)
-        // @1700: 1.0*1400=1400; @2000: 1.0*1700=1700→cap 1500
+        // 文本/思考预算: maxTokens 放开, 真正安全网靠 headroomFloorMB 实时检测。
         textOutputBudget: LinearBudgetFormula(
-            safetyMarginMB: 300, tokensPerMB: 1.0, minTokens: 256, maxTokens: 1_500
+            safetyMarginMB: 200, tokensPerMB: 3.0, minTokens: 384, maxTokens: 4_096
         ),
-
-        // thinking 单独放更紧的系数
         thinkingOutputBudget: LinearBudgetFormula(
-            safetyMarginMB: 300, tokensPerMB: 0.85, minTokens: 192, maxTokens: 1_280
+            safetyMarginMB: 200, tokensPerMB: 3.0, minTokens: 384, maxTokens: 4_096
         ),
 
         // 多模态: E4B vision 激活内存大, 必须保留细分 tier
         multimodalOutputTiers: [
-            MultimodalTier(headroomMaxMB: 500,    imageSoftTokenCap: 48,  maxOutputTokens: 120),
-            MultimodalTier(headroomMaxMB: 700,    imageSoftTokenCap: 64,  maxOutputTokens: 200),
-            MultimodalTier(headroomMaxMB: 900,    imageSoftTokenCap: 80,  maxOutputTokens: 340),
-            MultimodalTier(headroomMaxMB: 1_100,  imageSoftTokenCap: 96,  maxOutputTokens: 512),
-            MultimodalTier(headroomMaxMB: 1_300,  imageSoftTokenCap: 128, maxOutputTokens: 512),
-            MultimodalTier(headroomMaxMB: .max,   imageSoftTokenCap: 160, maxOutputTokens: 512),
+            MultimodalTier(headroomMaxMB: 500,    imageSoftTokenCap: 48),
+            MultimodalTier(headroomMaxMB: 700,    imageSoftTokenCap: 64),
+            MultimodalTier(headroomMaxMB: 900,    imageSoftTokenCap: 80),
+            MultimodalTier(headroomMaxMB: 1_100,  imageSoftTokenCap: 96),
+            MultimodalTier(headroomMaxMB: 1_300,  imageSoftTokenCap: 128),
+            MultimodalTier(headroomMaxMB: .max,   imageSoftTokenCap: 160),
         ],
         multimodalCriticalHeadroomMB: 320,
+        headroomFloorMB: 200,
 
         historyDepthTiers: [
             BudgetTier(headroomMaxMB: 700,    tokens: 0),

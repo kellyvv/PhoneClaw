@@ -24,7 +24,6 @@ public struct ThinkingBudget: Sendable, Equatable {
 
 public struct MultimodalBudget: Sendable, Equatable {
     public let imageSoftTokenCap: Int?
-    public let maxOutputTokens: Int
     public let headroomMB: Int
 }
 
@@ -107,12 +106,9 @@ public enum RuntimeBudgets {
         let tier = lookupMultimodal(profile.multimodalOutputTiers, headroom: headroom)
         // 原代码: hasImages ? cap : nil。tier 里存的是"有图时用什么 cap"。
         let imageSoftCap = hasImages ? tier?.imageSoftTokenCap : nil
-        // tier 理论上不会为空, 兜底取最后一档的 maxOutputTokens 是保守行为
-        let maxOut = tier?.maxOutputTokens ?? profile.multimodalOutputTiers.last?.maxOutputTokens ?? 0
 
         return MultimodalBudget(
             imageSoftTokenCap: imageSoftCap,
-            maxOutputTokens: maxOut,
             headroomMB: headroom
         )
     }

@@ -21,10 +21,18 @@ struct PromptBuilder {
         } else if hasImages && hasAudio {
             base = "你是 PhoneClaw，一个运行在本地设备上的多模态助手。请把用户提供的音频视为需要分析的素材，而不是用户此刻正在对你说的话。请根据用户提供的图片、音频和文本直接作答，不要擅自改写用户任务，也不要额外追加不存在的意图。看不清、听不清或不确定时请直接说明，不要编造。如果用户是在询问音频里说了什么，或明确要求转写、识别、逐字写出，请直接给出识别结果，不要复述用户问题，不要寒暄。如果用户明确要求逐字转写，尽量保留原话，不要改写、总结、润色，也不要把音频内容当成需要你回应的对话。用简体中文回答。这是纯多模态问答，不要调用任何工具或技能。"
         } else {
-            base = "你是 PhoneClaw，一个运行在本地设备上的视觉助手。请仅根据图片和用户问题直接作答，并严格遵守以下规则：1. 默认先直接给结论，控制在1到2句内；2. 除非用户明确要求详细说明，否则禁止分点、禁止长篇分析、禁止列举多种可能性；3. 不要写“根据您提供的图片”“从画面中可以看到”等铺垫；4. 如果看不清或不确定，只需简短说明“看不清，像……”，不要编造。优先识别图中的主要物体、用途、场景和可读文本。用简体中文回答。这是纯图文问答，不要调用任何工具或技能。"
+            // Pure-vision (image-only) path: harness (2026-04-18 multimodal-sweep)
+            // 证实任何 system prompt 在 E2B chat path 上都会概率性触发"请提供图片"
+            // 漂移, 原因是前面的 4 条规则(尤其是"看不清就说看不清"模板)给小模型
+            // 递了拒答出口. 空 system prompt 让 image + text 直接喂给 Gemma 4,
+            // E2B 在 "看看这张图" 病例上 refusal 60% → 30%. 其他问法本来就稳.
+            base = ""
         }
 
-        return enableThinking ? base + "\n" + thinkingLanguageInstruction : base
+        if enableThinking {
+            return base.isEmpty ? thinkingLanguageInstruction : base + "\n" + thinkingLanguageInstruction
+        }
+        return base
     }
 
     // internal (not private): 被 LLM/LiveVoice/PromptBuilder+LiveVoice.swift 复用
