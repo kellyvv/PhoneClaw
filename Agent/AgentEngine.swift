@@ -393,21 +393,20 @@ class AgentEngine {
         let plannerHistoryDepth = shouldUsePlanner ? 0 : historyDepth
         print("[MEM] safeHistoryDepth=\(historyDepth), headroom=\(MemoryStats.headroomMB) MB")
         let promptImages = promptImages(historyDepth: historyDepth, currentImages: attachments)
-        print(
-            "[VLM] userAttachments=\(attachments.count), promptImages=\(promptImages.count), "
-                + "audio=\(audioInput == nil ? 0 : 1)"
-        )
 
-        // [Metric] PhoneClaw 架构优化数据收集
-        // 收集窗口：2026-04-08 ~ 2026-04-22（2 周）
-        // 到期后评估 P1-b / P2 是否执行，评估完可移除此埋点
-        #warning("[Metric] PhoneClaw 架构优化埋点，2026-04-22 前评估并移除")
         let routedPath = Self.decideRoute(
             requiresMultimodal: requiresMultimodal,
             shouldUsePlanner: shouldUsePlanner,
             shouldUseFullAgentPrompt: shouldUseFullAgentPrompt
         )
-        log("[Metric] route=\(routedPath) skills=\(matchedSkillIdsForTurn.count) model=\(catalog.selectedModel.id) multimodal=\(requiresMultimodal)")
+        PCLog.turn(
+            route: routedPath,
+            skillCount: matchedSkillIdsForTurn.count,
+            multimodal: requiresMultimodal,
+            inputChars: input.count,
+            historyDepth: historyDepth,
+            headroomMB: MemoryStats.headroomMB
+        )
 
         // Tag 这条 assistant placeholder 的 skillName, 让 sticky routing 在
         // 下一轮追问时能识别上下文 (即使本轮 LLM 没调 tool 只是澄清).

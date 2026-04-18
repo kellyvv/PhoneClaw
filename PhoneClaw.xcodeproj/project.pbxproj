@@ -129,6 +129,7 @@
 		BB2000000000000000000009 /* LiteRTModelStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000009 /* LiteRTModelStore.swift */; };
 		BB2000000000000000000010 /* gemma-4-E2B-it.litertlm in Resources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000010 /* gemma-4-E2B-it.litertlm */; };
 		BB2000000000000000000011 /* gemma-4-E4B-it.litertlm in Resources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000011 /* gemma-4-E4B-it.litertlm */; };
+		BB2000000000000000000012 /* PCLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000012 /* PCLog.swift */; };
 		BD75E7E5620A8FF0A868E9F0 /* libPods-PhoneClaw.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 4F4ACB3F4531FF61E0AADA07 /* libPods-PhoneClaw.a */; };
 		BE6E6C928537BCC4DBC975E9 /* (null) in Sources */ = {isa = PBXBuildFile; };
 		C05906F882C28E546FC97B26 /* (null) in Sources */ = {isa = PBXBuildFile; };
@@ -276,6 +277,7 @@
 		F8D921B323B9D6342A22A29E /* LiveAudioIO.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveAudioIO.swift; path = Live/Audio/LiveAudioIO.swift; sourceTree = SOURCE_ROOT; };
 		ICONASSETS0000000000001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+		BB1000000000000000000012 /* PCLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PCLog.swift; path = Shared/PCLog.swift; sourceTree = SOURCE_ROOT; };
 
 /* Begin PBXFrameworksBuildPhase section */
 		4B243621551C86F4B6922A8F /* Frameworks */ = {
@@ -501,6 +503,7 @@
 				357644EE0B2A47696762E171 /* LiveCameraService.swift */,
 				9C503EC6B19AD0CF5515B98E /* LiveComponentTest.swift */,
 				094A760C8A6DFD5E317AF5B8 /* LiveMetrics.swift */,
+				BB1000000000000000000012 /* PCLog.swift */,
 				DAF684F9A04FAEE76440F69C /* OrbAudioAnalyser.swift */,
 				CEA10A9D8F9AB4A2764A1A13 /* SherpaOnnx.swift */,
 				F06A8F86444AB26C7373919B /* TTSService.swift */,
@@ -864,6 +867,7 @@
 				BB2000000000000000000007 /* LiteRTBackend.swift in Sources */,
 				BB2000000000000000000008 /* LiteRTCatalog.swift in Sources */,
 				BB2000000000000000000009 /* LiteRTModelStore.swift in Sources */,
+				BB2000000000000000000012 /* PCLog.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

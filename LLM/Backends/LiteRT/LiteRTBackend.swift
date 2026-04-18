@@ -117,13 +117,13 @@ final class LiteRTBackend: InferenceService {
 
             let descriptor = ModelDescriptor.allModels.first { $0.id == modelID }
             statusMessage = "已加载 \(descriptor?.displayName ?? modelID)"
-            print("[LiteRT] Model loaded in \(String(format: "%.0f", elapsed))ms")
+            PCLog.modelLoaded(modelID: modelID, loadMs: elapsed)
             onModelLoaded?(modelID)
         } catch {
             isLoading = false
             isLoaded = false
             statusMessage = "❌ \(error.localizedDescription)"
-            print("[LiteRT] Load failed: \(error.localizedDescription)")
+            PCLog.modelLoadFailed(modelID: modelID, reason: error.localizedDescription)
             throw error
         }
     }
@@ -140,6 +140,7 @@ final class LiteRTBackend: InferenceService {
         isGenerating = false
         statusMessage = "等待加载模型..."
         onModelUnloaded?()
+        PCLog.modelUnloaded()
     }
 
     func cancel() {
