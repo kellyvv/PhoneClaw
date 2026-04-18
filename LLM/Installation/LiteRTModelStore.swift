@@ -169,6 +169,13 @@ final class LiteRTModelStore: ModelInstaller {
     }
 
     func artifactPath(for model: ModelDescriptor) -> URL? {
+        // 1. 优先检查 app bundle（打包进去的模型）
+        let baseName = (model.fileName as NSString).deletingPathExtension
+        let ext = (model.fileName as NSString).pathExtension
+        if let bundlePath = Bundle.main.url(forResource: baseName, withExtension: ext) {
+            return bundlePath
+        }
+        // 2. fallback 到 Documents/models/（下载的模型）
         let path = modelsDirectory.appendingPathComponent(model.fileName)
         return FileManager.default.fileExists(atPath: path.path) ? path : nil
     }

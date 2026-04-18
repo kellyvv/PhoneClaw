@@ -107,6 +107,8 @@
 		BB2000000000000000000007 /* LiteRTBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000007 /* LiteRTBackend.swift */; };
 		BB2000000000000000000008 /* LiteRTCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000008 /* LiteRTCatalog.swift */; };
 		BB2000000000000000000009 /* LiteRTModelStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000009 /* LiteRTModelStore.swift */; };
+		BB2000000000000000000010 /* gemma-4-E2B-it.litertlm in Resources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000010 /* gemma-4-E2B-it.litertlm */; };
+		BB2000000000000000000011 /* gemma-4-E4B-it.litertlm in Resources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000011 /* gemma-4-E4B-it.litertlm */; };
 		AA1000000000000000000024 /* onnxruntime.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA2000000000000000000024 /* onnxruntime.xcframework */; };
 		AA1000000000000000000025 /* sherpa-onnx.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA2000000000000000000025 /* sherpa-onnx.xcframework */; };
 		AA1000000000000000000100 /* BundledModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2000000000000000000100 /* BundledModel.swift */; };
@@ -273,6 +275,8 @@
 		BB1000000000000000000007 /* LiteRTBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiteRTBackend.swift; sourceTree = "<group>"; };
 		BB1000000000000000000008 /* LiteRTCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiteRTCatalog.swift; sourceTree = "<group>"; };
 		BB1000000000000000000009 /* LiteRTModelStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiteRTModelStore.swift; sourceTree = "<group>"; };
+		BB1000000000000000000010 /* gemma-4-E2B-it.litertlm */ = {isa = PBXFileReference; lastKnownFileType = file; name = "gemma-4-E2B-it.litertlm"; path = "Models/gemma-4-E2B-it.litertlm"; sourceTree = SOURCE_ROOT; };
+		BB1000000000000000000011 /* gemma-4-E4B-it.litertlm */ = {isa = PBXFileReference; lastKnownFileType = file; name = "gemma-4-E4B-it.litertlm"; path = "Models/gemma-4-E4B-it.litertlm"; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -653,6 +657,8 @@
 				B1A2C3D4E5F607182930B100 /* Library in Resources */,
 				B1A2C3D4E5F607182930B107 /* piz_compressed.exr in Resources */,
 				B1A2C3D4E5F607182930B108 /* studio_env.hdr in Resources */,
+				BB2000000000000000000010 /* gemma-4-E2B-it.litertlm in Resources */,
+				BB2000000000000000000011 /* gemma-4-E4B-it.litertlm in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
