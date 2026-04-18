@@ -374,15 +374,6 @@ A realistic goal: pass content between apps, open a specific app to a specific s
 
 Explore connecting external video input and screen understanding with local models, so PhoneClaw goes beyond answering questions in isolation and develops stronger real-world perception and scheduling capabilities.
 
-### Suggested priority order
-
-If ordered by "fastest path to meaningful experience improvement":
-
-1. Files / Photos / Notes — three high-frequency API categories
-2. Shortcuts / App Intents integration
-3. OCR + speech recognition
-4. Local knowledge base search
-5. Finer-grained automated Skill orchestration
 
 ## References
 
