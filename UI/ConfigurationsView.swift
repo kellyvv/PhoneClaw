@@ -13,7 +13,7 @@ struct ConfigurationsView: View {
     @State private var showSkillsManager = false
 
     // 本地编辑状态（确认后才应用）
-    @State private var selectedModelID = MLXLocalLLMService.defaultModel.id
+    @State private var selectedModelID = ModelDescriptor.defaultModel.id
     @State private var maxTokens: Double = 4000
     @State private var topK: Double = 64
     @State private var topP: Double = 0.95
@@ -91,7 +91,7 @@ struct ConfigurationsView: View {
         }
         #if canImport(UIKit)
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
-            engine.llm.refreshModelInstallStates()
+            engine.installer.refreshInstallStates()
             liveDownloader.refreshState()
             refreshPermissionStatuses()
         }
@@ -194,15 +194,15 @@ struct ConfigurationsView: View {
                 .font(.headline)
                 .foregroundStyle(Theme.textPrimary)
 
-            Text(engine.llm.isLoaded
-                 ? localized("当前已加载：", "Loaded: ") + engine.llm.modelDisplayName
-                 : engine.llm.statusMessage)
+            Text(engine.inference.isLoaded
+                 ? localized("当前已加载：", "Loaded: ") + engine.catalog.modelDisplayName
+                 : engine.inference.statusMessage)
                 .font(.subheadline)
                 .foregroundStyle(Theme.textSecondary)
 
             VStack(spacing: 10) {
                 ForEach(engine.availableModels) { model in
-                    let state = engine.llm.installState(for: model)
+                    let state = engine.installer.installState(for: model.id)
                     let isDownloading: Bool = {
                         if case .downloading = state { return true }
                         return false
@@ -571,16 +571,16 @@ struct ConfigurationsView: View {
     }
 
     @ViewBuilder
-    private func modelStateControl(for model: BundledModelOption, state: ModelInstallState) -> some View {
+    private func modelStateControl(for model: ModelDescriptor, state: ModelInstallState) -> some View {
         switch state {
         case .notInstalled:
             Button(localized("下载", "Download")) {
                 selectedModelID = model.id
                 Task {
-                    await engine.llm.downloadModel(id: model.id)
-                    if engine.llm.isModelAvailable(model),
+                    try await engine.installer.install(model: model)
+                    if engine.installer.artifactPath(for: model) != nil,
                        selectedModelID == model.id,
-                       (!engine.llm.isLoaded || engine.llm.loadedModelID != model.id) {
+                       (!engine.inference.isLoaded || engine.catalog.loadedModel?.id != model.id) {
                         engine.config.selectedModelID = model.id
                         engine.reloadModel()
                     }
@@ -607,7 +607,7 @@ struct ConfigurationsView: View {
             Button(localized("重试", "Retry")) {
                 selectedModelID = model.id
                 Task {
-                    await engine.llm.downloadModel(id: model.id)
+                    try await engine.installer.install(model: model)
                 }
             }
             .font(.caption.weight(.semibold))
@@ -634,7 +634,7 @@ struct ConfigurationsView: View {
     ) -> some View {
         let safeTotal = max(totalFiles, 1)
         let value = Double(min(completedFiles, safeTotal))
-        let metrics = engine.llm.downloadMetrics(for: modelID)
+        let metrics = engine.installer.downloadProgress[modelID]
 
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
@@ -658,7 +658,7 @@ struct ConfigurationsView: View {
                 Spacer(minLength: 8)
 
                 Button(localized("取消", "Cancel")) {
-                    engine.llm.cancelModelDownload(id: modelID)
+                    engine.installer.cancelInstall(modelID: modelID)
                 }
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(Theme.textPrimary)
@@ -676,7 +676,7 @@ struct ConfigurationsView: View {
         .background(Theme.textTertiary.opacity(0.14), in: RoundedRectangle(cornerRadius: 12))
     }
 
-    private func downloadMetricsText(_ metrics: ModelDownloadMetrics) -> String {
+    private func downloadMetricsText(_ metrics: DownloadProgress) -> String {
         let speedText = formattedSpeed(metrics.bytesPerSecond)
         if let totalBytes = metrics.totalBytes, totalBytes > 0 {
             return "\(formattedBytes(metrics.bytesReceived)) / \(formattedBytes(totalBytes)) · \(speedText)"
@@ -722,13 +722,13 @@ struct ConfigurationsView: View {
             return localized("点右侧按钮下载模型后再点击确定。", "Download a model first, then tap OK.")
         }
 
-        if !engine.llm.isModelAvailable(selectedModel) {
+        if engine.installer.artifactPath(for: selectedModel) == nil {
             return localized("先下载选中的模型，再点击确定加载。", "Download the selected model first, then tap OK to load it.")
         }
 
-        if selectedModelID == engine.llm.selectedModelID,
-           engine.llm.loadedModelID == selectedModelID,
-           engine.llm.isLoaded {
+        if selectedModelID == engine.catalog.selectedModel.id,
+           engine.catalog.loadedModel?.id == selectedModelID,
+           engine.inference.isLoaded {
             return localized("点击确定会保留当前模型。", "Tap OK to keep the current model.")
         }
 
@@ -798,9 +798,9 @@ struct ConfigurationsView: View {
     }
 
     private func loadCurrentSettings() {
-        engine.llm.refreshModelInstallStates()
+        engine.installer.refreshInstallStates()
         liveDownloader.refreshState()
-        selectedModelID = engine.llm.loadedModelID ?? engine.config.selectedModelID
+        selectedModelID = engine.catalog.loadedModel?.id ?? engine.config.selectedModelID
         maxTokens = Double(engine.config.maxTokens)
         topK = Double(engine.config.topK)
         topP = engine.config.topP
@@ -822,9 +822,9 @@ struct ConfigurationsView: View {
         engine.applySamplingConfig()
 
         guard let selectedModel = engine.availableModels.first(where: { $0.id == selectedModelID }),
-              engine.llm.isModelAvailable(selectedModel) else {
+              engine.installer.artifactPath(for: selectedModel) != nil else {
             if let missingModel = engine.availableModels.first(where: { $0.id == selectedModelID }) {
-                engine.llm.statusMessage = localized("请先在配置中下载 ", "Please download ")
+                engine.inference.statusMessage = localized("请先在配置中下载 ", "Please download ")
                     + missingModel.displayName
                     + localized(" 模型", " first")
             }
@@ -832,7 +832,7 @@ struct ConfigurationsView: View {
         }
 
         engine.config.selectedModelID = selectedModelID
-        let needsLoad = !engine.llm.isLoaded || engine.llm.loadedModelID != selectedModelID
+        let needsLoad = !engine.inference.isLoaded || engine.catalog.loadedModel?.id != selectedModelID
         if modelChanged || needsLoad {
             engine.reloadModel()
         }

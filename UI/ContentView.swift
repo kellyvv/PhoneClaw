@@ -135,7 +135,8 @@ struct ContentView: View {
         .fullScreenCover(isPresented: $showLiveMode) {
             LiveModeView(
                 isPresented: $showLiveMode,
-                llm: engine.llm,
+                inference: engine.inference,
+                catalog: engine.catalog,
                 userSystemPrompt: engine.config.systemPrompt
             )
         }
@@ -225,7 +226,7 @@ struct ContentView: View {
 
     private func canRetry(item: DisplayItem, block: ResponseBlock) -> Bool {
         guard item.id == displayItems.last?.id else { return false }
-        guard !engine.isProcessing, engine.llm.isLoaded else { return false }
+        guard !engine.isProcessing, engine.inference.isLoaded else { return false }
         guard block.responseText != nil else { return false }
         guard let lastUser = engine.messages.last(where: { $0.role == .user }) else { return false }
         return lastUser.audios.isEmpty
@@ -253,9 +254,9 @@ struct ContentView: View {
             // 中：模型状态
             HStack(spacing: 6) {
                 Circle()
-                    .fill(engine.llm.isLoaded ? Theme.accentGreen : Theme.accent)
+                    .fill(engine.inference.isLoaded ? Theme.accentGreen : Theme.accent)
                     .frame(width: 6, height: 6)
-                Text(engine.llm.isLoaded ? engine.llm.modelDisplayName : engine.llm.statusMessage)
+                Text(engine.inference.isLoaded ? engine.catalog.modelDisplayName : engine.inference.statusMessage)
                     .font(.system(size: 12, weight: .medium, design: .rounded))
                     .foregroundStyle(Theme.textSecondary)
             }
@@ -670,15 +671,15 @@ struct ContentView: View {
                 || !selectedImages.isEmpty
                 || hasCompletedDraft
         )
-        && !engine.isProcessing && engine.llm.isLoaded
+        && !engine.isProcessing && engine.inference.isLoaded
     }
 
     private var canEnterLiveMode: Bool {
-        engine.llm.isLoaded
+        engine.inference.isLoaded
     }
 
     private var canCancelGeneration: Bool {
-        engine.isProcessing || engine.llm.isGenerating
+        engine.isProcessing || engine.inference.isGenerating
     }
 
     private func send() async {
