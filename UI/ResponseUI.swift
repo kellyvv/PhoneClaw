@@ -53,20 +53,45 @@ struct AIResponseView: View {
                 }
 
                 if let text = block.responseText {
-                    Markdown(text)
-                        .markdownTextStyle {
-                            FontSize(15)
-                            ForegroundColor(Theme.textPrimary)
+                    if block.isThinking {
+                        // ── Streaming: two-layer render ──
+                        // Split at last newline:
+                        //   • completedText → full Markdown (stable, no re-parse jumps)
+                        //   • currentLine   → plain Text (no AST surprises)
+                        let split = Self.splitStreamingText(text)
+                        VStack(alignment: .leading, spacing: 0) {
+                            if !split.completed.isEmpty {
+                                Markdown(split.completed)
+                                    .markdownTextStyle {
+                                        FontSize(15)
+                                        ForegroundColor(Theme.textPrimary)
+                                    }
+                                    .textSelection(.enabled)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            if !split.current.isEmpty {
+                                Text(split.current)
+                                    .font(.system(size: 15))
+                                    .foregroundStyle(Theme.textPrimary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .animation(nil, value: split.current)
+                            }
                         }
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .fixedSize(horizontal: false, vertical: true)
                         .padding(.leading, 4)
-                        // Suppress layout jumps during streaming —
-                        // MarkdownUI re-parses AST on every text update,
-                        // causing headers/lists to "pop in" with animation.
-                        .animation(nil, value: text)
-                        .id(block.isThinking ? "streaming" : text)
+                    } else {
+                        // ── Complete: full Markdown in one pass ──
+                        Markdown(text)
+                            .markdownTextStyle {
+                                FontSize(15)
+                                ForegroundColor(Theme.textPrimary)
+                            }
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.leading, 4)
+                    }
                 }
 
                 if let onRetry, !block.isThinking {
@@ -90,6 +115,21 @@ struct AIResponseView: View {
         }
     }
 
+    // MARK: - Streaming Text Splitter
+
+    /// Split streaming text at the last newline boundary.
+    /// - `completed`: all lines up through the last `\n` — safe for Markdown (syntax is finalized)
+    /// - `current`: the partial line after the last `\n` — rendered as plain Text (no AST surprises)
+    private static func splitStreamingText(_ text: String) -> (completed: String, current: String) {
+        guard let lastNewline = text.lastIndex(of: "\n") else {
+            // No newline yet — everything is "current line"
+            return ("", text)
+        }
+        let completed = String(text[text.startIndex...lastNewline])
+        let afterNewline = text.index(after: lastNewline)
+        let current = afterNewline < text.endIndex ? String(text[afterNewline...]) : ""
+        return (completed, current)
+    }
 }
 
 // MARK: - Thinking Card
