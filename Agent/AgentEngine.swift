@@ -529,7 +529,26 @@ class AgentEngine {
             historyDepth: shouldUsePlanner ? plannerHistoryDepth : historyDepth
         )
         let plannerInputPrompt: String = lightPrompt
-        let streamingPrompt: String = agentPrompt ?? lightPrompt
+
+        // KV Cache delta 路径: 如果 LiteRT session 已激活且不是首轮，
+        // 用增量 delta 替代完整 prompt，只 prefill 新增 token。
+        // Agent 路径 (tool calling) 暂不走 delta — secondary prompt 会重构 system block。
+        let streamingPrompt: String
+        if let litert = inference as? LiteRTBackend,
+           litert.kvSessionActive,
+           !litert.lastModelOutput.isEmpty,
+           agentPrompt == nil  // agent 路径暂不走 delta
+        {
+            streamingPrompt = PromptBuilder.buildDeltaTurnPrompt(
+                lastModelOutput: litert.lastModelOutput,
+                userMessage: normalizedText,
+                currentImageCount: attachments.count,
+                enableThinking: config.enableThinking
+            )
+            log("[Agent] KV cache delta mode: \(streamingPrompt.count) chars (vs full \(lightPrompt.count) chars)")
+        } else {
+            streamingPrompt = agentPrompt ?? lightPrompt
+        }
         #if DEBUG
         log("[Agent] text prompt mode=\(shouldUseFullAgentPrompt ? "agent" : "light"), planner-input-chars=\(plannerInputPrompt.count), streaming-chars=\(streamingPrompt.count), skills=\(activeSkillInfos.count)")
         #endif
@@ -737,6 +756,10 @@ class AgentEngine {
         currentSessionID = UUID()
         UserDefaults.standard.set(currentSessionID.uuidString, forKey: Self.currentSessionDefaultsKey)
         messages = []
+        // Reset KV cache for new conversation
+        if let litert = inference as? LiteRTBackend {
+            Task { await litert.resetKVSession() }
+        }
     }
 
     func loadSession(id: UUID) {
@@ -749,6 +772,10 @@ class AgentEngine {
         currentSessionID = id
         UserDefaults.standard.set(currentSessionID.uuidString, forKey: Self.currentSessionDefaultsKey)
         messages = record.messages
+        // Reset KV cache — loaded session has no cached context
+        if let litert = inference as? LiteRTBackend {
+            Task { await litert.resetKVSession() }
+        }
         updateSessionSummary(
             .init(
                 id: record.id,

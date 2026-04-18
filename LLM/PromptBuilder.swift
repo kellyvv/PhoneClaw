@@ -866,4 +866,27 @@ struct PromptBuilder {
 
         """
     }
+
+    // MARK: - KV Cache Delta Prompt Builders
+    //
+    // 用于 persistent session 模式：只传增量 delta，KV cache 复用之前的 context。
+    // lastModelOutput 是上一轮 model 生成的完整文本。
+
+    /// 构造增量 delta prompt (纯文本对话 follow-up)
+    /// 输入: 上轮 model 输出 + 新的 user 消息
+    /// 输出: 只包含增量部分的 prompt (不含 system block 和历史)
+    static func buildDeltaTurnPrompt(
+        lastModelOutput: String,
+        userMessage: String,
+        currentImageCount: Int = 0,
+        enableThinking: Bool = false
+    ) -> String {
+        var delta = lastModelOutput + "<turn|>\n"
+        delta += "<|turn>user\n\(userMessage)\(imagePromptSuffix(count: currentImageCount))<turn|>\n"
+        delta += "<|turn>model\n"
+        if enableThinking {
+            delta += "<|think|>"
+        }
+        return delta
+    }
 }
