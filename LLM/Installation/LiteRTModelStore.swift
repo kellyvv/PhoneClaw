@@ -183,3 +183,19 @@ final class LiteRTModelStore: ModelInstaller {
         }
     }
 }
+
+// MARK: - Download Error
+
+enum DownloadError: LocalizedError {
+    case httpStatus(Int)
+    case invalidResponse
+
+    var errorDescription: String? {
+        switch self {
+        case .httpStatus(let code):
+            return "下载失败：HTTP \(code)"
+        case .invalidResponse:
+            return "下载的文件不完整或已损坏，请重试。"
+        }
+    }
+}

@@ -1,6 +1,5 @@
 import CoreImage
 import Foundation
-import MLXLMCommon
 #if canImport(UIKit)
 import UIKit
 // 跨平台 image 类型别名 —— iOS 真编 UIKit 路径, macOS CLI 自动走 CIImage.
@@ -27,10 +26,9 @@ class ModelConfig {
     var topK = 64
     var topP = 0.95
     var temperature = 1.0
-    var useGPU = true
     var enableThinking = UserDefaults.standard.bool(forKey: enableThinkingDefaultsKey)
     var selectedModelID = UserDefaults.standard.string(forKey: selectedModelDefaultsKey)
-        ?? MLXLocalLLMService.defaultModel.id
+        ?? ModelDescriptor.defaultModel.id
     /// System prompt — 由 AgentEngine.loadSystemPrompt() 从 SYSPROMPT.md 注入，不在代码里硬编码。
     var systemPrompt = ""
 }
@@ -77,7 +75,9 @@ class AgentEngine {
 
     static let currentSessionDefaultsKey = "PhoneClaw.currentSessionID"
 
-    let llm = MLXLocalLLMService()
+    let inference: InferenceService
+    let catalog: ModelCatalog
+    let installer: ModelInstaller
     var messages: [ChatMessage] = [] {
         didSet {
             scheduleSessionSave()
@@ -116,11 +116,23 @@ class AgentEngine {
         }
     }
 
-    var availableModels: [BundledModelOption] {
-        MLXLocalLLMService.availableModels
+    var availableModels: [ModelDescriptor] {
+        catalog.availableModels
     }
 
-    init() {
+    init(
+        inference: InferenceService? = nil,
+        catalog: ModelCatalog? = nil,
+        installer: ModelInstaller? = nil
+    ) {
+        let litertCatalog = LiteRTCatalog()
+        let litertStore = LiteRTModelStore()
+        self.inference = inference ?? LiteRTBackend(modelPathResolver: { modelID in
+            guard let desc = litertCatalog.availableModels.first(where: { $0.id == modelID }) else { return nil }
+            return litertStore.artifactPath(for: desc)
+        })
+        self.catalog = catalog ?? litertCatalog
+        self.installer = installer ?? litertStore
         loadSkillEntries()
         currentSessionID =
             UUID(uuidString: UserDefaults.standard.string(forKey: Self.currentSessionDefaultsKey) ?? "")
@@ -179,11 +191,13 @@ class AgentEngine {
 
     func setup() {
         applyModelSelection()
-        llm.refreshModelInstallStates()
+        installer.refreshInstallStates()
         loadSystemPrompt()       // 从 SYSPROMPT.md 注入 system prompt
         loadPersistedSessions()
         applySamplingConfig()
-        llm.loadModel()
+        Task {
+            try? await inference.load(modelID: config.selectedModelID)
+        }
     }
 
     // MARK: - SYSPROMPT 注入
@@ -231,10 +245,10 @@ class AgentEngine {
     }
 
     func applySamplingConfig() {
-        llm.samplingTopK = config.topK
-        llm.samplingTopP = Float(config.topP)
-        llm.samplingTemperature = Float(config.temperature)
-        llm.maxOutputTokens = config.maxTokens
+        inference.samplingTopK = config.topK
+        inference.samplingTopP = Float(config.topP)
+        inference.samplingTemperature = Float(config.temperature)
+        inference.maxOutputTokens = config.maxTokens
         UserDefaults.standard.set(
             config.enableThinking,
             forKey: ModelConfig.enableThinkingDefaultsKey
@@ -247,7 +261,7 @@ class AgentEngine {
             config.selectedModelID,
             forKey: ModelConfig.selectedModelDefaultsKey
         )
-        return llm.selectModel(id: config.selectedModelID)
+        return catalog.select(modelID: config.selectedModelID)
     }
 
     func reloadModel() {
@@ -262,9 +276,9 @@ class AgentEngine {
         Task { [weak self] in
             guard let self else { return }
             self.isProcessing = false
-            _ = self.llm.selectModel(id: selectedModelID)
-            await self.llm.prepareForReload()
-            self.llm.loadModel()
+            _ = self.catalog.select(modelID: selectedModelID)
+            self.inference.unload()
+            try? await self.inference.load(modelID: selectedModelID)
         }
     }
 
@@ -281,7 +295,7 @@ class AgentEngine {
         return toolRegistry.authorizationStatus(for: kind)
     }
 
-    // MARK: - 处理用户输入（MLX 流式输出）
+    // MARK: - 处理用户输入（流式输出）
 
     func processInput(
         _ text: String,
@@ -293,7 +307,7 @@ class AgentEngine {
         let displayText = trimmed
         let attachments = replayImageAttachments ?? images.compactMap(ChatImageAttachment.init(image:))
         let audioClips = audio.flatMap(ChatAudioAttachment.init(snapshot:)).map { [$0] } ?? []
-        let audioAttachment = audio.map(UserInput.Audio.from(snapshot:))
+        let audioInput = audio.map(AudioInput.from(snapshot:))
         let normalizedText: String
         if trimmed.isEmpty, !attachments.isEmpty {
             normalizedText = "请描述这张图片。"
@@ -350,13 +364,15 @@ class AgentEngine {
         } else {
             activeSkillInfos = []
         }
-        let historyDepth = requiresMultimodal ? 0 : llm.safeHistoryDepth
+        let policy = catalog.runtimePolicy(for: catalog.selectedModel.id)
+        let headroomMB = Double(MemoryStats.headroomMB)
+        let historyDepth = requiresMultimodal ? 0 : policy.safeHistoryDepth(headroomMB: headroomMB)
         let plannerHistoryDepth = shouldUsePlanner ? 0 : historyDepth
-        print("[MEM] safeHistoryDepth=\(historyDepth), headroom=\(llm.availableHeadroomMB) MB")
+        print("[MEM] safeHistoryDepth=\(historyDepth), headroom=\(MemoryStats.headroomMB) MB")
         let promptImages = promptImages(historyDepth: historyDepth, currentImages: attachments)
         print(
             "[VLM] userAttachments=\(attachments.count), promptImages=\(promptImages.count), "
-                + "audio=\(audioAttachment == nil ? 0 : 1)"
+                + "audio=\(audioInput == nil ? 0 : 1)"
         )
 
         // [Metric] PhoneClaw 架构优化数据收集
@@ -368,7 +384,7 @@ class AgentEngine {
             shouldUsePlanner: shouldUsePlanner,
             shouldUseFullAgentPrompt: shouldUseFullAgentPrompt
         )
-        log("[Metric] route=\(routedPath) skills=\(matchedSkillIdsForTurn.count) model=\(llm.selectedModel.id) multimodal=\(requiresMultimodal)")
+        log("[Metric] route=\(routedPath) skills=\(matchedSkillIdsForTurn.count) model=\(catalog.selectedModel.id) multimodal=\(requiresMultimodal)")
 
         // Tag 这条 assistant placeholder 的 skillName, 让 sticky routing 在
         // 下一轮追问时能识别上下文 (即使本轮 LLM 没调 tool 只是澄清).
@@ -445,9 +461,9 @@ class AgentEngine {
         //
         // 不是规则, 是 memory-pressure-aware degradation —— 跟 jetsam 共生的
         // 工程实践. 阈值 1500 MB 是经验值 (E4B 单次 prefill ~700MB 峰值 + safety).
-        let useCompactSchema = llm.availableHeadroomMB < 1500
+        let useCompactSchema = MemoryStats.headroomMB < 1500
         if useCompactSchema {
-            log("[Agent] preload compact schema (headroom=\(llm.availableHeadroomMB) MB < 1500)")
+            log("[Agent] preload compact schema (headroom=\(MemoryStats.headroomMB) MB < 1500)")
         }
         let preloadedSkills: [PromptBuilder.PreloadedSkill] = matchedSkillIdsForTurn.compactMap { id in
             guard let body = skillRegistry.loadBody(skillId: id),
@@ -523,36 +539,39 @@ class AgentEngine {
         var buffer = ""
         var bufferFlushed = false
 
-        llm.generateStream(prompt: streamingPrompt, images: promptImages, audios: []) { [weak self] token in
-            guard let self = self,
-                  self.messages.indices.contains(msgIndex) else { return }
+        inference.generate(
+            prompt: streamingPrompt,
+            onToken: { [weak self] token in
+                guard let self = self,
+                      self.messages.indices.contains(msgIndex) else { return }
 
-            if detectedToolCall {
+                if detectedToolCall {
+                    buffer += token
+                    return
+                }
+
                 buffer += token
-                return
-            }
 
-            buffer += token
+                if buffer.contains("<tool_call>") {
+                    detectedToolCall = true
+                    return
+                }
 
-            if buffer.contains("<tool_call>") {
-                detectedToolCall = true
-                return
-            }
+                if !bufferFlushed {
+                    let trimmed = buffer.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if trimmed.isEmpty { return }
+                    if "<tool_call>".hasPrefix(trimmed) { return }
+                    bufferFlushed = true
+                    self.messages[msgIndex].update(content: self.cleanOutputStreaming(buffer))
+                    return
+                }
 
-            if !bufferFlushed {
-                let trimmed = buffer.trimmingCharacters(in: .whitespacesAndNewlines)
-                if trimmed.isEmpty { return }
-                if "<tool_call>".hasPrefix(trimmed) { return }
-                bufferFlushed = true
-                self.messages[msgIndex].update(content: self.cleanOutputStreaming(buffer))
-                return
-            }
-
-            let cleaned = self.cleanOutputStreaming(buffer)
-            if !cleaned.isEmpty {
-                self.messages[msgIndex].update(content: cleaned)
-            }
-        } onComplete: { [weak self] result in
+                let cleaned = self.cleanOutputStreaming(buffer)
+                if !cleaned.isEmpty {
+                    self.messages[msgIndex].update(content: cleaned)
+                }
+            },
+            onComplete: { [weak self] result in
             guard let self = self else { return }
             defer { self.isProcessing = false }
             guard self.messages.indices.contains(msgIndex) else { return }
@@ -587,17 +606,20 @@ class AgentEngine {
 
     func streamLLM(prompt: String, images: [CIImage]) async -> String? {
         return await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
-            llm.generateStream(prompt: prompt, images: images, audios: []) { _ in
-            } onComplete: { result in
-                switch result {
-                case .success(let text):
-                    log("[Agent] LLM raw: \(text.prefix(300))")
-                    continuation.resume(returning: text)
-                case .failure(let error):
-                    log("[Agent] LLM failed: \(error.localizedDescription)")
-                    continuation.resume(returning: nil)
+            inference.generate(
+                prompt: prompt,
+                onToken: { _ in },
+                onComplete: { result in
+                    switch result {
+                    case .success(let text):
+                        log("[Agent] LLM raw: \(text.prefix(300))")
+                        continuation.resume(returning: text)
+                    case .failure(let error):
+                        log("[Agent] LLM failed: \(error.localizedDescription)")
+                        continuation.resume(returning: nil)
+                    }
                 }
-            }
+            )
         }
     }
 
@@ -606,10 +628,12 @@ class AgentEngine {
         return await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
             var toolCallDetected = false
             var bufferFlushed = false
-            llm.generateStream(prompt: prompt, images: images, audios: []) { [weak self] token in
-                guard let self = self,
-                      self.messages.indices.contains(msgIndex) else { return }
-                buffer += token
+            inference.generate(
+                prompt: prompt,
+                onToken: { [weak self] token in
+                    guard let self = self,
+                          self.messages.indices.contains(msgIndex) else { return }
+                    buffer += token
 
                 if toolCallDetected { return }
                 if buffer.contains("<tool_call>") {
@@ -657,8 +681,8 @@ class AgentEngine {
     }
 
     func cancelActiveGeneration() {
-        guard isProcessing || llm.isGenerating else { return }
-        llm.cancel()
+        guard isProcessing || inference.isGenerating else { return }
+        inference.cancel()
         isProcessing = false
 
         if let lastAssistant = messages.lastIndex(where: { $0.role == .assistant }) {
@@ -679,7 +703,7 @@ class AgentEngine {
 
     func startNewSession() {
         flushPendingSessionSave()
-        if isProcessing || llm.isGenerating {
+        if isProcessing || inference.isGenerating {
             cancelActiveGeneration()
         }
         currentSessionID = UUID()
@@ -690,7 +714,7 @@ class AgentEngine {
     func loadSession(id: UUID) {
         guard id != currentSessionID || messages.isEmpty else { return }
         flushPendingSessionSave()
-        if isProcessing || llm.isGenerating {
+        if isProcessing || inference.isGenerating {
             cancelActiveGeneration()
         }
         guard let record = loadSessionRecord(id: id) else { return }
@@ -761,7 +785,7 @@ class AgentEngine {
 
     /// 重试最后一轮用户输入。直接复用已持久化的附件数据，不重新编码。
     func retryLastResponse() async {
-        guard !isProcessing, llm.isLoaded else { return }
+        guard !isProcessing, inference.isLoaded else { return }
         guard let lastUserIndex = messages.lastIndex(where: { $0.role == .user }) else { return }
         let userMsg = messages[lastUserIndex]
         // 含音频的轮次不支持重试（AudioCaptureSnapshot 是一次性数据，无法从 WAV 反向构造）

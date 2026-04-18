@@ -249,7 +249,7 @@ extension AgentEngine {
         //      tool_result 给模型, 让它继续推进下一个 tool 或给最终答案.
         //   2. maxRounds 内存紧时上限 6 (从原 3 抬上去) — 多 SKILL 串联场景:
         //      load_skill + tool + load_skill + tool + tool + 最终答案 大概 5-6 round.
-        let effectiveMax = (llm.availableHeadroomMB < 1500) ? min(maxRounds, 6) : maxRounds
+        let effectiveMax = (MemoryStats.headroomMB < 1500) ? min(maxRounds, 6) : maxRounds
         guard round <= effectiveMax else {
             log("[Agent] 达到最大工具链轮数 \(effectiveMax) (memory-aware)")
             isProcessing = false

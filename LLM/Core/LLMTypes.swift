@@ -64,6 +64,15 @@ public struct AudioInput: Sendable {
 
         return data
     }
+
+    /// 从 AudioCaptureSnapshot 构造 (替代 UserInput.Audio.from(snapshot:))
+    public static func from(snapshot: AudioCaptureSnapshot) -> AudioInput {
+        AudioInput(
+            samples: snapshot.pcm,
+            sampleRate: snapshot.sampleRate,
+            channelCount: snapshot.channelCount
+        )
+    }
 }
 
 // MARK: - Inference Stats (替代 LLMStats)
