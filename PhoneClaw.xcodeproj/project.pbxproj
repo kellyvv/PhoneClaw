@@ -125,6 +125,7 @@
 		BB2000000000000000000005 /* RuntimePolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000005 /* RuntimePolicy.swift */; };
 		BB2000000000000000000006 /* PredefinedModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000006 /* PredefinedModels.swift */; };
 		BB2000000000000000000007 /* LiteRTBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000007 /* LiteRTBackend.swift */; };
+		BB2000000000000000000099 /* AudioBypassTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000099 /* AudioBypassTest.swift */; };
 		BB2000000000000000000008 /* LiteRTCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000008 /* LiteRTCatalog.swift */; };
 		BB2000000000000000000009 /* LiteRTModelStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000009 /* LiteRTModelStore.swift */; };
 		BB2000000000000000000010 /* gemma-4-E2B-it.litertlm in Resources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000010 /* gemma-4-E2B-it.litertlm */; };
@@ -242,6 +243,7 @@
 		BB1000000000000000000005 /* RuntimePolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimePolicy.swift; sourceTree = "<group>"; };
 		BB1000000000000000000006 /* PredefinedModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PredefinedModels.swift; sourceTree = "<group>"; };
 		BB1000000000000000000007 /* LiteRTBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiteRTBackend.swift; sourceTree = "<group>"; };
+		BB1000000000000000000099 /* AudioBypassTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioBypassTest.swift; sourceTree = "<group>"; };
 		BB1000000000000000000008 /* LiteRTCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiteRTCatalog.swift; sourceTree = "<group>"; };
 		BB1000000000000000000009 /* LiteRTModelStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiteRTModelStore.swift; sourceTree = "<group>"; };
 		BB1000000000000000000010 /* gemma-4-E2B-it.litertlm */ = {isa = PBXFileReference; lastKnownFileType = file; name = "gemma-4-E2B-it.litertlm"; path = "Models/gemma-4-E2B-it.litertlm"; sourceTree = SOURCE_ROOT; };
@@ -483,6 +485,7 @@
 			children = (
 				BB1000000000000000000007 /* LiteRTBackend.swift */,
 				BB1000000000000000000008 /* LiteRTCatalog.swift */,
+				BB1000000000000000000099 /* AudioBypassTest.swift */,
 			);
 			path = LiteRT;
 			sourceTree = "<group>";
@@ -865,6 +868,7 @@
 				BB2000000000000000000005 /* RuntimePolicy.swift in Sources */,
 				BB2000000000000000000006 /* PredefinedModels.swift in Sources */,
 				BB2000000000000000000007 /* LiteRTBackend.swift in Sources */,
+				BB2000000000000000000099 /* AudioBypassTest.swift in Sources */,
 				BB2000000000000000000008 /* LiteRTCatalog.swift in Sources */,
 				BB2000000000000000000009 /* LiteRTModelStore.swift in Sources */,
 				BB2000000000000000000012 /* PCLog.swift in Sources */,

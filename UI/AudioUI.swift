@@ -466,19 +466,26 @@ struct RecordingLevelBars: View {
         HStack(alignment: .center, spacing: 3) {
             ForEach(0..<24, id: \.self) { index in
                 let seed = abs(sin(Double(index) * 0.55))
-                let intensity = max(CGFloat(level), 0.08)
+                let intensity = max(displayLevel, 0.08)
                 Capsule()
                     .fill(index < highlightedBarCount ? Theme.accent : Theme.textTertiary.opacity(0.35))
-                    .frame(width: 4, height: 8 + CGFloat(seed) * (8 + intensity * 18))
+                    .frame(width: 4, height: 8 + CGFloat(seed) * (8 + intensity * 26))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .animation(.easeInOut(duration: 0.16), value: highlightedBarCount)
+        .animation(.easeInOut(duration: 0.12), value: highlightedBarCount)
+        .animation(.easeInOut(duration: 0.12), value: displayLevel)
+    }
+
+    /// sqrt 感知映射: 归一化浮点麦克风峰值正常只到 0.02-0.3, 线性塞进 0-1
+    /// bar 高度几乎看不出变化. sqrt 把低幅拉上去: 0.03→0.17, 0.1→0.32, 0.3→0.55.
+    private var displayLevel: CGFloat {
+        let clamped = min(max(CGFloat(level), 0), 1)
+        return clamped.squareRoot()
     }
 
     private var highlightedBarCount: Int {
-        let normalized = min(max(level, 0), 1)
-        return max(2, Int((normalized * 24).rounded(.up)))
+        max(2, Int((displayLevel * 24).rounded(.up)))
     }
 }
 

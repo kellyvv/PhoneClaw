@@ -82,89 +82,30 @@ struct AIResponseView: View {
     }
 }
 
-// MARK: - Streaming Markdown (Typewriter Pattern)
+// MARK: - Streaming Markdown
 
-/// Renders markdown with a character-queue typewriter effect during streaming.
+/// Single-renderer streaming markdown. MarkdownUI throughout — no mid-stream
+/// or end-of-stream renderer swap, so there is never a "re-render" visual jump.
 ///
-/// Instead of feeding entire token strings to MarkdownUI on every update
-/// (which causes layout jumps when block-level syntax like ### forms),
-/// new characters are queued and fed one-by-one via a Timer.
-/// This makes markdown syntax appear naturally as "typed out" text.
-///
-/// Based on the GetStream production pattern:
-/// https://github.com/GetStream/stream-chat-swift-ai
+/// `.contentTransition(.opacity)` is an environment value that cascades into
+/// MarkdownUI's internal Text views. When content grows, new glyphs crossfade
+/// in using the animation context provided by `.animation(_:value:)`.
+/// This mirrors the per-glyph fade used by React-based streaming markdown
+/// (e.g. Claude Code desktop) while keeping view identity stable.
 private struct StreamingMarkdownView: View {
     let content: String
     let isStreaming: Bool
 
-    /// Committed text: complete lines only, safe for Markdown rendering.
-    @State private var committedText: String = ""
-    /// Current partial line: not yet terminated by \n, shown as plain Text.
-    @State private var pendingLine: String = ""
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if !committedText.isEmpty {
-                Markdown(committedText)
-                    .markdownTextStyle {
-                        FontSize(15)
-                        ForegroundColor(Theme.textPrimary)
-                    }
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .fixedSize(horizontal: false, vertical: true)
+        Markdown(content)
+            .markdownTextStyle {
+                FontSize(15)
+                ForegroundColor(Theme.textPrimary)
             }
-            if isStreaming && !pendingLine.isEmpty {
-                Text(pendingLine)
-                    .font(.system(size: 15))
-                    .foregroundStyle(Theme.textPrimary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .transition(.opacity.animation(.easeIn(duration: 0.15)))
-            }
-        }
-        .onAppear {
-            if !isStreaming {
-                committedText = content
-                return
-            }
-            applyDelta(from: "", to: content)
-        }
-        .onChange(of: content) { newValue in
-            if !isStreaming {
-                committedText = newValue
-                pendingLine = ""
-                return
-            }
-            let oldFull = committedText + pendingLine
-            applyDelta(from: oldFull, to: newValue)
-        }
-        .onChange(of: isStreaming) { streaming in
-            if !streaming {
-                committedText = content
-                pendingLine = ""
-            }
-        }
-    }
-
-    /// Compute what's new, append to pendingLine, flush complete lines.
-    private func applyDelta(from oldText: String, to newText: String) {
-        let commonLen = oldText.commonPrefix(with: newText).count
-        let start = newText.index(newText.startIndex, offsetBy: commonLen)
-        let newChars = String(newText[start...])
-
-        pendingLine += newChars
-        flushCompleteLines()
-    }
-
-    /// Move all complete lines (terminated by \n) from pendingLine → committedText.
-    /// MarkdownUI only re-parses when committedText changes, and it always
-    /// receives fully-formed lines — no half-formed **, #, ``` markers.
-    private func flushCompleteLines() {
-        guard let lastNL = pendingLine.lastIndex(of: "\n") else { return }
-        let cutoff = pendingLine.index(after: lastNL)
-        committedText += String(pendingLine[pendingLine.startIndex..<cutoff])
-        pendingLine = String(pendingLine[cutoff...])
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .animation(nil, value: content)
     }
 }
 

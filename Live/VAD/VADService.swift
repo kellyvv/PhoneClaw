@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import CoreML
 import FluidAudio
 
 // MARK: - VAD Service
@@ -81,7 +82,22 @@ class VADService {
 
     func initialize() async {
         do {
-            let manager = try await VadManager()
+            // Use pre-downloaded VAD model from unified LIVE download path.
+            // Model: silero-vad-unified-256ms-v6.0.0.mlmodelc (CoreML, Silero VAD v6)
+            // Downloaded via settings page alongside ASR + TTS.
+            let manager: VadManager
+            if let vadDir = LiveModelDefinition.resolve(for: LiveModelDefinition.vad) {
+                let modelPath = vadDir.appendingPathComponent("silero-vad-unified-256ms-v6.0.0.mlmodelc")
+                let config = MLModelConfiguration()
+                config.computeUnits = .cpuAndNeuralEngine
+                let mlModel = try MLModel(contentsOf: modelPath, configuration: config)
+                manager = VadManager(vadModel: mlModel)
+                print("[VAD] Using pre-downloaded model at \(vadDir.path)")
+            } else {
+                // Fallback: let FluidAudio auto-download (legacy path)
+                print("[VAD] ⚠️ Pre-downloaded model not found, falling back to FluidAudio auto-download")
+                manager = try await VadManager()
+            }
             vadManager = manager
             streamState = await manager.makeStreamState()
             isAvailable = await manager.isAvailable

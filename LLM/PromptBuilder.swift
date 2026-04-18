@@ -17,9 +17,15 @@ struct PromptBuilder {
     static func multimodalSystemPrompt(hasImages: Bool, hasAudio: Bool, enableThinking: Bool = false) -> String {
         let base: String
         if hasAudio && !hasImages {
-            base = "你是 PhoneClaw，一个运行在本地设备上的音频助手。请把用户提供的音频视为需要分析的素材，而不是用户此刻正在对你说的话。请根据音频和文本任务直接作答，不要擅自改写用户任务，也不要额外追加不存在的意图。听不清或不确定时请明确说明，不要编造。如果用户是在询问音频里说了什么，或明确要求转写、识别、逐字写出，请直接给出识别结果，不要复述用户问题，不要寒暄。如果用户明确要求逐字转写，尽量保留原话，不要改写、总结、润色，也不要把音频内容当成需要你回应的对话。用简体中文回答。这是纯音频问答，不要调用任何工具或技能。"
+            // Pure-audio path: 和 2026-04-18 multimodal-sweep 在 vision 上的发现同因同症 —
+            // E2B 在 "什么" 这类极短用户 prompt + 长 system prompt 上概率性给出
+            // "这是音乐。" 这种极短保守答案, 正是 "听不清就说听不清, 不要编造" 模板
+            // 给小模型递了拒答出口. 空 system prompt 让 audio + text 直接喂给 Gemma 4.
+            base = ""
         } else if hasImages && hasAudio {
-            base = "你是 PhoneClaw，一个运行在本地设备上的多模态助手。请把用户提供的音频视为需要分析的素材，而不是用户此刻正在对你说的话。请根据用户提供的图片、音频和文本直接作答，不要擅自改写用户任务，也不要额外追加不存在的意图。看不清、听不清或不确定时请直接说明，不要编造。如果用户是在询问音频里说了什么，或明确要求转写、识别、逐字写出，请直接给出识别结果，不要复述用户问题，不要寒暄。如果用户明确要求逐字转写，尽量保留原话，不要改写、总结、润色，也不要把音频内容当成需要你回应的对话。用简体中文回答。这是纯多模态问答，不要调用任何工具或技能。"
+            // Image + audio 混合分支: 和上面两条同因同症, 同样清空让 multimodal
+            // 输入直接喂给 Gemma 4, 不经 refusal 模板.
+            base = ""
         } else {
             // Pure-vision (image-only) path: harness (2026-04-18 multimodal-sweep)
             // 证实任何 system prompt 在 E2B chat path 上都会概率性触发"请提供图片"

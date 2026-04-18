@@ -258,6 +258,19 @@ final class LiteRTBackend: InferenceService {
                         ? prompt
                         : systemPrompt + "\n" + prompt
 
+                    #if DEBUG
+                    // 诊断: 音频链路 — 证实传给引擎的 payload 是真实非空
+                    for (i, audio) in audios.enumerated() {
+                        let durationSec = Double(audio.samples.count) / max(audio.sampleRate, 1)
+                        let n = Float(max(audio.samples.count, 1))
+                        let rms = (audio.samples.reduce(Float(0)) { $0 + $1 * $1 } / n).squareRoot()
+                        let peak = audio.samples.map { abs($0) }.max() ?? 0
+                        let silent = peak < 0.01  // <0.01 归一化 ≈ 近乎静默
+                        print("[LiteRT] audio[\(i)] samples=\(audio.samples.count) sr=\(Int(audio.sampleRate)) dur=\(String(format: "%.2f", durationSec))s wavBytes=\(audiosData[i].count) rms=\(String(format: "%.4f", rms)) peak=\(String(format: "%.4f", peak))\(silent ? " ⚠️SILENT" : "")")
+                    }
+                    print("[LiteRT] images=\(imagesData.count) audios=\(audios.count) promptChars=\(fullPrompt.count) prompt=\"\(fullPrompt.prefix(120))\"")
+                    #endif
+
                     // Stream via Conversation API
                     for try await chunk in engine.multimodalStreaming(
                         audioData: audiosData,

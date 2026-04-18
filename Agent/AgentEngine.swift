@@ -334,8 +334,13 @@ class AgentEngine {
         let normalizedText: String
         if trimmed.isEmpty, !attachments.isEmpty {
             normalizedText = "请描述这张图片。"
-        } else if trimmed.isEmpty, audio != nil {
-            normalizedText = "请直接转写这段音频内容。"
+        } else if audio != nil {
+            // 有音频就无脑前缀 anchor — E2B/E4B 小模型会把 "这是什么？" 之类短 prompt
+            // 当成问它自己, 给出 Gemma 自我介绍模板. 空 text 补一个默认意图作为填充,
+            // 不再分两个音频分支。偶尔出现的 "关于这段音频：请转写音频" 式轻微冗余可
+            // 接受, 胜过维护一套硬编 anchor 词表。
+            let intent = trimmed.isEmpty ? "请详细转写并描述" : trimmed
+            normalizedText = "关于这段音频：\(intent)"
         } else {
             normalizedText = trimmed
         }
