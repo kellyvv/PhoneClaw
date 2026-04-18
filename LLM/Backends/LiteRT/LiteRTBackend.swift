@@ -243,7 +243,7 @@ final class LiteRTBackend: InferenceService {
                 }
 
                 do {
-                    // 把 CIImage 转 JPEG Data
+                    // CIImage → JPEG Data
                     var imagesData: [Data] = []
                     for ciImage in images {
                         if let data = self.ciImageToJPEG(ciImage) {
@@ -251,24 +251,28 @@ final class LiteRTBackend: InferenceService {
                         }
                     }
 
-                    // 把 AudioInput 转 WAV Data
+                    // AudioInput → WAV Data
                     let audiosData = audios.map { $0.wavData }
 
-                    // 构造完整 prompt (含 systemPrompt)
                     let fullPrompt = systemPrompt.isEmpty
                         ? prompt
                         : systemPrompt + "\n" + prompt
 
-                    // 走 Conversation API (非流式，当前 LiteRTLMEngine 没有封装 conversation stream)
-                    // TODO: 补 conversationSendStreaming 后改为流式
-                    let result = try await engine.multimodal(
+                    // Stream via Conversation API
+                    for try await chunk in engine.multimodalStreaming(
                         audioData: audiosData,
                         imagesData: imagesData,
-                        prompt: fullPrompt
-                    )
-
+                        prompt: fullPrompt,
+                        temperature: self.samplingTemperature,
+                        maxTokens: self.maxOutputTokens
+                    ) {
+                        if self.cancelled {
+                            continuation.finish()
+                            break
+                        }
+                        continuation.yield(chunk)
+                    }
                     if !self.cancelled {
-                        continuation.yield(result)
                         continuation.finish()
                     }
                 } catch {
