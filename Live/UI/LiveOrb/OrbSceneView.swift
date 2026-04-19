@@ -393,12 +393,14 @@ void main() {
 
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
-    composer.addPass(new UnrealBloomPass(
+    const bloomPass = new UnrealBloomPass(
       new THREE.Vector2(window.innerWidth, window.innerHeight),
-      5,
+      0.3,   // 初始 bloom 很低 (加载中), 满值 5
       0.5,
       0
-    ));
+    );
+    composer.addPass(bloomPass);
+    const fullBloomStrength = 5;
 
     function onWindowResize() {
       camera.aspect = window.innerWidth / window.innerHeight;
@@ -423,20 +425,18 @@ void main() {
     const rotation = new THREE.Vector3(0, 0, 0);
     let prevTime = performance.now();
 
-    // 蒙版控制: TTS 播放后 1s 延迟, 然后 5s 淡出
+    // 蒙版控制: TTS 播放后 1s 延迟, 然后 6s 淡出 (wall-clock time)
     const mask = document.getElementById('mask');
-    let maskOpacity = 0.65;  // 初始蒙版不透明度
-    let revealDelayFrames = -1;  // -1 = 未触发
-    const revealDelay = 60;  // 1s delay (60 frames at 60fps)
-    const revealDuration = 300;  // 5s ramp (300 frames at 60fps)
-    let revealProgress = 0;
+    let maskOpacity = 0.65;
+    let revealStartTime = -1;  // -1 = 未触发
+    const revealDelayMs = 1000;   // 1s delay
+    const revealDurationMs = 6000; // 6s ramp
 
     window.__orbUpdate = (i0, i1, i2, o0, o1, o2, br) => {
       target.ix = i0; target.iy = i1; target.iz = i2;
       target.ox = o0; target.oy = o1; target.oz = o2;
-      if (br !== undefined && br > 0.5 && revealDelayFrames < 0) {
-        // TTS 开始播放 — 启动 1s 延迟计时
-        revealDelayFrames = 0;
+      if (br !== undefined && br > 0.5 && revealStartTime < 0) {
+        revealStartTime = performance.now();
       }
     };
 
@@ -458,15 +458,14 @@ void main() {
 
       backdrop.material.uniforms.rand.value = Math.random() * 10000;
 
-      // 蒙版控制: 1s delay + 5s 淡出
-      if (revealDelayFrames >= 0) {
-        revealDelayFrames++;
-        if (revealDelayFrames > revealDelay) {
-          revealProgress = Math.min(revealProgress + 1.0 / revealDuration, 1.0);
-          // smoothstep 缓动
-          const t = revealProgress;
-          const eased = t * t * (3 - 2 * t);
+      // 蒙版 + bloom: 1s delay + 6s 淡出 (wall-clock)
+      if (revealStartTime >= 0) {
+        const elapsed = t - revealStartTime;
+        if (elapsed > revealDelayMs) {
+          const progress = Math.min((elapsed - revealDelayMs) / revealDurationMs, 1.0);
+          const eased = progress * progress * (3 - 2 * progress);
           maskOpacity = 0.65 * (1.0 - eased);
+          bloomPass.strength = 0.3 + (fullBloomStrength - 0.3) * eased;
         }
       }
       mask.style.opacity = maskOpacity;
