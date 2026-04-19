@@ -373,11 +373,14 @@ class LiveModeEngine {
 
         // Kick off LLM shader warmup concurrently with TTS greeting.
         // Only for small models (E2B) where warmup is safe; E4B skips due to OOM risk.
+        // 注意: 必须用 generateRaw (one-shot), 不能用 generate (persistent session).
+        // persistent session 的底层 C API 会在 inferenceQueue 上跑完全部 token,
+        // break 只停消费端, 不停生产端. 用 session 做 warmup 会阻塞后续推理 ~12s.
         let warmupTask: Task<Void, Never>? = {
             guard let inference = self.inference, inference.isLoaded else { return nil }
             return Task {
                 let t0 = CFAbsoluteTimeGetCurrent()
-                let stream = inference.generate(prompt: "你好")
+                let stream = inference.generateRaw(text: "你好", images: [])
                 do {
                     for try await _ in stream {
                         break  // 1 token is enough to warm up
@@ -432,12 +435,6 @@ class LiveModeEngine {
         tts.audioIO = nil
 
         turnController.reset()
-
-        // Reset KV session — Live 的 one-shot 调用可能关闭了 persistent session,
-        // 重新打开确保 Chat 回来后有干净的 session 可用。
-        if let litert = inference as? LiteRTBackend {
-            await litert.resetKVSession()
-        }
 
         turnPhase = .inactive
         state = .idle
