@@ -374,9 +374,8 @@ class LiveModeEngine {
         //   3. model 生成自然的自我介绍 (比固定文本更灵活)
         //
         // Orb 动画时序:
-        //   .idle (暗色)  → 推理中, 用户体感 "加载中"
-        //   .processing   → 第一个 token 出来, orb 开始亮
-        //   .speaking     → TTS 播放, orb 全亮
+        //   .idle (暗色)  → LLM 推理 + TTS 合成, 用户体感 "加载中"
+        //   .speaking     → TTS 播放开始, orb 亮起
         turnPhase = .starting
         // state 保持 .idle — orb 暗色, 用户看到 "加载中"
         statusMessage = "正在准备"
@@ -398,15 +397,9 @@ class LiveModeEngine {
                 hasVision: false
             )
             let t0 = CFAbsoluteTimeGetCurrent()
-            var isFirstToken = true
             let stream = inference.generate(prompt: greetingPrompt)
             do {
                 for try await token in stream {
-                    if isFirstToken {
-                        // 第一个 token → orb 从暗变亮 (processing)
-                        state = .processing
-                        isFirstToken = false
-                    }
                     greetingText += token
                 }
             } catch {}
