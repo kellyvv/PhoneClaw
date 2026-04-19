@@ -373,19 +373,17 @@ class LiveModeEngine {
 
         // Kick off LLM shader warmup concurrently with TTS greeting.
         // Only for small models (E2B) where warmup is safe; E4B skips due to OOM risk.
-        // 注意: 必须用 generateRaw (one-shot), 不能用 generate (persistent session).
-        // persistent session 的底层 C API 会在 inferenceQueue 上跑完全部 token,
-        // break 只停消费端, 不停生产端. 用 session 做 warmup 会阻塞后续推理 ~12s.
+        // 注意: 必须用 generateOneShot(maxTokens:2), 不能用 generate/generateRaw.
+        // LiteRTLM 的 C API 在 inferenceQueue 上同步跑完全部 maxTokens,
+        // break/cancel 只停消费端. maxTokens=2 确保底层只跑 prefill+2 decode (~1s).
         let warmupTask: Task<Void, Never>? = {
             guard let inference = self.inference, inference.isLoaded else { return nil }
             return Task {
                 let t0 = CFAbsoluteTimeGetCurrent()
-                let stream = inference.generateRaw(text: "你好", images: [])
-                do {
-                    for try await _ in stream {
-                        break  // 1 token is enough to warm up
-                    }
-                } catch {}
+                if let litert = inference as? LiteRTBackend {
+                    let stream = litert.generateOneShot(prompt: "你好", maxTokens: 2)
+                    do { for try await _ in stream { break } } catch {}
+                }
                 inference.cancel()
                 let ms = (CFAbsoluteTimeGetCurrent() - t0) * 1000
                 print("[Live] ⚡ LLM warmup done in \(Int(ms))ms")

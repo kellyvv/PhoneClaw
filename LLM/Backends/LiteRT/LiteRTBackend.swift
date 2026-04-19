@@ -372,7 +372,9 @@ final class LiteRTBackend: InferenceService {
     /// One-shot: 创建临时 session, 不复用 KV cache。
     /// Live 模式 + warmup 专用 (传完整 prompt, 非增量 delta)。
     /// LiteRTLM 同时只支持一个 session, 先关闭 persistent session。
-    func generateOneShot(prompt: String) -> AsyncThrowingStream<String, Error> {
+    /// - Parameter maxTokens: 覆盖默认 maxOutputTokens. warmup 设 2 避免
+    ///   C API 在 inferenceQueue 上跑完全部 token (break 只停消费端).
+    func generateOneShot(prompt: String, maxTokens: Int? = nil) -> AsyncThrowingStream<String, Error> {
         guard let engine, isLoaded else {
             return AsyncThrowingStream { $0.finish(throwing: ModelBackendError.modelNotLoaded) }
         }
@@ -384,7 +386,7 @@ final class LiteRTBackend: InferenceService {
         return engine.generateStreaming(
             prompt: prompt,
             temperature: samplingTemperature,
-            maxTokens: maxOutputTokens
+            maxTokens: maxTokens ?? maxOutputTokens
         )
     }
 
