@@ -38,6 +38,10 @@ struct LiveModeView: View {
         }
     }
 
+    private var isPreparingLive: Bool {
+        liveEngine.statusMessage.hasPrefix("正在准备")
+    }
+
     /// 基于 engine.state 的状态文字. 对齐原始设计 (6d0b310) ——
     /// "正在准备 Live" 特例放在 switch 之前, 覆盖任何 state 字面;
     /// 因为 engine.start() 启动瞬间就把 state 设成 .listening, 加载期间
@@ -47,7 +51,7 @@ struct LiveModeView: View {
     ///   1. .idle 分支不再显示 "LIVE 未启动" (返回 nil)
     ///   2. "正在准备" 改叫 "正在加载"
     private var headline: String? {
-        if liveEngine.statusMessage == "正在准备 Live" {
+        if isPreparingLive {
             return "正在加载"
         }
         switch liveEngine.state {
@@ -112,10 +116,10 @@ struct LiveModeView: View {
             // 相机模式下不蒙, 那时 Orb 已经被相机画面替换.
             if !isCameraEnabled {
                 Color.black
-                    .opacity(liveEngine.statusMessage == "正在准备 Live" ? 0.85 : 0)
+                    .opacity(isPreparingLive ? 0.55 : 0)
                     .ignoresSafeArea()
                     .allowsHitTesting(false)
-                    .animation(.easeOut(duration: 0.6), value: liveEngine.statusMessage)
+                    .animation(.easeOut(duration: 0.6), value: isPreparingLive)
             }
 
             // ── 前景 UI 层 ──

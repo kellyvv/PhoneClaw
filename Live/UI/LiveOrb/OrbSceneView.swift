@@ -90,14 +90,15 @@ struct OrbSceneView: UIViewRepresentable {
             let input  = inputAnalyser?.snapshot3()  ?? (b0: 0, b1: 0, b2: 0, version: 0)
             let output = outputAnalyser?.snapshot3() ?? (b0: 0, b1: 0, b2: 0, version: 0)
 
-            // state → brightness: idle=0 (暗), 其他=1 (亮)
-            let brightness: Double = (state == .idle) ? 0.0 : 1.0
+            // one-shot reveal 只跟随 TTS 播放态:
+            // .speaking 由 LiveModeEngine 在 playback-start 时切入。
+            let revealTrigger: Double = (state == .speaking) ? 1.0 : 0.0
 
             let script = String(
                 format: "window.__orbUpdate(%0.2f,%0.2f,%0.2f,%0.2f,%0.2f,%0.2f,%0.2f);",
                 input.b0,  input.b1,  input.b2,
                 output.b0, output.b1, output.b2,
-                brightness
+                revealTrigger
             )
             webView.evaluateJavaScript(script, completionHandler: nil)
         }
@@ -186,7 +187,7 @@ private enum OrbWebSource {
 </head>
 <body>
   <canvas id="orb"></canvas>
-  <div id="mask" style="position:absolute;inset:0;background:rgba(0,0,0,0.65);pointer-events:none;z-index:1;"></div>
+  <div id="mask" style="position:absolute;inset:0;background:rgba(0,0,0,0.45);pointer-events:none;z-index:1;"></div>
   <script type="importmap">
     {
       "imports": {
@@ -427,10 +428,11 @@ void main() {
 
     // 蒙版控制: TTS 播放后 1s 延迟, 然后 6s 淡出 (wall-clock time)
     const mask = document.getElementById('mask');
-    let maskOpacity = 0.65;
+    const initialMaskOpacity = 0.45;
+    let maskOpacity = initialMaskOpacity;
     let revealStartTime = -1;  // -1 = 未触发
     const revealDelayMs = 1000;   // 1s delay
-    const revealDurationMs = 6000; // 6s ramp
+    const revealDurationMs = 2000; // 2s ramp, total reveal = 3s with 1s hold
 
     window.__orbUpdate = (i0, i1, i2, o0, o1, o2, br) => {
       target.ix = i0; target.iy = i1; target.iz = i2;
@@ -464,7 +466,7 @@ void main() {
         if (elapsed > revealDelayMs) {
           const progress = Math.min((elapsed - revealDelayMs) / revealDurationMs, 1.0);
           const eased = progress * progress * (3 - 2 * progress);
-          maskOpacity = 0.65 * (1.0 - eased);
+          maskOpacity = initialMaskOpacity * (1.0 - eased);
           bloomPass.strength = 0.3 + (fullBloomStrength - 0.3) * eased;
         }
       }
