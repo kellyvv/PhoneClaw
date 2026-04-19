@@ -400,6 +400,13 @@ class LiveModeEngine {
         // Wait for warmup if it's still running (usually finishes before TTS)
         await warmupTask?.value
 
+        // Open fresh persistent session for Live KV cache reuse.
+        // Warmup's generateOneShot 已关闭旧 session, 这里新建一个.
+        // 首轮 Live turn 走全量 prefill, 后续走 delta (~300ms TTFT).
+        if let litert = inference as? LiteRTBackend {
+            await litert.resetKVSession()
+        }
+
         guard turnPhase == .speaking else { return }
 
         turnPhase = .listening
@@ -420,6 +427,12 @@ class LiveModeEngine {
 
         vad.stopListening()
         await cancelActiveGeneration()
+
+        // 标记 session 失效 — Live 的 KV context 不应泄漏到 Chat.
+        // 用 invalidate (仅设标志) 而非 reset (会操作引擎), 避免与
+        // 可能仍在 inferenceQueue 上的 C API 冲突.
+        // Chat 的 generate() 检测到 !kvSessionActive 后自动重建.
+        (inference as? LiteRTBackend)?.invalidateKVSession()
 
         // 先断 handler，再清 analyser（防止 displayLink 读到 deallocating 对象）
         audioIO?.visualisationInputRawHandler = nil

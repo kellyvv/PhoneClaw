@@ -176,6 +176,13 @@ final class LiteRTBackend: InferenceService {
         }
     }
 
+    /// 标记 session 失效 (不操作引擎, 不阻塞 inferenceQueue).
+    /// Live 退出时调用 — 此时 C API 可能仍在跑, 直接 closeSession 会死锁.
+    /// 下次 generate() 检测到 !kvSessionActive 时自动重建.
+    func invalidateKVSession() {
+        kvSessionActive = false
+    }
+
     func cancel() {
         cancelled = true
         // Session API 没有显式 cancel — 通过 cancelled 标志在 stream 消费侧中断。

@@ -73,9 +73,9 @@ final class LiveTurnProcessor {
         userSystemPrompt: String?
     ) -> AsyncThrowingStream<LiveOutputEvent, Error> {
 
-        // 构造 prompt — vision 和纯文本都走 buildLiveVoicePrompt,
+        // 构造完整 prompt — vision 和纯文本都走 buildLiveVoicePrompt,
         // 区别在于 hasVision 标志和是否传 frame 给推理后端.
-        let rawTextPrompt = PromptBuilder.buildLiveVoicePrompt(
+        let fullPrompt = PromptBuilder.buildLiveVoicePrompt(
             userSystemPrompt: userSystemPrompt,
             locale: locale,
             history: history.map { (role: $0.role.rawValue, content: $0.content) },
@@ -87,7 +87,30 @@ final class LiveTurnProcessor {
         )
 
         let images: [CIImage] = frame.map { [$0] } ?? []
-        let tokenStream = inference.generateRaw(text: rawTextPrompt, images: images)
+
+        let tokenStream: AsyncThrowingStream<String, Error>
+
+        if images.isEmpty,
+           let litert = inference as? LiteRTBackend,
+           litert.kvSessionActive
+        {
+            // 纯文本 + session 活跃: 走 persistent session (KV cache 复用)
+            if history.isEmpty {
+                // 首轮: 完整 prompt → 全量 prefill
+                tokenStream = inference.generate(prompt: fullPrompt)
+            } else {
+                // Follow-up: delta only → ~300ms TTFT
+                let cfg = locale.config
+                let delta = PromptBuilder.buildDeltaTurnPrompt(
+                    userMessage: transcript + cfg.userHint
+                )
+                print("[Live] KV delta: \(delta.count) chars (vs full \(fullPrompt.count) chars)")
+                tokenStream = inference.generate(prompt: delta)
+            }
+        } else {
+            // 有图 / 无 session: 走 generateRaw (multimodal 或 one-shot)
+            tokenStream = inference.generateRaw(text: fullPrompt, images: images)
+        }
 
         return makeEventStream(tokenStream: tokenStream)
     }
