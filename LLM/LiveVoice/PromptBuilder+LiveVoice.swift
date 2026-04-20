@@ -34,15 +34,16 @@ extension PromptBuilder {
         return locale.config.systemPrompt
     }
 
-    /// 当前 Live turn 的纯文本 user message. 直接返回 transcript, 不再拼 hint /
-    /// vision guard. 历史由 persistent conversation 自己累积.
+    /// 当前 Live turn 的纯文本 user message.
+    /// 每轮带一句极短的 persona 提醒, 防止 E4B 模型自我认同漂移 (Gemma 4 → 手机龙虾).
+    /// 开销 ~5 tokens/轮, 对 300ms TTFT 影响微乎其微.
     static func buildLiveVoiceUserPrompt(
         userTranscript: String,
         locale: LiveLocale = .zhCN,
         hasVision: Bool
     ) -> String {
-        _ = locale
         _ = hasVision
-        return userTranscript
+        let persona = locale.config.personaName
+        return "(你是\(persona)) \(userTranscript)"
     }
 }
