@@ -1,5 +1,6 @@
 import Foundation
 import CoreImage
+import AVFoundation
 
 // MARK: - LLM Core Types
 //
@@ -26,11 +27,8 @@ public struct AudioInput: Sendable {
     }
 
     /// 编码为 16-bit PCM WAV Data (适配 LiteRT-LM 音频输入)
-    /// 前置条件: samples 已被 AudioCaptureService 重采样到 16kHz mono。
-    /// 此处只做 Float32 → Int16 PCM + WAV header 封装。
+    /// 使用 AVAudioFile 写标准 WAV，确保格式完全合规。
     public var wavData: Data {
-        let intSampleRate = max(Int(sampleRate.rounded()), 1)
-
         // 多声道 → mono (安全兜底)
         let mono: [Float]
         if channelCount > 1 {
@@ -44,11 +42,47 @@ public struct AudioInput: Sendable {
             mono = samples
         }
 
-        // Float → 16-bit PCM
+        // 用 AVAudioFile 写一个标准 WAV 文件
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pclaw_audio_\(ProcessInfo.processInfo.globallyUniqueString).wav")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        do {
+            let settings: [String: Any] = [
+                AVFormatIDKey: Int(kAudioFormatLinearPCM),
+                AVSampleRateKey: sampleRate,
+                AVNumberOfChannelsKey: 1,
+                AVLinearPCMBitDepthKey: 16,
+                AVLinearPCMIsFloatKey: false,
+                AVLinearPCMIsBigEndianKey: false,
+            ]
+            let outFile = try AVAudioFile(forWriting: tempURL, settings: settings)
+
+            // 用 Float32 格式写入，AVAudioFile 自动转换为 Int16
+            let srcFormat = AVAudioFormat(
+                commonFormat: .pcmFormatFloat32,
+                sampleRate: sampleRate,
+                channels: 1,
+                interleaved: false
+            )!
+            let buffer = AVAudioPCMBuffer(pcmFormat: srcFormat, frameCapacity: AVAudioFrameCount(mono.count))!
+            buffer.frameLength = AVAudioFrameCount(mono.count)
+            memcpy(buffer.floatChannelData![0], mono, mono.count * MemoryLayout<Float>.size)
+
+            try outFile.write(from: buffer)
+            return try Data(contentsOf: tempURL)
+        } catch {
+            print("[AudioInput] AVAudioFile WAV write failed: \(error), falling back to manual")
+            return manualWavData(mono: mono)
+        }
+    }
+
+    /// 手动 WAV header 兜底（仅在 AVAudioFile 失败时使用）
+    private func manualWavData(mono: [Float]) -> Data {
+        let intSampleRate = max(Int(sampleRate.rounded()), 1)
         let pcm16 = mono.map { sample -> Int16 in
             Int16((min(max(sample, -1), 1) * Float(Int16.max)).rounded())
         }
-
         let bytesPerSample = MemoryLayout<Int16>.size
         let dataSize = pcm16.count * bytesPerSample
 
@@ -64,17 +98,16 @@ public struct AudioInput: Sendable {
         appendLE(UInt32(36 + dataSize))
         data.append("WAVE".data(using: .ascii)!)
         data.append("fmt ".data(using: .ascii)!)
-        appendLE(UInt32(16))                          // fmt chunk size
-        appendLE(UInt16(1))                           // PCM
-        appendLE(UInt16(1))                           // mono
-        appendLE(UInt32(intSampleRate))               // sample rate
-        appendLE(UInt32(intSampleRate * bytesPerSample)) // byte rate
-        appendLE(UInt16(bytesPerSample))              // block align
-        appendLE(UInt16(bytesPerSample * 8))          // bits per sample
+        appendLE(UInt32(16))
+        appendLE(UInt16(1))
+        appendLE(UInt16(1))
+        appendLE(UInt32(intSampleRate))
+        appendLE(UInt32(intSampleRate * bytesPerSample))
+        appendLE(UInt16(bytesPerSample))
+        appendLE(UInt16(bytesPerSample * 8))
         data.append("data".data(using: .ascii)!)
         appendLE(UInt32(dataSize))
         for s in pcm16 { appendLE(s) }
-
         return data
     }
 
