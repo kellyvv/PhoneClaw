@@ -157,11 +157,69 @@ final class AudioCaptureService {
         pcmLock.unlock()
 
         guard !pcm.isEmpty, sampleRate > 0 else { return nil }
-        return AudioCaptureSnapshot(
-            pcm: pcm,
+
+        // 如果已经是 16kHz 则直接返回
+        let targetRate = Self.preferredSampleRate  // 16000
+        if abs(sampleRate - targetRate) < 1 {
+            return AudioCaptureSnapshot(
+                pcm: pcm,
+                sampleRate: sampleRate,
+                channelCount: 1,
+                duration: Double(pcm.count) / sampleRate
+            )
+        }
+
+        // 用 AVAudioConverter 重采样到 16kHz (与文件导入路径一致)
+        guard let srcFormat = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
             sampleRate: sampleRate,
+            channels: 1,
+            interleaved: false
+        ), let dstFormat = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: targetRate,
+            channels: 1,
+            interleaved: false
+        ) else {
+            return AudioCaptureSnapshot(pcm: pcm, sampleRate: sampleRate, channelCount: 1, duration: Double(pcm.count) / sampleRate)
+        }
+
+        let srcFrameCount = AVAudioFrameCount(pcm.count)
+        guard let srcBuffer = AVAudioPCMBuffer(pcmFormat: srcFormat, frameCapacity: srcFrameCount),
+              let converter = AVAudioConverter(from: srcFormat, to: dstFormat) else {
+            return AudioCaptureSnapshot(pcm: pcm, sampleRate: sampleRate, channelCount: 1, duration: Double(pcm.count) / sampleRate)
+        }
+
+        // 复制 PCM 到 buffer
+        srcBuffer.frameLength = srcFrameCount
+        memcpy(srcBuffer.floatChannelData![0], pcm, pcm.count * MemoryLayout<Float>.size)
+
+        let ratio = targetRate / sampleRate
+        let dstFrameCount = AVAudioFrameCount(Double(srcFrameCount) * ratio)
+        guard let dstBuffer = AVAudioPCMBuffer(pcmFormat: dstFormat, frameCapacity: dstFrameCount) else {
+            return AudioCaptureSnapshot(pcm: pcm, sampleRate: sampleRate, channelCount: 1, duration: Double(pcm.count) / sampleRate)
+        }
+
+        var error: NSError?
+        converter.convert(to: dstBuffer, error: &error) { _, outStatus in
+            outStatus.pointee = .haveData
+            return srcBuffer
+        }
+
+        if let error {
+            print("[AudioCapture] Resample failed: \(error), using raw PCM")
+            return AudioCaptureSnapshot(pcm: pcm, sampleRate: sampleRate, channelCount: 1, duration: Double(pcm.count) / sampleRate)
+        }
+
+        let resampledCount = Int(dstBuffer.frameLength)
+        let resampled = Array(UnsafeBufferPointer(start: dstBuffer.floatChannelData![0], count: resampledCount))
+        print("[AudioCapture] Resampled \(pcm.count) @ \(Int(sampleRate))Hz → \(resampledCount) @ \(Int(targetRate))Hz")
+
+        return AudioCaptureSnapshot(
+            pcm: resampled,
+            sampleRate: targetRate,
             channelCount: 1,
-            duration: Double(pcm.count) / sampleRate
+            duration: Double(resampledCount) / targetRate
         )
     }
 
