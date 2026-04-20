@@ -41,10 +41,8 @@ struct AudioAttachmentBubble: View {
             )
             .frame(height: 24)
 
-            // 时长
-            Text(player.isPlaying
-                 ? player.secondaryStatusText(totalDuration: attachment.duration)
-                 : attachment.formattedDuration)
+            // 时长 (始终显示总时长，不随播放变化)
+            Text(attachment.formattedDuration)
                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Theme.textSecondary)
                 .padding(.horizontal, 6)
