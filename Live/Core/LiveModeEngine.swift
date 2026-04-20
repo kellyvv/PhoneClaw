@@ -206,11 +206,15 @@ class LiveModeEngine {
             ? "(系统通知：用户已开启摄像头，你现在可以看到画面了)"
             : "(系统通知：用户已关闭摄像头，你现在无法看到任何画面。如果用户问你看到什么，告诉他需要先开启摄像头)"
         print("[Live] 📷 Camera state → \(isOn ? "ON" : "OFF"), injecting system event")
-        // 发一条不需要回复的 user message 来更新 KV cache 上下文
-        // 用 generateLive 发送, 模型会输出少量 token, 直接丢弃
+        // prompt prefill 后立即 cancel, 只保留 KV cache 上下文, 不浪费 decode 计算
         Task {
+            let t0 = CFAbsoluteTimeGetCurrent()
             for try await _ in inference.generateLive(prompt: msg, images: [], audios: []) {
-                // 丢弃输出 — 这条只是为了在 KV cache 中留下上下文
+                // 首个 token 说明 prefill 完成, 立即 cancel 停止 decode
+                inference.cancel()
+                let ms = Int((CFAbsoluteTimeGetCurrent() - t0) * 1000)
+                print("[Live] 📷 Camera event prefilled & cancelled in \(ms)ms (saved ~2s decode)")
+                break
             }
         }
     }
