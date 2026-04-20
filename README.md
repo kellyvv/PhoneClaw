@@ -27,6 +27,10 @@
 
 PhoneClaw 是一个运行在 iPhone 上的本地 AI Agent。它使用 Gemma 4 在设备端完成推理，不依赖云端，不上传聊天内容。
 
+## 2026-04-20 更新
+
+- 发布未签名 IPA，可通过 [Sideloadly](https://sideloadly.io/) 签名安装到 iPhone，无需 Xcode 和 Mac 开发环境。[下载地址](https://github.com/kellyvv/PhoneClaw/releases/tag/v1.1.0)
+
 ## 2026-04-18 更新
 
 - 新增 LIVE 模式语音相关模型 APP 内下载，在配置页面直接下载就可以体验
