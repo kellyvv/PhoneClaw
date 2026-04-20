@@ -26,9 +26,45 @@ public struct AudioInput: Sendable {
     }
 
     /// 编码为 16-bit PCM WAV Data (适配 LiteRT-LM 音频输入)
+    /// Gemma 4 要求 16kHz mono WAV — 自动从任意采样率重采样。
     public var wavData: Data {
-        let integerSampleRate = max(Int(sampleRate.rounded()), 1)
-        let clampedSamples = samples.map { sample -> Int16 in
+        let targetRate = 16000
+        let monoSamples: [Float]
+
+        // 多声道 → mono (取平均)
+        if channelCount > 1 {
+            let frameCount = samples.count / channelCount
+            monoSamples = (0..<frameCount).map { frame in
+                var sum: Float = 0
+                for ch in 0..<channelCount {
+                    sum += samples[frame * channelCount + ch]
+                }
+                return sum / Float(channelCount)
+            }
+        } else {
+            monoSamples = samples
+        }
+
+        // 重采样到 16kHz (线性插值)
+        let sourceSR = Int(sampleRate.rounded())
+        let resampled: [Float]
+        if sourceSR != targetRate, sourceSR > 0 {
+            let ratio = Double(sourceSR) / Double(targetRate)
+            let outputCount = Int(Double(monoSamples.count) / ratio)
+            resampled = (0..<outputCount).map { i in
+                let srcIdx = Double(i) * ratio
+                let idx0 = Int(srcIdx)
+                let frac = Float(srcIdx - Double(idx0))
+                let s0 = monoSamples[min(idx0, monoSamples.count - 1)]
+                let s1 = monoSamples[min(idx0 + 1, monoSamples.count - 1)]
+                return s0 + frac * (s1 - s0)
+            }
+        } else {
+            resampled = monoSamples
+        }
+
+        // 浮点 → 16-bit PCM
+        let clampedSamples = resampled.map { sample -> Int16 in
             let limited = min(max(sample, -1), 1)
             return Int16((limited * Float(Int16.max)).rounded())
         }
@@ -36,8 +72,8 @@ public struct AudioInput: Sendable {
         let bytesPerSample = MemoryLayout<Int16>.size
         let dataChunkSize = clampedSamples.count * bytesPerSample
         let riffChunkSize = 36 + dataChunkSize
-        let byteRate = integerSampleRate * channelCount * bytesPerSample
-        let blockAlign = channelCount * bytesPerSample
+        let byteRate = targetRate * 1 * bytesPerSample  // mono
+        let blockAlign = 1 * bytesPerSample
 
         var data = Data()
         data.reserveCapacity(44 + dataChunkSize)
@@ -52,9 +88,9 @@ public struct AudioInput: Sendable {
         data.append("WAVE".data(using: .ascii)!)
         data.append("fmt ".data(using: .ascii)!)
         appendLE(UInt32(16))
-        appendLE(UInt16(1))
-        appendLE(UInt16(channelCount))
-        appendLE(UInt32(integerSampleRate))
+        appendLE(UInt16(1))             // PCM
+        appendLE(UInt16(1))             // mono
+        appendLE(UInt32(targetRate))    // 16000 Hz
         appendLE(UInt32(byteRate))
         appendLE(UInt16(blockAlign))
         appendLE(UInt16(bytesPerSample * 8))
