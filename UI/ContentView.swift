@@ -49,6 +49,7 @@ struct ContentView: View {
     @State private var showPhotoPicker = false
     @State private var showFilePicker = false
     @State private var importedAudioSnapshot: AudioCaptureSnapshot?
+    @State private var importedAudioFilename: String?
     @State private var holdToTalkASR = ASRService()
 
     private var displayItems: [DisplayItem] {
@@ -590,9 +591,16 @@ struct ContentView: View {
         if (audioCapture.isCapturing && captureOrigin == .menu)
             || hasCompletedDraft
             || audioCapture.lastErrorMessage != nil
-            || !selectedImages.isEmpty {
+            || !selectedImages.isEmpty
+            || importedAudioSnapshot != nil {
             VStack(spacing: 10) {
                 audioComposerPanel
+
+                // 导入的音频文件附件卡片
+                if let snapshot = importedAudioSnapshot {
+                    importedAudioCard(snapshot: snapshot)
+                        .padding(.horizontal, Theme.inputPadH)
+                }
 
                 if !selectedImages.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -626,6 +634,51 @@ struct ContentView: View {
             }
             .padding(.bottom, engine.messages.isEmpty ? 8 : 0)
         }
+    }
+
+    /// 导入音频文件的附件预览卡片
+    private func importedAudioCard(snapshot: AudioCaptureSnapshot) -> some View {
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Theme.accent.opacity(0.15))
+                    .frame(width: 40, height: 40)
+                Image(systemName: "waveform")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Theme.accent)
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(importedAudioFilename ?? "音频文件")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Theme.textPrimary)
+                    .lineLimit(1)
+                Text(String(format: "%.1f 秒 · %d kHz", snapshot.duration, Int(snapshot.sampleRate / 1000)))
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textTertiary)
+            }
+
+            Spacer()
+
+            Button {
+                withAnimation(.easeOut(duration: 0.2)) {
+                    importedAudioSnapshot = nil
+                    importedAudioFilename = nil
+                }
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 20))
+                    .foregroundStyle(Theme.textTertiary)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Theme.bgElevated, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .strokeBorder(Theme.border, lineWidth: 1)
+        )
     }
 
     @ViewBuilder
@@ -670,6 +723,7 @@ struct ContentView: View {
             !inputText.trimmingCharacters(in: .whitespaces).isEmpty
                 || !selectedImages.isEmpty
                 || hasCompletedDraft
+                || importedAudioSnapshot != nil
         )
         && !engine.isProcessing && engine.inference.isLoaded
     }
@@ -694,6 +748,7 @@ struct ContentView: View {
         selectedImages = []
         selectedPhotoItem = nil
         importedAudioSnapshot = nil
+        importedAudioFilename = nil
         isInputFocused = false
         await engine.processInput(text, images: images, audio: audioSnapshot)
     }
@@ -742,9 +797,7 @@ struct ContentView: View {
                 do {
                     let snapshot = try Self.decodeAudioFile(url: url)
                     importedAudioSnapshot = snapshot
-                    if inputText.trimmingCharacters(in: .whitespaces).isEmpty {
-                        inputText = "这段音频说了什么"
-                    }
+                    importedAudioFilename = filename
                     print("[UI] Audio file decoded: \(filename) → \(snapshot.pcm.count) samples @ \(Int(snapshot.sampleRate))Hz, \(String(format: "%.1f", snapshot.duration))s")
                 } catch {
                     inputText += (inputText.isEmpty ? "" : "\n") + "[附件: \(filename) — 音频解码失败]"
