@@ -258,6 +258,24 @@ final class LiteRTBackend: InferenceService {
         // Text session 仍没有显式 cancel — 通过 cancelled 标志在 stream 消费侧中断。
     }
 
+    /// 恢复 persistent text session (multimodal 结束后调用).
+    /// multimodalStreaming 内部会 close 自己创建的 conversation,
+    /// 所以只需重新 openSession.
+    private func restoreTextSession() async {
+        guard let engine, isLoaded, !liveModeActive else { return }
+        do {
+            try await engine.openSession(
+                temperature: samplingTemperature,
+                maxTokens: Int(maxOutputTokens)
+            )
+            kvSessionActive = true
+            print("[LiteRT] Text session restored after multimodal")
+        } catch {
+            print("[LiteRT] Failed to restore text session: \(error)")
+            // 下次 generate() 检测到 !kvSessionActive 会自动重建
+        }
+    }
+
     // MARK: - InferenceService: Text Generation
 
     func generate(prompt: String) -> AsyncThrowingStream<String, Error> {
@@ -366,6 +384,15 @@ final class LiteRTBackend: InferenceService {
             return AsyncThrowingStream { $0.finish(throwing: ModelBackendError.modelNotLoaded) }
         }
 
+        // LiteRT C API 同时只支持一个 session.
+        // multimodalStreaming 内部会创建临时 conversation, 必须先关闭 persistent text session.
+        if kvSessionActive {
+            engine.closeSession()
+            kvSessionActive = false
+            lastModelOutput = ""
+            print("[LiteRT] Closed text session for multimodal inference")
+        }
+
         isGenerating = true
         cancelled = false
 
@@ -429,6 +456,9 @@ final class LiteRTBackend: InferenceService {
                 await MainActor.run { [weak self] in
                     self?.isGenerating = false
                 }
+
+                // 恢复 persistent text session (供后续 Chat 模式使用)
+                await self.restoreTextSession()
             }
         }
     }
