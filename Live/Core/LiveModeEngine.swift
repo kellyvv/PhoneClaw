@@ -397,9 +397,8 @@ class LiveModeEngine {
         )
 
         do {
-            // 不依赖 Conversation API 的 systemMessage 参数 (Gemma 4 可能忽略)
-            // 改为在第一条 user message 中嵌入 system prompt
-            try await inference.enterLiveMode(systemPrompt: nil)
+            // 双保险: API systemMessage (E4B 可能支持) + 嵌入首条 user message (E2B 需要)
+            try await inference.enterLiveMode(systemPrompt: liveSystemPrompt)
         } catch {
             print("[Live] ❌ Failed to enter Live conversation: \(error)")
             turnPhase = .inactive
