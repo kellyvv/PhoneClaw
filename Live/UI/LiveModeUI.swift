@@ -14,7 +14,7 @@ struct LiveModeView: View {
     let inference: InferenceService
     let catalog: ModelCatalog
     /// 用户在 SYSPROMPT.md 编辑的 system prompt（来自 AgentEngine.config.systemPrompt）。
-    /// 透传到 LiveModeEngine，与 live voice 强约束拼接成完整 system prompt。
+    /// Phase 1 起 Live 不再读取这份通用 prompt；先保留透传，避免接口层变化。
     let userSystemPrompt: String?
 
     @State private var liveEngine = LiveModeEngine()
@@ -28,6 +28,10 @@ struct LiveModeView: View {
     /// UserDefaults 全程不动 — 用户在 Configurations 的持久化偏好不被 Live 污染.
     @State private var preLiveModelID: String? = nil
 
+    private var liveStrings: LiveLocaleConfig.StatusStrings {
+        LiveLocale.zhCN.config.statusStrings
+    }
+
     private var accentColor: Color {
         switch liveEngine.state {
         case .idle: return Theme.textTertiary
@@ -39,11 +43,11 @@ struct LiveModeView: View {
     }
 
     private var isPreparingLive: Bool {
-        liveEngine.statusMessage.hasPrefix("正在准备")
+        liveEngine.statusMessage.hasPrefix(liveStrings.preparingPrefix)
     }
 
     /// 基于 engine.state 的状态文字. 对齐原始设计 (6d0b310) ——
-    /// "正在准备 Live" 特例放在 switch 之前, 覆盖任何 state 字面;
+    /// “正在准备”特例放在 switch 之前, 覆盖任何 state 字面;
     /// 因为 engine.start() 启动瞬间就把 state 设成 .listening, 加载期间
     /// 这个特例是唯一能显示加载字面的路径.
     ///
@@ -52,14 +56,14 @@ struct LiveModeView: View {
     ///   2. "正在准备" 改叫 "正在加载"
     private var headline: String? {
         if isPreparingLive {
-            return "正在加载"
+            return liveStrings.loadingHeadline
         }
         switch liveEngine.state {
         case .idle:       return nil
-        case .listening:  return "我在听"
-        case .recording:  return "正在听你说"
-        case .processing: return "正在理解"
-        case .speaking:   return "正在回答"
+        case .listening:  return liveStrings.listeningHeadline
+        case .recording:  return liveStrings.recordingHeadline
+        case .processing: return liveStrings.processingHeadline
+        case .speaking:   return liveStrings.speakingHeadline
         }
     }
 
@@ -92,21 +96,27 @@ struct LiveModeView: View {
                 .ignoresSafeArea()
 
             // ── 背景层 ──
+            // OrbSceneView 全程挂载, 切摄像头只改 opacity, 避免 WKWebView 销毁重建
+            // 导致 JS 内的 one-shot reveal 状态 (revealStartTime / maskOpacity) 被
+            // 重置, 关摄像头后再触发一次 .speaking 又重播暗→亮动画 (实测 bug).
+            // CameraPreviewView 仍走条件挂载 — 它需要随开关启停 capture session.
+            #if canImport(UIKit)
+            OrbSceneView(
+                inputAnalyser: liveEngine.inputAnalyser,
+                outputAnalyser: liveEngine.outputAnalyser,
+                state: liveEngine.state
+            )
+            .ignoresSafeArea()
+            .opacity(isCameraEnabled ? 0 : 1)
+            #else
+            OrbBackgroundView()
+                .ignoresSafeArea()
+                .opacity(isCameraEnabled ? 0 : 1)
+            #endif
+
             if isCameraEnabled {
                 CameraPreviewView(previewLayer: camera.previewLayer)
                     .ignoresSafeArea()
-            } else {
-                #if canImport(UIKit)
-                OrbSceneView(
-                    inputAnalyser: liveEngine.inputAnalyser,
-                    outputAnalyser: liveEngine.outputAnalyser,
-                    state: liveEngine.state
-                )
-                .ignoresSafeArea()
-                #else
-                OrbBackgroundView()
-                    .ignoresSafeArea()
-                #endif
             }
 
             // ── 加载蒙版 (Orb 之上、UI 之下) ──
@@ -216,7 +226,7 @@ struct LiveModeView: View {
                         .foregroundStyle(.white.opacity(0.55))
 
                     if liveEngine.state == .speaking || liveEngine.state == .processing {
-                        Text("可以直接打断")
+                        Text(liveStrings.interruptHint)
                             .font(.system(size: 10, weight: .light, design: .rounded))
                             .foregroundStyle(.white.opacity(0.4))
                             .transition(.opacity)

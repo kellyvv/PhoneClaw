@@ -147,6 +147,7 @@ public class MLXLocalLLMService: LLMEngine, InferenceService {
     let capabilitySwitchLock = NSLock()
     var capabilitySwitchPending = false
     var admittedWorkCount = 0  // number of active load/generate tasks admitted past the gate
+    var liveModeSystemPrompt: String?
 
     // MARK: - KV Cache Reuse state
     //
@@ -514,6 +515,15 @@ public class MLXLocalLLMService: LLMEngine, InferenceService {
         generateStream(prompt: prompt, images: [], audios: [])
     }
 
+    public func enterLiveMode(systemPrompt: String?) async throws {
+        liveModeSystemPrompt = systemPrompt
+        try await prepareForLiveMode()
+    }
+
+    public func exitLiveMode() async {
+        liveModeSystemPrompt = nil
+    }
+
     public func generateMultimodal(
         images: [CIImage],
         audios: [AudioInput],
@@ -536,6 +546,19 @@ public class MLXLocalLLMService: LLMEngine, InferenceService {
 
     public func generateRaw(text: String, images: [CIImage]) -> AsyncThrowingStream<String, Error> {
         generateStream(rawText: text, images: images)
+    }
+
+    public func generateLive(
+        prompt: String,
+        images: [CIImage],
+        audios: [AudioInput]
+    ) -> AsyncThrowingStream<String, Error> {
+        generateMultimodal(
+            images: images,
+            audios: audios,
+            prompt: prompt,
+            systemPrompt: liveModeSystemPrompt ?? ""
+        )
     }
 
     public func generateStream(
@@ -575,18 +598,12 @@ public class MLXLocalLLMService: LLMEngine, InferenceService {
 
     /// Raw text prompt path — 绕开 tokenizer 的 applyChatTemplate.
     ///
-    /// 专为 Live 语音场景设计: 调用方 (PromptBuilder.buildLiveVoicePrompt)
-    /// 手写 `<|turn>system/user/model` 模板, 需要让 Gemma 4 把这段字符串**按
-    /// 原样**编码 (addSpecialTokens=false, 不再额外包装), 系统指令才能完整传达.
+    /// 历史遗留 raw text prompt 路径。
+    /// 调用方手写完整模板时，可用它绕开 tokenizer 的 applyChatTemplate。
     ///
     /// 对比:
-    ///   - `generateStream(prompt:images:audios:)`: 内部包成 `.chat([.user(prompt)])`,
-    ///     Gemma4Processor 走 applyChatTemplate, 把整段字符串当 user content 再包一层.
-    ///   - `generateStream(chat:)`: 按 system/user 角色走 applyChatTemplate, 在 Gemma 4
-    ///     上 system 约束被稀释 (harness 2026-04-16 实测).
-    ///   - 本方法 (纯文本): `UserInput(prompt: .text(rawText))` 命中 Gemma4Processor 的
-    ///     text 分支, 直接 `tokenizer.encode(text:, addSpecialTokens:false)`,
-    ///     模型看到的就是调用方手写的完整 token 序列.
+    ///   - `generateStream(prompt:images:audios:)`: 走标准 chat/user 输入
+    ///   - 本方法 (纯文本): 命中 Gemma4Processor 的 text 分支, 直接按原文编码
     ///
     /// 多模态分流 (真机 2026-04-16 验证):
     ///   `.text` 分支在 E2B + vision 场景下 MLX 内部 forward graph 内存 spike 突破
@@ -978,6 +995,7 @@ public class MLXLocalLLMService: LLMEngine, InferenceService {
         isGenerating = false
         loadedModel = nil
         cancelled = false
+        liveModeSystemPrompt = nil
         stats = LLMStats()
         stats.backend = "mlx-gpu"
         invalidateKVReuseCache()

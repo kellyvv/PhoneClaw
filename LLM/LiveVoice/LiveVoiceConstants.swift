@@ -7,33 +7,21 @@ import Foundation
 //   - CLI harness probe (引用 `PromptBuilder.defaultLiveVoiceConstraints` 等)
 //   - 旧测试代码
 //
-// 新代码请通过 `PromptBuilder.buildLiveVoicePrompt(... locale: ...)` 走 i18n 路径,
-// 不要直接引用这些常量.
+// 新代码请通过 `PromptBuilder.buildLiveVoiceSystemPrompt(...)` /
+// `PromptBuilder.buildLiveVoiceUserPrompt(...)` 走 i18n 路径, 不要直接引用这些常量.
 
 extension PromptBuilder {
 
-    /// 默认 locale (zh-CN) 的 voice constraints. 已渲染好 `{name}` 占位.
+    /// 默认 locale (zh-CN) 的 Live system prompt 全文。
+    /// Phase 2 收敛后 Live 只有这一段 prompt，不再分多个 section。
     static var defaultLiveVoiceConstraints: String {
-        LiveLocaleConfig.zhCN.voiceConstraints
+        LiveLocaleConfig.zhCN.systemPrompt
     }
 
-    /// 默认 locale 的 vision constraint.
-    static var defaultVisionConstraint: String {
-        LiveLocaleConfig.zhCN.visionConstraint
-    }
-
-    /// 默认 locale 的 user turn hint.
-    static var defaultLiveUserHint: String {
-        LiveLocaleConfig.zhCN.userHint
-    }
-
-    /// 默认 locale 的 skill suppression instruction (MVP 阶段抑制 tool_call 用).
-    static var defaultLiveSkillSuppressionInstruction: String {
-        LiveLocaleConfig.zhCN.skillSuppressionInstruction
-    }
-
-    /// 默认 locale 的 skill invocation instruction (阶段 3 启用 tool_call 通道用).
-    static var defaultSkillInvocationInstruction: String {
-        LiveLocaleConfig.zhCN.skillInvocationInstruction
-    }
+    /// 历史兼容占位。Phase 2 起 vision/userHint/skill 全合并进 systemPrompt，
+    /// 这些独立字段不再存在；返回空字符串避免旧 CLI / 测试代码因符号缺失而断裂。
+    static var defaultVisionConstraint: String { "" }
+    static var defaultLiveUserHint: String { "" }
+    static var defaultLiveSkillSuppressionInstruction: String { "" }
+    static var defaultSkillInvocationInstruction: String { "" }
 }

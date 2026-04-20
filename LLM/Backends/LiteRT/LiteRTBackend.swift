@@ -8,9 +8,9 @@ import LiteRTLMSwift
 // CPU-only，无 GPU 分支。
 //
 // 推理路径:
-//   - 纯文本: persistent session + 增量 delta → KV cache 复用
-//   - 多模态 (图/音): Conversation API → multimodal()
-//   - Raw text (Live): persistent session (同纯文本)
+//   - Chat 纯文本: persistent session + 增量 delta → KV cache 复用
+//   - 单次多模态 (图/音): Conversation API → multimodal()
+//   - Live: persistent multimodal conversation（文本/图像共用一份 KV cache）
 //
 // KV cache 复用: 模型加载后 openSession()，后续 generate() 只传增量 delta，
 // KV cache 保留之前轮次的 context，TTFT 从 ~15-20s 降至 ~1-2s。
@@ -50,6 +50,8 @@ final class LiteRTBackend: InferenceService {
     private(set) var sessionHasContext = false
     /// 上一轮 model 输出 (用于拼 delta)。空 = 首轮。
     private(set) var lastModelOutput: String = ""
+    /// Live 模式是否正在使用 persistent multimodal conversation。
+    private(set) var liveModeActive = false
 
     /// 模型文件路径解析 — 由外部 (ModelInstaller) 提供
     private let modelPathResolver: (String) -> URL?
@@ -148,6 +150,7 @@ final class LiteRTBackend: InferenceService {
         engine?.closeSession()
         engine?.closeConversation()
         kvSessionActive = false
+        liveModeActive = false
         lastModelOutput = ""
         Task { @MainActor in
             engine?.unload()
@@ -164,6 +167,7 @@ final class LiteRTBackend: InferenceService {
     /// 重置 KV cache session (新对话 / 切换会话时调用)
     func resetKVSession() async {
         guard let engine, isLoaded else { return }
+        guard !liveModeActive else { return }
         engine.closeSession()
         kvSessionActive = false
         sessionHasContext = false
@@ -180,18 +184,78 @@ final class LiteRTBackend: InferenceService {
         }
     }
 
+    func enterLiveMode(systemPrompt: String?) async throws {
+        guard let engine, isLoaded else {
+            throw ModelBackendError.modelNotLoaded
+        }
+
+        if liveModeActive {
+            await exitLiveMode()
+        }
+
+        engine.closeConversation()
+        if kvSessionActive {
+            engine.closeSession()
+        }
+
+        kvSessionActive = false
+        sessionHasContext = false
+        lastModelOutput = ""
+
+        print("[LiteRT] 📋 Live system prompt (\(systemPrompt?.count ?? 0) chars): \"\(systemPrompt?.prefix(200) ?? "nil")\"")
+        try await engine.openConversation(
+            systemMessage: systemPrompt,
+            temperature: samplingTemperature,
+            maxTokens: Int(maxOutputTokens)
+        )
+        liveModeActive = true
+        print("[LiteRT] Persistent Live conversation opened")
+    }
+
+    func exitLiveMode() async {
+        guard let engine, isLoaded else {
+            liveModeActive = false
+            kvSessionActive = false
+            sessionHasContext = false
+            lastModelOutput = ""
+            return
+        }
+
+        if liveModeActive {
+            engine.closeConversation()
+        }
+        liveModeActive = false
+        kvSessionActive = false
+        sessionHasContext = false
+        lastModelOutput = ""
+
+        do {
+            try await engine.openSession(
+                temperature: samplingTemperature,
+                maxTokens: Int(maxOutputTokens)
+            )
+            kvSessionActive = true
+            print("[LiteRT] Persistent text session restored after Live")
+        } catch {
+            print("[LiteRT] Failed to restore text session after Live: \(error)")
+        }
+    }
+
     /// 标记 session 失效 (不操作引擎, 不阻塞 inferenceQueue).
     /// Live 退出时调用 — 此时 C API 可能仍在跑, 直接 closeSession 会死锁.
     /// 下次 generate() 检测到 !kvSessionActive 时自动重建.
     func invalidateKVSession() {
         kvSessionActive = false
         sessionHasContext = false
+        lastModelOutput = ""
     }
 
     func cancel() {
         cancelled = true
-        // Session API 没有显式 cancel — 通过 cancelled 标志在 stream 消费侧中断。
-        // Conversation API 有 cancelConversation() — 未来补。
+        if liveModeActive, isGenerating {
+            engine?.cancelConversation()
+        }
+        // Text session 仍没有显式 cancel — 通过 cancelled 标志在 stream 消费侧中断。
     }
 
     // MARK: - InferenceService: Text Generation
@@ -199,6 +263,11 @@ final class LiteRTBackend: InferenceService {
     func generate(prompt: String) -> AsyncThrowingStream<String, Error> {
         guard let engine, isLoaded else {
             return AsyncThrowingStream { $0.finish(throwing: ModelBackendError.modelNotLoaded) }
+        }
+        guard !liveModeActive else {
+            return AsyncThrowingStream {
+                $0.finish(throwing: LiteRTLMError.inferenceFailure("Live mode is active; use generateLive(...)"))
+            }
         }
 
         // Auto-reopen persistent session if it was closed (e.g. by Live mode)
@@ -364,7 +433,91 @@ final class LiteRTBackend: InferenceService {
         }
     }
 
-    // MARK: - InferenceService: Raw Text (Live)
+    func generateLive(
+        prompt: String,
+        images: [CIImage],
+        audios: [AudioInput]
+    ) -> AsyncThrowingStream<String, Error> {
+        guard let engine, isLoaded else {
+            return AsyncThrowingStream { $0.finish(throwing: ModelBackendError.modelNotLoaded) }
+        }
+        guard liveModeActive else {
+            return AsyncThrowingStream {
+                $0.finish(throwing: LiteRTLMError.inferenceFailure("Live conversation is not active"))
+            }
+        }
+
+        isGenerating = true
+        cancelled = false
+        let startTime = CFAbsoluteTimeGetCurrent()
+
+        return AsyncThrowingStream { [weak self] continuation in
+            Task { [weak self] in
+                guard let self else {
+                    continuation.finish()
+                    return
+                }
+
+                var tokenCount = 0
+                var firstTokenTime: Double?
+
+                do {
+                    var imagesData: [Data] = []
+                    for ciImage in images {
+                        if let data = self.ciImageToJPEG(ciImage) {
+                            imagesData.append(data)
+                        }
+                    }
+                    let audiosData = audios.map(\.wavData)
+
+                    print("[LiteRT] 📩 Live turn: prompt=\"\(prompt.prefix(100))\" images=\(imagesData.count) audios=\(audiosData.count)")
+                    let stream = engine.conversationSendStreaming(
+                        audioData: audiosData,
+                        imagesData: imagesData,
+                        prompt: prompt
+                    )
+
+                    for try await token in stream {
+                        if self.cancelled {
+                            continuation.finish()
+                            break
+                        }
+                        tokenCount += 1
+                        if firstTokenTime == nil {
+                            firstTokenTime = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
+                        }
+                        continuation.yield(token)
+                    }
+                    if !self.cancelled {
+                        continuation.finish()
+                    }
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+
+                await MainActor.run { [weak self] in
+                    guard let self else { return }
+                    self.isGenerating = false
+                    if let ttft = firstTokenTime {
+                        self.stats.ttftMs = ttft
+                    }
+                    self.stats.totalChunks = tokenCount
+                    let elapsed = CFAbsoluteTimeGetCurrent() - startTime
+                    if elapsed > 0, tokenCount > 0 {
+                        self.stats.chunksPerSec = Double(tokenCount) / elapsed
+                    }
+                    PCLog.perf(
+                        ttftMs: Int(self.stats.ttftMs),
+                        chunks: tokenCount,
+                        chunksPerSec: self.stats.chunksPerSec,
+                        headroomMB: MemoryStats.headroomMB
+                    )
+                }
+            }
+        }
+    }
+
+    // MARK: - InferenceService: Raw Text
 
     func generateRaw(text: String, images: [CIImage]) -> AsyncThrowingStream<String, Error> {
         if images.isEmpty {

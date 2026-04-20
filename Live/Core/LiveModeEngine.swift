@@ -198,11 +198,15 @@ class LiveModeEngine {
     /// 摄像头帧提供器，由 UI 层注入。Engine 不直接依赖 LiveCameraService。
     var frameProvider: (() -> CIImage?)?
 
+    private var liveLocaleConfig: LiveLocaleConfig { LiveLocale.zhCN.config }
+    private var liveStrings: LiveLocaleConfig.StatusStrings { liveLocaleConfig.statusStrings }
+
     func setup(inference: InferenceService) {
         self.inference = inference
     }
 
     /// 调用方注入的用户 SYSPROMPT.md 内容（来自 AgentEngine.config.systemPrompt）。
+    /// Phase 1 起 Live 不再读取这份通用 system prompt；先保留注入口，避免接口变化。
     var userSystemPrompt: String?
 
     func start() async {
@@ -216,7 +220,7 @@ class LiveModeEngine {
         guard turnPhase == .inactive else { return }
         turnPhase = .starting
         state = .listening
-        statusMessage = "正在准备 Live"
+        statusMessage = liveStrings.preparingLive
         print("[Live] Starting (legacy)...")
 
         // 检查 LIVE 语音模型是否已就绪 (ASR + TTS)
@@ -224,7 +228,7 @@ class LiveModeEngine {
             print("[Live] ❌ LIVE voice models not available")
             turnPhase = .inactive
             state = .idle
-            statusMessage = "请先在配置页下载 LIVE 语音模型"
+            statusMessage = liveStrings.liveModelMissing
             return
         }
 
@@ -235,7 +239,7 @@ class LiveModeEngine {
             print("[Live] ❌ Audio engine error: \(error)")
             turnPhase = .inactive
             state = .idle
-            statusMessage = "音频引擎启动失败"
+            statusMessage = liveStrings.audioEngineFailed
             return
         }
         audioIO = io
@@ -268,7 +272,7 @@ class LiveModeEngine {
             print("[Live] ❌ VAD not available")
             turnPhase = .inactive
             state = .idle
-            statusMessage = "VAD 不可用"
+            statusMessage = liveStrings.vadUnavailable
             return
         }
         guard turnPhase == .starting else { return }
@@ -286,7 +290,7 @@ class LiveModeEngine {
             self.liveCaption = ""
             self.turnPhase = .recording
             self.state = .recording
-            self.statusMessage = "正在听你说"
+            self.statusMessage = self.liveStrings.recording
             print("[Live] 🎤 Recording...")
         }
 
@@ -296,7 +300,7 @@ class LiveModeEngine {
             self.turnGeneration &+= 1
             self.turnPhase = .processing
             self.state = .processing
-            self.statusMessage = "正在理解"
+            self.statusMessage = self.liveStrings.processing
             // Don't stop VAD — keep it running for barge-in detection during processing/speaking
             let dur = Double(samples.count) / 16000.0
             print("[Live] 🔇 Turn confirmed (\(String(format: "%.1f", dur))s audio)")
@@ -310,7 +314,7 @@ class LiveModeEngine {
             print("[Live] ⚠️ Turn cancelled (pendingStop timeout)")
             self.turnPhase = .listening
             self.state = .listening
-            self.statusMessage = "我在听，请说话"
+            self.statusMessage = self.liveStrings.listeningPrompt
         }
 
         // Wire VAD callbacks
@@ -363,49 +367,67 @@ class LiveModeEngine {
                 self.turnController.reset()
                 self.turnPhase = .listening
                 self.state = .listening
-                self.statusMessage = "我在听，请说话"
+                self.statusMessage = self.liveStrings.listeningPrompt
             }
         }
 
-        // Announce then listen, with session-powered greeting.
-        // 用真实 session 推理替代 warmup + 固定 TTS, 一举三得:
+        // Announce then listen, with conversation-powered greeting.
+        // 用 persistent multimodal conversation 推理替代固定文案, 一举三得:
         //   1. shader 预热 (首次推理触发 XNNPACK 编译)
-        //   2. system prompt 灌入 KV cache (后续 turn 走 delta ~300ms)
-        //   3. model 生成自然的自我介绍 (比固定文本更灵活)
+        //   2. Live 的 system prompt 灌入同一个 conversation KV cache
+        //   3. 文本 turn / 图像 turn 后续都复用这一份会话上下文
         //
         // Orb 动画时序:
         //   .idle (暗色)  → LLM 推理 + TTS 合成, 用户体感 "加载中"
         //   .speaking     → TTS 播放开始, orb 亮起
         turnPhase = .starting
         // state 保持 .idle — orb 暗色, 用户看到 "加载中"
-        statusMessage = "正在准备"
+        statusMessage = liveStrings.preparing
 
-        // 1. 开 persistent session
-        if let litert = inference as? LiteRTBackend {
-            await litert.resetKVSession()
+        guard let inference, inference.isLoaded else {
+            turnPhase = .inactive
+            state = .idle
+            statusMessage = liveStrings.loadModelFirst
+            return
         }
 
-        // 2. 用完整 Live prompt 生成自我介绍 (通过 session, 缓存 system prompt)
+        let liveSystemPrompt = PromptBuilder.buildLiveVoiceSystemPrompt(
+            userSystemPrompt: userSystemPrompt,
+            locale: .zhCN
+        )
+
+        do {
+            // 不依赖 Conversation API 的 systemMessage 参数 (Gemma 4 可能忽略)
+            // 改为在第一条 user message 中嵌入 system prompt
+            try await inference.enterLiveMode(systemPrompt: nil)
+        } catch {
+            print("[Live] ❌ Failed to enter Live conversation: \(error)")
+            turnPhase = .inactive
+            state = .idle
+            statusMessage = liveStrings.initializationFailed
+            return
+        }
+
+        // 2. 用 Live conversation 生成一句简短开场白
+        //    把 system prompt 嵌入第一条 user message, 确保模型看到指令
         var greetingText = ""
-        if let inference, inference.isLoaded {
-            let greetingPrompt = PromptBuilder.buildLiveVoicePrompt(
-                userSystemPrompt: userSystemPrompt,
-                locale: .zhCN,
-                history: [],
-                historyDepth: 0,
-                userTranscript: "你好",
-                hasVision: false
-            )
-            let t0 = CFAbsoluteTimeGetCurrent()
-            let stream = inference.generate(prompt: greetingPrompt)
-            do {
-                for try await token in stream {
-                    greetingText += token
-                }
-            } catch {}
-            let ms = (CFAbsoluteTimeGetCurrent() - t0) * 1000
-            print("[Live] 🎤 Greeting generated in \(Int(ms))ms: \"\(greetingText.prefix(80))\"")
-        }
+        let greetingUserText = liveLocaleConfig.greetingPrompt
+        let greetingPrompt = """
+        【系统指令】
+        \(liveSystemPrompt)
+
+        【用户】
+        \(greetingUserText)
+        """
+        let t0 = CFAbsoluteTimeGetCurrent()
+        let stream = inference.generateLive(prompt: greetingPrompt, images: [], audios: [])
+        do {
+            for try await token in stream {
+                greetingText += token
+            }
+        } catch {}
+        let ms = (CFAbsoluteTimeGetCurrent() - t0) * 1000
+        print("[Live] 🎤 Greeting generated in \(Int(ms))ms: \"\(greetingText.prefix(80))\"")
 
         guard turnPhase == .starting else { return }
 
@@ -413,7 +435,7 @@ class LiveModeEngine {
         let cleaned = OutputSanitizer.sanitizeFinal(greetingText, mode: .liveVoice)
         let spoken: String
         if cleaned.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            spoken = "我在听，请说话。"  // 兜底
+            spoken = liveStrings.listeningPrompt + "。"
         } else {
             // 去掉 marker (✓/○/◐) 前缀
             var text = cleaned
@@ -453,13 +475,13 @@ class LiveModeEngine {
         audioIO?.onPlaybackStarted = nil
         lastAssistantPlaybackEndTime = CFAbsoluteTimeGetCurrent()
 
-        // 4. session 已有 context (system + greeting), 后续 turn 走 delta
+        // 4. conversation 已有 context (system + greeting)，后续 turn 直接复用
         guard turnPhase == .speaking else { return }
 
         turnPhase = .listening
         state = .listening
         inputLevel = 0
-        statusMessage = "我在听，请说话"
+        statusMessage = liveStrings.listeningPrompt
         await vad.startListening(audioIO: io)
     }
 
@@ -475,11 +497,7 @@ class LiveModeEngine {
         vad.stopListening()
         await cancelActiveGeneration()
 
-        // 标记 session 失效 — Live 的 KV context 不应泄漏到 Chat.
-        // 用 invalidate (仅设标志) 而非 reset (会操作引擎), 避免与
-        // 可能仍在 inferenceQueue 上的 C API 冲突.
-        // Chat 的 generate() 检测到 !kvSessionActive 后自动重建.
-        (inference as? LiteRTBackend)?.invalidateKVSession()
+        await inference?.exitLiveMode()
 
         // 先断 handler，再清 analyser（防止 displayLink 读到 deallocating 对象）
         audioIO?.visualisationInputRawHandler = nil
@@ -498,7 +516,7 @@ class LiveModeEngine {
         state = .idle
         liveCaption = ""
         inputLevel = 0
-        statusMessage = "Live 已结束"
+        statusMessage = liveStrings.ended
         print("[Live] Stopped")
     }
 
@@ -627,22 +645,6 @@ class LiveModeEngine {
         turnPhase == .processing || turnPhase == .speaking
     }
 
-    private func liveVoiceSystemPrompt() -> String {
-        PromptBuilder.defaultSystemPrompt + """
-        你正在进行实时语音对话，必须先判断用户这句话在对话上是否已经说完整。若已经完整，第一字符必须输出 `✓`，后面紧跟一个空格和你的正常回答；若用户像是被打断、几秒内还会继续，只输出 `○`；若用户像是在思考、需要更久，只输出 `◐`。`○` 和 `◐` 后面绝对不能再输出任何字。正常回答时用纯中文口语，根据用户意图决定详略：默认简短（一两句），当用户要求"详细""展开""多说一点"等时可以展开，但始终保持口语化、多用中文逗号句号，禁止英文和 markdown 符号。你叫手机龙虾。
-        """
-    }
-
-    /// 根据是否有摄像头画面，返回合适的 Live system prompt。
-    /// 无画面 = 纯语音约束；有画面 = 语音约束 + 视觉感知。
-    private func liveSystemPrompt(hasVision: Bool) -> String {
-        var base = liveVoiceSystemPrompt()
-        if hasVision {
-            base += "\n你可以看到用户摄像头的实时画面。如果用户的问题和画面有关，请结合画面内容回答。如果用户提到具体的画面细节但你看不清，可以让用户把摄像头固定一下再问。"
-        }
-        return base
-    }
-
     private func cancelIncompleteTurnFollowUp() {
         incompleteTurnTimeoutTask?.cancel()
         incompleteTurnTimeoutTask = nil
@@ -695,7 +697,7 @@ class LiveModeEngine {
             self.turnGeneration = followUpGen
             self.turnPhase = .speaking
             self.state = .speaking
-            self.statusMessage = "正在回答"
+            self.statusMessage = self.liveStrings.speaking
             self.lastReply = cleaned
             await self.ttsQueue?.reset()
             await self.enqueueForPlayback(cleaned, generation: followUpGen)
@@ -706,7 +708,7 @@ class LiveModeEngine {
             self.lastAssistantPlaybackEndTime = CFAbsoluteTimeGetCurrent()
             self.turnPhase = .listening
             self.state = .listening
-            self.statusMessage = "我在听，请说话"
+            self.statusMessage = self.liveStrings.listeningPrompt
             print("[Live] 👂 Listening...")
         }
     }
@@ -728,15 +730,15 @@ class LiveModeEngine {
             userMessage = "用户刚才更像是在思考，稍等后请用一句很短的中文口语温和提醒他想好了再继续。你必须输出 `✓` 加一个空格再接提醒正文，绝不能输出 `○` 或 `◐`。提醒只能一句，不要解释。用户刚才说的是：\(transcript)"
         }
 
-        let prompt = PromptBuilder.buildLightweightTextPrompt(
-            userMessage: userMessage,
-            history: liveHistory,
-            systemPrompt: PromptBuilder.defaultSystemPrompt + " 你正在语音模式，只能输出一句简短自然的中文口语提醒，不要列表，不要英文，不要 markdown。必须用 `✓` 开头。"
+        let prompt = PromptBuilder.buildLiveVoiceUserPrompt(
+            userTranscript: userMessage,
+            locale: .zhCN,
+            hasVision: false
         )
 
         var text = ""
         do {
-            for try await token in inference.generate(prompt: prompt) {
+            for try await token in inference.generateLive(prompt: prompt, images: [], audios: []) {
                 text += token
                 if text.count >= 48 {
                     inference.cancel()
@@ -856,7 +858,7 @@ class LiveModeEngine {
             turnPhase = .listening
             state = .listening
             liveCaption = ""
-            statusMessage = "我在听，请说话"
+            statusMessage = liveStrings.listeningPrompt
             return
         }
         lastTranscript = transcript
@@ -899,28 +901,14 @@ class LiveModeEngine {
 
         // ── 单轮处理: 委托给 LiveTurnProcessor ──────────────────────────
         //
-        // 原本这里直接调 `inference.generate(chat: ...)` 走 chat path,
-        // 但 harness (2026-04-16) 实测在 Gemma 4 上 system role 被 applyChatTemplate
-        // 稀释 — E2B 丢 persona (自称"大型语言模型"), marker 失效, 简短约束失控.
+        // Live 进入时已打开 persistent multimodal conversation，并把一次性
+        // system prompt 注入 conversation config。这里每轮只发送新的 user 文本
+        // 与可选画面；历史上下文和 KV cache 由 conversation 自己维护。
         //
-        // LiveTurnProcessor 内部走 InferenceService.generateRaw(text:images:)
-        // 的 `.text` 路径, bypass applyChatTemplate. Prompt 由 PromptBuilder
-        // .buildLiveVoicePrompt 手写 <|turn>system/user/model 模板, 模型看到
-        // 完整的 system 指令 (含 marker 规则 + persona), 输出 token 流由
-        // LiveOutputParser 解析成 LiveOutputEvent (marker / speechToken / done /
-        // 预留 skillCall / skillResult).
-        let historyForTurn: [LiveHistoryMessage] = liveHistory
-            .suffix(maxLiveHistoryDepth)
-            .compactMap { msg in
-                switch msg.role {
-                case .user:      return LiveHistoryMessage(role: .user, content: msg.content)
-                case .assistant: return LiveHistoryMessage(role: .assistant, content: msg.content)
-                default:         return nil
-                }
-            }
-
+        // LiveTurnProcessor 负责把 transcript/frame 变成本轮 payload，并把输出
+        // token 流解析成 LiveOutputEvent (marker / speechToken / done / 预留
+        // skillCall / skillResult)。
         let processor = LiveTurnProcessor(inference: inference)
-        processor.historyDepth = maxLiveHistoryDepth
         processor.enableSkillInvocation = false   // 阶段 1 MVP, 阶段 3 再打开
 
         metrics.llmStartedAt = CFAbsoluteTimeGetCurrent()
@@ -936,9 +924,7 @@ class LiveModeEngine {
 
         let eventStream = processor.processTurn(
             transcript: transcript,
-            frame: frame,
-            history: historyForTurn,
-            userSystemPrompt: userSystemPrompt
+            frame: frame
         )
 
         do {
@@ -997,9 +983,8 @@ class LiveModeEngine {
 
                         case .skillCall(let call):
                             // 阶段 1 MVP 不应触发 (enableSkillInvocation=false).
-                            // 但 SYSPROMPT.md 里有 <tool_call> 调用格式示例, 偶尔模型
-                            // 会自发 invoke. PromptBuilder.defaultLiveSkillSuppressionInstruction
-                            // 已经在 system prompt 末尾强压制, 但小模型有时仍漏网.
+                            // 现在 Live prompt 已经不再继承 Chat 的工具协议文案；这里
+                            // 仍保留兜底, 防止模型偶发产出控制块.
                             // Fallback: 朗读简短歉意, 不进 history.
                             // 阶段 3 实装: 这里调 toolRegistry.execute(call), 再启第二轮 LLM 总结.
                             print("[Live] ⚠️ unexpected tool_call in MVP: \(call.name)")
@@ -1063,7 +1048,7 @@ class LiveModeEngine {
 
             turnPhase = .listening
             state = .listening
-            statusMessage = "我在听，请说话"
+            statusMessage = liveStrings.listeningPrompt
             scheduleIncompleteTurnFollowUp(type: incompleteType, transcript: transcript, generation: gen)
             print("[Live] 👂 Listening...")
             return
@@ -1080,7 +1065,7 @@ class LiveModeEngine {
         }
         turnPhase = .speaking
         state = .speaking
-        statusMessage = "正在回答"
+        statusMessage = liveStrings.speaking
         await ttsQueue?.waitUntilDone()
 
         // Sync TTS timestamp from shared metrics (set by enqueueForPlayback)
@@ -1109,7 +1094,7 @@ class LiveModeEngine {
         lastAssistantPlaybackEndTime = CFAbsoluteTimeGetCurrent()
         turnPhase = .listening
         state = .listening
-        statusMessage = "我在听，请说话"
+        statusMessage = liveStrings.listeningPrompt
         inputLevel = 0
         print("[Live] 👂 Listening...")
     }

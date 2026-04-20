@@ -9,9 +9,9 @@ import CoreImage
 // 分层职责:
 //   LiveModeEngine (会话状态机, VAD/ASR/TTS pipeline)
 //     └→ LiveTurnProcessor (单轮协调, 本文件)
-//           ├→ PromptBuilder.buildLiveVoicePrompt  (prompt 拼接)
-//           ├→ InferenceService.generateRaw(text:images:)  (推理)
-//           └→ LiveOutputParser  (token 流解析)
+//           ├→ PromptBuilder.buildLiveVoiceUserPrompt  (本轮 user text 拼接)
+//           ├→ InferenceService.generateLive(...)      (persistent conversation)
+//           └→ LiveOutputParser                        (token 流解析)
 //
 // 阶段 1 (MVP):
 //   enableSkillInvocation = false → preloadedSkills 永远空, LLM 不输出 tool_call,
@@ -63,54 +63,21 @@ final class LiveTurnProcessor {
     /// - Parameters:
     ///   - transcript: ASR 输出的当前轮用户纯文本.
     ///   - frame: 可选摄像头画面 (由 LiveCameraService 提供).
-    ///   - history: 历史 (user/assistant 交替). 会按 historyDepth 截断.
-    ///   - userSystemPrompt: 用户 SYSPROMPT.md 内容 (来自 AgentEngine.config.systemPrompt).
-    ///     nil 走 PromptBuilder.defaultSystemPrompt 兜底.
     func processTurn(
         transcript: String,
-        frame: CIImage?,
-        history: [LiveHistoryMessage],
-        userSystemPrompt: String?
+        frame: CIImage?
     ) -> AsyncThrowingStream<LiveOutputEvent, Error> {
+        _ = historyDepth
+        _ = enableSkillInvocation
 
-        // 构造完整 prompt — vision 和纯文本都走 buildLiveVoicePrompt,
-        // 区别在于 hasVision 标志和是否传 frame 给推理后端.
-        let fullPrompt = PromptBuilder.buildLiveVoicePrompt(
-            userSystemPrompt: userSystemPrompt,
-            locale: locale,
-            history: history.map { (role: $0.role.rawValue, content: $0.content) },
-            historyDepth: historyDepth,
+        let turnPrompt = PromptBuilder.buildLiveVoiceUserPrompt(
             userTranscript: transcript,
-            hasVision: frame != nil,
-            imageCount: frame != nil ? 1 : 0,
-            preloadedSkills: enableSkillInvocation ? preloadedSkillsForThisTurn() : []
+            locale: locale,
+            hasVision: frame != nil
         )
 
         let images: [CIImage] = frame.map { [$0] } ?? []
-
-        let tokenStream: AsyncThrowingStream<String, Error>
-
-        if images.isEmpty,
-           let litert = inference as? LiteRTBackend,
-           litert.kvSessionActive
-        {
-            // 纯文本 + session 活跃: 走 persistent session (KV cache 复用)
-            if !litert.sessionHasContext {
-                // 首轮: 完整 prompt → 全量 prefill
-                tokenStream = inference.generate(prompt: fullPrompt)
-            } else {
-                // Follow-up: delta only → ~300ms TTFT
-                let cfg = locale.config
-                let delta = PromptBuilder.buildDeltaTurnPrompt(
-                    userMessage: transcript + cfg.userHint
-                )
-                print("[Live] KV delta: \(delta.count) chars (vs full \(fullPrompt.count) chars)")
-                tokenStream = inference.generate(prompt: delta)
-            }
-        } else {
-            // 有图 / 无 session: 走 generateRaw (multimodal 或 one-shot)
-            tokenStream = inference.generateRaw(text: fullPrompt, images: images)
-        }
+        let tokenStream = inference.generateLive(prompt: turnPrompt, images: images, audios: [])
 
         return makeEventStream(tokenStream: tokenStream)
     }
@@ -154,14 +121,5 @@ final class LiveTurnProcessor {
                 }
             }
         }
-    }
-
-    // MARK: - Private — skill hook (阶段 3 填充)
-
-    /// 阶段 3 打开 tool_call 通道时填充. 现在永远返空.
-    /// 未来实现: 调 Router.matchedSkillIds(for: transcript), 从 SkillRegistry 取 body,
-    /// 返回 PreloadedSkill 数组给 prompt builder.
-    private func preloadedSkillsForThisTurn() -> [PromptBuilder.PreloadedSkill] {
-        []
     }
 }

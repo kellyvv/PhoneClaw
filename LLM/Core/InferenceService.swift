@@ -27,6 +27,13 @@ public protocol InferenceService: AnyObject {
     /// 取消当前正在进行的推理。
     func cancel()
 
+    /// 进入 Live 模式，切换到 Live 专用的持久化会话/对话形态。
+    /// `systemPrompt` 为 Live conversation 的一次性 system 指令。
+    func enterLiveMode(systemPrompt: String?) async throws
+
+    /// 退出 Live 模式，恢复普通聊天使用的会话形态。
+    func exitLiveMode() async
+
     // MARK: - Text Generation
 
     /// 文本推理。`prompt` 已包含完整 turn marker 模板。
@@ -50,16 +57,26 @@ public protocol InferenceService: AnyObject {
         systemPrompt: String
     ) -> AsyncThrowingStream<String, Error>
 
-    // MARK: - Raw Text (Live 路径)
+    // MARK: - Raw Text
 
-    /// Raw text prompt — 调用方手写完整模板 (含 turn markers)，
+    /// Raw text prompt — 调用方手写完整模板 (含 turn markers) 时使用，
     /// 后端按原样编码，bypass chat template / Conversation API。
-    ///
-    /// Live 语音场景需要这个路径来保证 persona/marker 不被 chat template 稀释。
     /// 有 image 时回退到多模态路径。
     func generateRaw(
         text: String,
         images: [CIImage]
+    ) -> AsyncThrowingStream<String, Error>
+
+    // MARK: - Live Generation
+
+    /// Live 模式专用生成入口。
+    ///
+    /// 调用方传入“本轮新增”的纯文本与可选图片/音频，
+    /// 历史由 Live backend 内部的 persistent conversation 维护。
+    func generateLive(
+        prompt: String,
+        images: [CIImage],
+        audios: [AudioInput]
     ) -> AsyncThrowingStream<String, Error>
 
     // MARK: - Observable State
