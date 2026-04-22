@@ -1,6 +1,6 @@
 import Foundation
 import CoreImage
-import LiteRTLMSwift
+import PhoneClawEngine
 
 // MARK: - LiteRT Backend
 //

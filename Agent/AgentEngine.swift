@@ -460,7 +460,7 @@ class AgentEngine {
         // iOS 分支: 默认 fallback 创建 LiteRT 实例 (历史行为不变)。
         // 非 iOS 分支: 要求调用方必须显式注入 catalog/installer/inference,
         //              CLI 本来就总是注入, 不受影响。
-        #if canImport(LiteRTLMSwift)
+        #if canImport(PhoneClawEngine)
         let resolvedCatalog: ModelCatalog = catalog ?? LiteRTCatalog()
         let resolvedInstaller: ModelInstaller = installer ?? LiteRTModelStore()
         #else
@@ -478,7 +478,7 @@ class AgentEngine {
         if let inference {
             self.inference = inference
         } else {
-            #if canImport(LiteRTLMSwift)
+            #if canImport(PhoneClawEngine)
             // callbacks 闭包捕获 resolvedCatalog — 和 self.catalog 是同一个对象,
             // 无论调用方注入哪种 ModelCatalog 实现都能正确同步 loadedModel.
             self.inference = LiteRTBackend(

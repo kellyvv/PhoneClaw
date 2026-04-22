@@ -1,5 +1,5 @@
 {
-  "originHash" : "8affc60709e6abfd6788bc2634902c7dd788375ab13eca79e22cf2e0b0bb02e2",
+  "originHash" : "aff239166acf3e7a9d0359d105ee212af645395dee146c0430747642873a8f49",
   "pins" : [
     {
       "identity" : "networkimage",
@@ -8,6 +8,15 @@
       "state" : {
         "revision" : "2849f5323265386e200484b0d0f896e73c3411b9",
         "version" : "6.0.1"
+      }
+    },
+    {
+      "identity" : "phoneclawengine",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/kellyvv/PhoneClawEngine",
+      "state" : {
+        "revision" : "4085f34fcd93e1015e7c14008d50ad8b7dfa0f1e",
+        "version" : "0.1.0"
       }
     },
     {
