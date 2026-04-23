@@ -143,6 +143,14 @@ public final class LiteRTLMEngine: @unchecked Sendable {
     /// stats arrays + log output. Disable in production for small memory savings.
     /// Default `true` preserves original behavior.
     private let enableBenchmark: Bool
+    /// Enable speculative decoding using the bundled MTP drafter.
+    /// When `true`, a small drafter predicts N tokens per decode step and the
+    /// main model verifies them in one forward pass → ~1.5-2x decode throughput
+    /// when predictions are mostly correct. Drafter materializes ~300-400 MB
+    /// of extra weights into RAM while active — disable on tight-memory paths.
+    /// Requires the model file to ship an MTP drafter section (Gemma 4 does;
+    /// Gemma 3n does not). Default `false` (conservative).
+    private let enableSpeculativeDecoding: Bool
 
     private var engine: OpaquePointer?  // LiteRtLmEngine*
     // QoS .default matches the background thread that C API callbacks fire on,
@@ -169,13 +177,16 @@ public final class LiteRTLMEngine: @unchecked Sendable {
     ///     doc for per-model constraints.
     ///   - enableBenchmark: Enable prefill/decode timing stats (default `true`).
     ///     Set `false` for production to save memory + log noise.
+    ///   - enableSpeculativeDecoding: Use bundled MTP drafter for ~1.5-2x decode
+    ///     throughput (default `false`). Adds ~300-400 MB RAM. Gemma 4 only.
     public init(
         modelPath: URL,
         backend: String = "cpu",
         visionBackend: String? = nil,
         audioBackend: String? = nil,
         maxTokens: Int = 4096,
-        enableBenchmark: Bool = true
+        enableBenchmark: Bool = true,
+        enableSpeculativeDecoding: Bool = false
     ) {
         self.modelPath = modelPath
         self.backend = backend
@@ -183,6 +194,7 @@ public final class LiteRTLMEngine: @unchecked Sendable {
         self.audioBackend = audioBackend
         self.maxTokens = maxTokens
         self.enableBenchmark = enableBenchmark
+        self.enableSpeculativeDecoding = enableSpeculativeDecoding
     }
 
     deinit {
@@ -220,6 +232,7 @@ public final class LiteRTLMEngine: @unchecked Sendable {
         let audioBackendStr = self.audioBackend
         let maxTokensValue = Int32(self.maxTokens)
         let benchmarkEnabled = self.enableBenchmark
+        let speculativeEnabled = self.enableSpeculativeDecoding
         let startTime = CFAbsoluteTimeGetCurrent()
 
         guard FileManager.default.fileExists(atPath: path) else {
@@ -300,6 +313,14 @@ public final class LiteRTLMEngine: @unchecked Sendable {
                         if benchmarkEnabled {
                             litert_lm_engine_settings_enable_benchmark(settings)
                         }
+
+                        // Speculative decoding (MTP drafter). When on, decode path
+                        // pulls the drafter section from the .litertlm into RAM
+                        // (~300-400 MB) and runs draft+verify every step. See
+                        // `enableSpeculativeDecoding` property doc.
+                        litert_lm_engine_settings_set_enable_speculative_decoding(
+                            settings, speculativeEnabled
+                        )
 
                         guard let createdEngine = litert_lm_engine_create(settings) else {
                             litert_lm_engine_settings_delete(settings)

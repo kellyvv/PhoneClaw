@@ -194,13 +194,21 @@ final class LiteRTBackend: InferenceService {
             // 所以下面 `lastKVPrefillTokens` 从 benchmark 取不到时会退到 0,
             // 不影响 KV cache 本身的复用逻辑 (只是 [Engine] prefill=... log
             // 在控制台里不再出现).
+            //
+            // enableSpeculativeDecoding: **只在 CPU 后端开**. Gemma 4 的 MTP drafter
+            // 在 .litertlm 里带 `section_backend_constraint: cpu`, GPU 路径用不上.
+            // CPU 开启后 drafter (~300-400 MB) 进 RAM, 每步 decode 走 draft+verify,
+            // 官方基准 1.5-2x 吞吐提升. iPhone 17 Pro Max CPU 路径 headroom 充裕
+            // (>4 GB), 完全扛得住这个内存增加.
+            let useSpeculativeDecoding = (preferredBackend == "cpu")
             let newEngine = LiteRTLMEngine(
                 modelPath: modelPath,
                 backend: preferredBackend,    // "gpu" 或 "cpu", 从 ConfigurationsView 选择驱动
                 visionBackend: visionBackend,
                 audioBackend: audioBackend,
                 maxTokens: 2048,
-                enableBenchmark: false
+                enableBenchmark: false,
+                enableSpeculativeDecoding: useSpeculativeDecoding
             )
             try await newEngine.load()
 
