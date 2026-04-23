@@ -62,9 +62,6 @@ final class LiteRTBackend: InferenceService {
     /// 通过 `setPreferredBackend(_:)` 更新 (ConfigurationsView 挂 UI).
     /// load() 时读取这个值构造 LiteRTLMEngine.
     private(set) var preferredBackend: String = "gpu"
-    /// 是否启用 MTP speculative decoding. 只对 CPU 后端有效, GPU 路径永远关闭.
-    /// AgentEngine 在 setup / reloadModel 时通过 setEnableSpeculativeDecoding(_:) 同步.
-    private(set) var enableSpeculativeDecoding: Bool = true
 
     // MARK: - Internal
 
@@ -123,12 +120,6 @@ final class LiteRTBackend: InferenceService {
         self.preferredBackend = backend
         self.stats.backend = "litert-\(backend)"
         print("[LiteRT] Preferred backend set to \(backend) (takes effect on next load)")
-    }
-
-    func setEnableSpeculativeDecoding(_ enabled: Bool) {
-        guard self.enableSpeculativeDecoding != enabled else { return }
-        self.enableSpeculativeDecoding = enabled
-        print("[LiteRT] Speculative decoding \(enabled ? "enabled" : "disabled") (takes effect on next load; only applies to CPU backend)")
     }
 
     /// 便捷 init: 使用默认路径 (Documents/models/<fileName>)
@@ -204,23 +195,20 @@ final class LiteRTBackend: InferenceService {
             // 不影响 KV cache 本身的复用逻辑 (只是 [Engine] prefill=... log
             // 在控制台里不再出现).
             //
-            // enableSpeculativeDecoding: **只在 CPU 后端开**. Gemma 4 的 MTP drafter
-            // 在 .litertlm 里带 `section_backend_constraint: cpu`, GPU 路径用不上.
-            // CPU 开启后 drafter (~60 MB 实测) 进 RAM, 每步 decode 走 draft+verify,
-            // 官方基准 1.5-2x 吞吐提升. iPhone 17 Pro Max CPU 路径 headroom 充裕
-            // (>4 GB), 完全扛得住这个内存增加.
-            //
-            // 用户偏好 (enableSpeculativeDecoding) 控制是否启用. 即使开关是 true,
-            // GPU 后端仍然强制 false, 因为 drafter 没有 Metal kernel.
-            let useSpeculativeDecoding = (preferredBackend == "cpu") && self.enableSpeculativeDecoding
+            // Speculative decoding (MTP drafter) 不开. 2026-04-23 在 iPhone 17 Pro Max
+            // + E2B 上真机 A/B 得到两条负面结论, 故从 Swift 层彻底移除 wiring:
+            //   • CPU backend + spec: output 正确, 但 decode 慢 ~50% (drafter 抢 4 CPU 线程).
+            //   • GPU backend + spec: output **乱码** (LiteRT 1.5 已知: main GPU /
+            //     drafter CPU 组合 token ID 不对齐, 产出阿拉伯语/日语/UTF-8 噪音).
+            // LiteRTLMEngine `enableSpeculativeDecoding` 默认 false; 未来 LiteRT
+            // 修复了组合问题或 accept rate 提升再考虑重接. 详见 git log.
             let newEngine = LiteRTLMEngine(
                 modelPath: modelPath,
                 backend: preferredBackend,    // "gpu" 或 "cpu", 从 ConfigurationsView 选择驱动
                 visionBackend: visionBackend,
                 audioBackend: audioBackend,
                 maxTokens: 2048,
-                enableBenchmark: false,
-                enableSpeculativeDecoding: useSpeculativeDecoding
+                enableBenchmark: false
             )
             try await newEngine.load()
 

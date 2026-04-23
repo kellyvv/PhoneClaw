@@ -15,7 +15,6 @@ struct ConfigurationsView: View {
     // 本地编辑状态（确认后才应用）
     @State private var selectedModelID = ModelDescriptor.defaultModel.id
     @State private var preferredBackend: String = "gpu"   // "gpu" / "cpu"
-    @State private var enableSpeculativeDecoding: Bool = true
     @State private var systemPrompt: String = ""
     @State private var permissionStatuses: [AppPermissionKind: AppPermissionStatus] = [:]
     @State private var requestingPermission: AppPermissionKind?
@@ -327,30 +326,6 @@ struct ConfigurationsView: View {
             .foregroundStyle(Theme.textSecondary)
             .labelStyle(.titleAndIcon)
             .fixedSize(horizontal: false, vertical: true)
-
-            // 推测解码 toggle — 只对 CPU 后端有意义, GPU 后端自动忽略.
-            // 开启时 drafter (~60 MB) 进 RAM, 官方基准提速 1.5-2x, 实测收益视 prompt 类型而定.
-            if preferredBackend == "cpu" {
-                Divider()
-                    .background(Theme.border)
-                    .padding(.vertical, 2)
-
-                Toggle(isOn: $enableSpeculativeDecoding) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(localized("启用推测解码 (MTP drafter)",
-                                       "Enable Speculative Decoding (MTP drafter)"))
-                            .font(.subheadline)
-                            .foregroundStyle(Theme.textPrimary)
-                        Text(localized(
-                            "Gemma 4 自带的 drafter 帮主模型并行预测下 N 个 token, 多 ~60 MB 内存换 decode 速度.",
-                            "Bundled drafter predicts N tokens per step for faster decode. +60 MB RAM."
-                        ))
-                        .font(.caption2)
-                        .foregroundStyle(Theme.textTertiary)
-                    }
-                }
-                .tint(Theme.accent)
-            }
         }
         .padding(16)
         .background(Theme.bg, in: RoundedRectangle(cornerRadius: 16))
@@ -841,7 +816,6 @@ struct ConfigurationsView: View {
         liveDownloader.refreshState()
         selectedModelID = engine.catalog.loadedModel?.id ?? engine.config.selectedModelID
         preferredBackend = engine.config.preferredBackend
-        enableSpeculativeDecoding = engine.config.enableSpeculativeDecoding
         systemPrompt = engine.config.systemPrompt
         refreshPermissionStatuses()
     }
@@ -849,11 +823,9 @@ struct ConfigurationsView: View {
     private func applySettings() -> Bool {
         let modelChanged = engine.config.selectedModelID != selectedModelID
         let backendChanged = engine.config.preferredBackend != preferredBackend
-        let speculativeChanged = engine.config.enableSpeculativeDecoding != enableSpeculativeDecoding
 
         engine.config.systemPrompt = systemPrompt
         engine.config.preferredBackend = preferredBackend
-        engine.config.enableSpeculativeDecoding = enableSpeculativeDecoding
 
         // 同步采样参数到 LLM (沿用 ModelConfig 默认值; 下次生成立即生效)
         engine.applySamplingConfig()
@@ -870,8 +842,8 @@ struct ConfigurationsView: View {
 
         engine.config.selectedModelID = selectedModelID
         let needsLoad = !engine.inference.isLoaded || engine.catalog.loadedModel?.id != selectedModelID
-        // backend / speculative 变更也要 reload — LiteRTLMEngine 在 load 时构造, 这些参数不可热切换。
-        if modelChanged || backendChanged || speculativeChanged || needsLoad {
+        // backend 变更也要 reload — LiteRTLMEngine 在 load 时构造, backend 参数不可热切换。
+        if modelChanged || backendChanged || needsLoad {
             engine.reloadModel()
         }
         return true

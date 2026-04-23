@@ -22,7 +22,6 @@ class ModelConfig {
     static let selectedModelDefaultsKey = "PhoneClaw.selectedModelID"
     static let enableThinkingDefaultsKey = "PhoneClaw.enableThinking"
     static let preferredBackendDefaultsKey = "PhoneClaw.preferredBackend"
-    static let enableSpeculativeDecodingDefaultsKey = "PhoneClaw.enableSpeculativeDecoding"
 
     // 采样参数不再暴露给用户调节 — 跟 KV cache = 2048 的现实对齐:
     //   maxTokens 1500 留 ~500 给输入; topK/topP/temperature 用 Gemma 4 推荐默认。
@@ -37,16 +36,6 @@ class ModelConfig {
     /// MLX / 其他后端忽略。切换后会 reload 引擎 (~3-7s), 具体 UX 见 ConfigurationsView。
     var preferredBackend: String = UserDefaults.standard.string(forKey: preferredBackendDefaultsKey)
         ?? "gpu"
-    /// 启用 MTP speculative decoding. 只在 CPU 后端上生效 (drafter 是 CPU-only),
-    /// GPU 后端会自动忽略. Default `true` — 用户可以关闭做 A/B 对比.
-    /// 注意: UserDefaults 默认 `object(forKey:)` 缺失时返回 nil, 所以这里用 `object` + 类型转换
-    /// 再 fallback 到 true, 保证首次安装时默认开.
-    var enableSpeculativeDecoding: Bool = {
-        if let v = UserDefaults.standard.object(forKey: enableSpeculativeDecodingDefaultsKey) as? Bool {
-            return v
-        }
-        return true
-    }()
     /// System prompt — 由 AgentEngine.loadSystemPrompt() 从 SYSPROMPT.md 注入，不在代码里硬编码。
     var systemPrompt = ""
 }
@@ -601,7 +590,6 @@ class AgentEngine {
         applySamplingConfig()
         // 同步用户选的推理 backend 偏好到 inference service, 首次 load 生效.
         inference.setPreferredBackend(config.preferredBackend)
-        inference.setEnableSpeculativeDecoding(config.enableSpeculativeDecoding)
         Task {
             try? await inference.load(modelID: config.selectedModelID)
         }
@@ -674,7 +662,6 @@ class AgentEngine {
     func reloadModel() {
         let selectedModelID = config.selectedModelID
         let backend = config.preferredBackend
-        let enableSpec = config.enableSpeculativeDecoding
         // 持久化用户选择 — 单一入口, 任何 caller (ConfigurationsView.applySettings,
         // 未来其它切模型路径) 调 reloadModel 后, UserDefaults 自动同步,
         // 下次 app 启动 ModelConfig.selectedModelID 能恢复正确值.
@@ -686,10 +673,6 @@ class AgentEngine {
             backend,
             forKey: ModelConfig.preferredBackendDefaultsKey
         )
-        UserDefaults.standard.set(
-            enableSpec,
-            forKey: ModelConfig.enableSpeculativeDecodingDefaultsKey
-        )
         Task { [weak self] in
             guard let self else { return }
             self.isProcessing = false
@@ -697,7 +680,6 @@ class AgentEngine {
             self.inference.unload()
             // 在 load 前同步 backend 偏好, 这样 LiteRTBackend.load 会用新 backend 构造 engine.
             self.inference.setPreferredBackend(backend)
-            self.inference.setEnableSpeculativeDecoding(enableSpec)
             try? await self.inference.load(modelID: selectedModelID)
         }
     }
