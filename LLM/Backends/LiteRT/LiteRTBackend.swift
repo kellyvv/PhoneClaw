@@ -178,8 +178,12 @@ final class LiteRTBackend: InferenceService {
             //                (匹配 Gallery Android 的 EngineConfig,
             //                 Gemma 3n / Gemma 4 audio 都只能 CPU, vision 走 GPU)
             //
-            // maxTokens=2048: Gemma 4 支持 32K context, 但 iPhone 上 KV cache
-            // 2048 就够 (省 ~500 MB Metal buffer). Gemma 3n 会失败 — 仅 Gemma 4.
+            // maxTokens=4096: Gemma 4 支持 32K context, 但 iPhone 上 KV cache
+            // 4096 足够 (vs 32K 省 ~4 GB Metal buffer, vs 2048 多 ~500 MB 但换来
+            // skill-inlined first-turn 不炸预算). Gemma 3n 会失败 — 仅 Gemma 4.
+            // 2026-04-23: 从 2048 提到 4096 — 首轮调用 Calendar / Contacts 等
+            // Skills 时 SKILL.md (~2-3 KB, 1000-1500 token) 会 inline 进 prompt,
+            // 2048 的预算挡住了所有技能触发型对话 (hard-reject "上下文过长").
             let (visionBackend, audioBackend): (String?, String?) = {
                 switch mode {
                 case .textOnly:
@@ -207,7 +211,7 @@ final class LiteRTBackend: InferenceService {
                 backend: preferredBackend,    // "gpu" 或 "cpu", 从 ConfigurationsView 选择驱动
                 visionBackend: visionBackend,
                 audioBackend: audioBackend,
-                maxTokens: 2048,
+                maxTokens: 4096,
                 enableBenchmark: false
             )
             try await newEngine.load()

@@ -670,8 +670,6 @@
 				B1A2C3D4E5F607182930B100 /* Library in Resources */,
 				B1A2C3D4E5F607182930B107 /* piz_compressed.exr in Resources */,
 				B1A2C3D4E5F607182930B108 /* studio_env.hdr in Resources */,
-				BB2000000000000000000010 /* gemma-4-E2B-it.litertlm in Resources */,
-				BB2000000000000000000011 /* gemma-4-E4B-it.litertlm in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1008,7 +1006,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = PhoneClaw.entitlements;
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = ZP4QNJ35TH;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
 				HEADER_SEARCH_PATHS = (
@@ -1025,7 +1023,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.2.1;
 				"OTHER_LDFLAGS[sdk=iphoneos*]" = (
 					"$(inherited)",
 					"-lonnxruntime",
@@ -1046,7 +1044,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = PhoneClaw.entitlements;
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = ZP4QNJ35TH;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
 				HEADER_SEARCH_PATHS = (
@@ -1063,7 +1061,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.2.1;
 				"OTHER_LDFLAGS[sdk=iphoneos*]" = (
 					"$(inherited)",
 					"-lonnxruntime",

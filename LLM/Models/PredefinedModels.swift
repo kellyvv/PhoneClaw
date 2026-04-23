@@ -33,13 +33,17 @@ public extension ModelDescriptor {
             supportsThinking: true,
             supportsPersistentSession: true,
             supportsSessionSnapshot: false,
-            // LiteRT GPU KV-cache 降到 2048 (省 ~500 MB pinned Metal buffer).
-            // input + output 必须 ≤ 2048. 输入预算 1300 + 生成预算 700 = 2000,
-            // 留 48 token margin 给 BOS/EOS/系统控制 token.
-            // 输出预算从 500 提到 700 — 图片描述 / 详细回答需要更长输出空间
-            // (旧值 500 会在 "3. **环境/背景" 这种位置硬截断).
-            safeContextBudgetTokens: 1300,
-            defaultReservedOutputTokens: 700
+            // LiteRT GPU KV-cache = 4096 (vs 32K 省 ~4 GB Metal buffer).
+            // input + output 必须 ≤ 4096. 输入预算 3000 + 生成预算 900 = 3900,
+            // 留 196 token margin 给 BOS/EOS / 系统控制 token / tool_call tail.
+            // 2026-04-23: 预算从 1300/700 (对应 2048 KV) 提到 3000/900 (对应 4096 KV) —
+            // 首轮调用 Calendar / Contacts / Health 等技能时 SKILL.md 会 inline
+            // 进 prompt (~1000-1500 token), 1300 input 预算会 hard-reject 掉所有
+            // 技能触发型对话. 3000 input 能 hold 住 system + 2 个 skill + 首轮 user.
+            // 输出预算从 700 → 900: 技能触发后模型常常返回 JSON tool_call + 自然语言
+            // 解释, 700 偶尔会在 ```json 块中间截断.
+            safeContextBudgetTokens: 3000,
+            defaultReservedOutputTokens: 900
         ),
         runtimeProfile: MLXModelProfiles.gemma4_e2b
     )
@@ -70,12 +74,13 @@ public extension ModelDescriptor {
             supportsThinking: true,
             supportsPersistentSession: true,
             supportsSessionSnapshot: false,
-            // LiteRT GPU KV-cache 降到 2048 (省 ~500 MB pinned Metal buffer).
-            // 输入预算 1200 + 生成预算 700 = 1900, 留 148 token margin.
-            // E4B 结构化规划会生成更长 tool_call JSON + 图片描述需要更长输出,
-            // 输出预算从 500 提到 700 (旧值 500 会截断长回答).
-            safeContextBudgetTokens: 1200,
-            defaultReservedOutputTokens: 700
+            // LiteRT GPU KV-cache = 4096 (vs 32K 省 ~4 GB Metal buffer).
+            // 输入预算 2800 + 生成预算 1000 = 3800, 留 296 token margin.
+            // 2026-04-23: 从 1200/700 (对应 2048 KV) 提到 2800/1000 (对应 4096 KV).
+            // E4B 相比 E2B 留更多生成预算 (结构化规划会生成更长 tool_call JSON chain),
+            // 相应 input 预算小 200 token 保持总量一致.
+            safeContextBudgetTokens: 2800,
+            defaultReservedOutputTokens: 1000
         ),
         runtimeProfile: MLXModelProfiles.gemma4_e4b
     )
