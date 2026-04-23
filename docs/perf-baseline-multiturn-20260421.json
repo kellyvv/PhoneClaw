@@ -1,0 +1,219 @@
+{
+  "backend" : "mlx-gpu",
+  "cases" : [
+    {
+      "decode_tps" : 38.8,
+      "failures" : [
+
+      ],
+      "headroom_mb" : 3355,
+      "kv_prefill_tokens" : 0,
+      "matched_skills" : [
+
+      ],
+      "model" : "e2b",
+      "passed" : true,
+      "reply_chars" : 2378,
+      "scenario" : "perf-multiturn-hotfix",
+      "tool_calls" : [
+
+      ],
+      "ttft_ms" : 232,
+      "turn" : 1,
+      "user_chars" : 50
+    },
+    {
+      "decode_tps" : 36.4,
+      "failures" : [
+
+      ],
+      "headroom_mb" : 3516,
+      "kv_prefill_tokens" : 0,
+      "matched_skills" : [
+
+      ],
+      "model" : "e2b",
+      "passed" : true,
+      "reply_chars" : 1394,
+      "scenario" : "perf-multiturn-hotfix",
+      "tool_calls" : [
+
+      ],
+      "ttft_ms" : 911,
+      "turn" : 2,
+      "user_chars" : 40
+    },
+    {
+      "decode_tps" : 35.6,
+      "failures" : [
+
+      ],
+      "headroom_mb" : 3513,
+      "kv_prefill_tokens" : 0,
+      "matched_skills" : [
+
+      ],
+      "model" : "e2b",
+      "passed" : true,
+      "reply_chars" : 2150,
+      "scenario" : "perf-multiturn-hotfix",
+      "tool_calls" : [
+
+      ],
+      "ttft_ms" : 1297,
+      "turn" : 3,
+      "user_chars" : 44
+    },
+    {
+      "decode_tps" : 12.8,
+      "failures" : [
+
+      ],
+      "headroom_mb" : 3515,
+      "kv_prefill_tokens" : 0,
+      "matched_skills" : [
+        "calendar"
+      ],
+      "model" : "e2b",
+      "passed" : true,
+      "reply_chars" : 68,
+      "scenario" : "perf-multiturn-hotfix",
+      "tool_calls" : [
+        "calendar-create-event"
+      ],
+      "ttft_ms" : 2390,
+      "turn" : 4,
+      "user_chars" : 19
+    },
+    {
+      "decode_tps" : 10,
+      "failures" : [
+        "tool_calls missing: [\"reminders-create\"] (got=[])"
+      ],
+      "headroom_mb" : 3514,
+      "kv_prefill_tokens" : 0,
+      "matched_skills" : [
+        "reminders"
+      ],
+      "model" : "e2b",
+      "passed" : false,
+      "reply_chars" : 64,
+      "scenario" : "perf-multiturn-hotfix",
+      "tool_calls" : [
+
+      ],
+      "ttft_ms" : 1103,
+      "turn" : 5,
+      "user_chars" : 10
+    },
+    {
+      "decode_tps" : 29.7,
+      "failures" : [
+
+      ],
+      "headroom_mb" : 1833,
+      "kv_prefill_tokens" : 0,
+      "matched_skills" : [
+
+      ],
+      "model" : "e4b",
+      "passed" : true,
+      "reply_chars" : 3405,
+      "scenario" : "perf-multiturn-hotfix",
+      "tool_calls" : [
+
+      ],
+      "ttft_ms" : 329,
+      "turn" : 1,
+      "user_chars" : 50
+    },
+    {
+      "decode_tps" : 27.8,
+      "failures" : [
+
+      ],
+      "headroom_mb" : 1825,
+      "kv_prefill_tokens" : 0,
+      "matched_skills" : [
+
+      ],
+      "model" : "e4b",
+      "passed" : true,
+      "reply_chars" : 1499,
+      "scenario" : "perf-multiturn-hotfix",
+      "tool_calls" : [
+
+      ],
+      "ttft_ms" : 2260,
+      "turn" : 2,
+      "user_chars" : 40
+    },
+    {
+      "decode_tps" : 28.8,
+      "failures" : [
+
+      ],
+      "headroom_mb" : 1815,
+      "kv_prefill_tokens" : 0,
+      "matched_skills" : [
+
+      ],
+      "model" : "e4b",
+      "passed" : true,
+      "reply_chars" : 2167,
+      "scenario" : "perf-multiturn-hotfix",
+      "tool_calls" : [
+
+      ],
+      "ttft_ms" : 1752,
+      "turn" : 3,
+      "user_chars" : 44
+    },
+    {
+      "decode_tps" : 6,
+      "failures" : [
+        "tool_calls missing: [\"calendar-create-event\"] (got=[])"
+      ],
+      "headroom_mb" : 1799,
+      "kv_prefill_tokens" : 0,
+      "matched_skills" : [
+        "calendar"
+      ],
+      "model" : "e4b",
+      "passed" : false,
+      "reply_chars" : 67,
+      "scenario" : "perf-multiturn-hotfix",
+      "tool_calls" : [
+
+      ],
+      "ttft_ms" : 4272,
+      "turn" : 4,
+      "user_chars" : 19
+    },
+    {
+      "decode_tps" : 6.8,
+      "failures" : [
+        "tool_calls missing: [\"reminders-create\"] (got=[])"
+      ],
+      "headroom_mb" : 1625,
+      "kv_prefill_tokens" : 0,
+      "matched_skills" : [
+        "reminders"
+      ],
+      "model" : "e4b",
+      "passed" : false,
+      "reply_chars" : 29,
+      "scenario" : "perf-multiturn-hotfix",
+      "tool_calls" : [
+
+      ],
+      "ttft_ms" : 3651,
+      "turn" : 5,
+      "user_chars" : 10
+    }
+  ],
+  "date" : "2026-04-21",
+  "fixed_current_time_anchor" : "2026-04-21 星期二 13:00",
+  "sampling_notes" : "Single sample per turn. Compare directionally against future hotfix runs; re-sample with 3 runs median if variance becomes material.",
+  "scenario" : "perf-multiturn-hotfix"
+}

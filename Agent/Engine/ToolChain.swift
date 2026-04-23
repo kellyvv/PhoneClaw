@@ -9,6 +9,16 @@ enum SingleToolExtractionOutcome {
     case failed
 }
 
+protocol ToolResultCanonicalizer {
+    func canonicalize(toolName: String, toolResult: String) -> CanonicalToolResult
+}
+
+struct LegacyToolCanonicalizer: ToolResultCanonicalizer {
+    func canonicalize(toolName: String, toolResult: String) -> CanonicalToolResult {
+        canonicalToolResult(toolName: toolName, toolResult: toolResult)
+    }
+}
+
 extension AgentEngine {
 
     // MARK: - Tool 注册查询
@@ -91,6 +101,7 @@ extension AgentEngine {
                 skillInstructions: skillInstructions,
                 toolName: tool.name,
                 toolParameters: tool.parameters,
+                includeTimeAnchor: requiresTimeAnchor(forSkillId: skillId),
                 currentImageCount: images.count
             )
 
@@ -120,6 +131,7 @@ extension AgentEngine {
             userQuestion: userQuestion,
             skillInstructions: skillInstructions,
             allowedToolsSummary: allowedToolsSummary,
+            includeTimeAnchor: requiresTimeAnchor(forSkillId: skillId),
             currentImageCount: images.count
         )
 
@@ -176,29 +188,18 @@ extension AgentEngine {
         toolName: String,
         toolResult: String
     ) -> String {
-        let trimmed = toolResult.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return "工具 \(toolName) 已执行，但没有返回内容。" }
-
-        if let payload = parsedToolPayload(from: trimmed) {
-            if let success = payload["success"] as? Bool,
-               !success,
-               let error = payload["error"] as? String,
-               !error.isEmpty {
-                return "工具 \(toolName) 执行失败：\(error)"
-            }
-
-            if let result = payload["result"] as? String {
-                let summary = result.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !summary.isEmpty { return summary }
-            }
-        }
-
-        return trimmed
+        toolResultCanonicalizer
+            .canonicalize(toolName: toolName, toolResult: toolResult)
+            .summary
     }
 
-    func fallbackReplyForEmptyToolFollowUp(toolName: String, toolResult: String) -> String {
-        let trimmed = toolResult.trimmingCharacters(in: .whitespacesAndNewlines)
-        let summary = toolResultSummaryForModel(toolName: toolName, toolResult: trimmed)
+    func fallbackReplyForEmptyToolFollowUp(
+        toolName: String,
+        toolResultSummary: String,
+        toolResultDetail: String
+    ) -> String {
+        let trimmed = toolResultDetail.trimmingCharacters(in: .whitespacesAndNewlines)
+        let summary = toolResultSummary.trimmingCharacters(in: .whitespacesAndNewlines)
         if !summary.isEmpty, summary != trimmed {
             return summary
         }
@@ -249,7 +250,7 @@ extension AgentEngine {
         //      tool_result 给模型, 让它继续推进下一个 tool 或给最终答案.
         //   2. maxRounds 内存紧时上限 6 (从原 3 抬上去) — 多 SKILL 串联场景:
         //      load_skill + tool + load_skill + tool + tool + 最终答案 大概 5-6 round.
-        let effectiveMax = (llm.availableHeadroomMB < 1500) ? min(maxRounds, 6) : maxRounds
+        let effectiveMax = (MemoryStats.headroomMB < 1500) ? min(maxRounds, 6) : maxRounds
         guard round <= effectiveMax else {
             log("[Agent] 达到最大工具链轮数 \(effectiveMax) (memory-aware)")
             isProcessing = false
@@ -338,7 +339,7 @@ extension AgentEngine {
             log("[Agent] list_skills query=\"\(query)\" results=\(results.count)")
 
             let toolResultSummary = toolResultSummaryForModel(toolName: "list_skills", toolResult: resultText)
-            messages.append(ChatMessage(role: .skillResult, content: toolResultSummary, skillName: "list_skills"))
+            messages.append(ChatMessage(role: .skillResult, content: resultText, skillName: "list_skills"))
 
             // F3: R2 = R1 + R1 output + tool_result (continuation form).
             let followUpPrompt = PromptBuilder.appendToolResult(
@@ -475,6 +476,7 @@ extension AgentEngine {
                 userQuestion: userQuestion,
                 skillInstructions: allInstructions,
                 availableTools: availableTools,
+                includeTimeAnchor: requiresTimeAnchor(forSkillIds: loadedSkillIds),
                 currentImageCount: images.count
             )
 
@@ -503,6 +505,7 @@ extension AgentEngine {
                         userQuestion: userQuestion,
                         skillInstructions: allInstructions,
                         availableTools: availableTools,
+                        includeTimeAnchor: requiresTimeAnchor(forSkillIds: loadedSkillIds),
                         currentImageCount: images.count,
                         forceResponse: true
                     )
@@ -580,14 +583,22 @@ extension AgentEngine {
         messages[cardIndex].update(role: .system, content: "executing:\(call.name)", skillName: displayName)
 
         do {
-            let toolResult = try await handleToolExecution(toolName: call.name, args: call.arguments)
-            let toolResultSummary = toolResultSummaryForModel(toolName: call.name, toolResult: toolResult)
+            let canonicalResult: CanonicalToolResult
+            let toolResultDetail: String
+            if HotfixFeatureFlags.useHotfixPromptPipeline && HotfixFeatureFlags.enableCanonicalToolResult {
+                canonicalResult = try await handleToolExecutionCanonical(toolName: call.name, args: call.arguments)
+                toolResultDetail = canonicalResult.detail
+            } else {
+                let toolResult = try await handleToolExecution(toolName: call.name, args: call.arguments)
+                canonicalResult = canonicalToolResult(toolName: call.name, toolResult: toolResult)
+                toolResultDetail = toolResult
+            }
             messages[cardIndex].update(role: .system, content: "done", skillName: displayName)
-            messages.append(ChatMessage(role: .skillResult, content: toolResultSummary, skillName: call.name))
+            messages.append(ChatMessage(role: .skillResult, content: toolResultDetail, skillName: call.name))
             log("[Agent] Tool \(call.name) round \(round) done")
 
             if toolRegistry.shouldSkipFollowUp(for: call.name) {
-                messages.append(ChatMessage(role: .assistant, content: toolResultSummary))
+                messages.append(ChatMessage(role: .assistant, content: canonicalResult.summary))
                 isProcessing = false
                 return
             }
@@ -598,7 +609,7 @@ extension AgentEngine {
                 toR1Prompt: prompt,
                 r1Output: fullText,
                 toolName: call.name,
-                toolResultSummary: toolResultSummary
+                toolResultSummary: canonicalResult.summary
             )
 
             messages.append(ChatMessage(role: .assistant, content: "▍"))
@@ -623,7 +634,8 @@ extension AgentEngine {
                     || looksLikePromptEcho(cleaned) {
                     messages[followUpIndex].update(content: fallbackReplyForEmptyToolFollowUp(
                         toolName: call.name,
-                        toolResult: toolResult
+                        toolResultSummary: canonicalResult.summary,
+                        toolResultDetail: toolResultDetail
                     ))
                 } else {
                     messages[followUpIndex].update(content: cleaned)

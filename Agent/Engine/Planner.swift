@@ -524,6 +524,7 @@ extension AgentEngine {
                         toolName: step.tool,
                         toolParameters: tool.parameters,
                         completedStepSummary: completedSummary,
+                        includeTimeAnchor: requiresTimeAnchor(forSkillId: step.skill),
                         currentImageCount: images.count
                     )
 
@@ -559,31 +560,36 @@ extension AgentEngine {
                 )
 
                 do {
-                    let toolResult = try await handleToolExecution(toolName: step.tool, args: arguments)
-                    let toolResultSummary = toolResultSummaryForModel(
-                        toolName: step.tool,
-                        toolResult: toolResult
-                    )
+                    let canonicalResult: CanonicalToolResult
+                    let toolResultDetail: String
+                    if HotfixFeatureFlags.useHotfixPromptPipeline && HotfixFeatureFlags.enableCanonicalToolResult {
+                        canonicalResult = try await handleToolExecutionCanonical(
+                            toolName: step.tool,
+                            args: arguments
+                        )
+                        toolResultDetail = canonicalResult.detail
+                    } else {
+                        let toolResult = try await handleToolExecution(toolName: step.tool, args: arguments)
+                        canonicalResult = canonicalToolResult(toolName: step.tool, toolResult: toolResult)
+                        toolResultDetail = toolResult
+                    }
 
                     messages[cardIndex].update(role: .system, content: "done", skillName: displayName)
-                    messages.append(ChatMessage(role: .skillResult, content: toolResultSummary, skillName: step.tool))
+                    messages.append(ChatMessage(role: .skillResult, content: toolResultDetail, skillName: step.tool))
 
-                    if let payload = parsedToolPayload(from: toolResult),
-                       let success = payload["success"] as? Bool,
-                       !success {
-                        let error = payload["error"] as? String ?? toolResultSummary
-                        finishPlanning(with: error)
+                    if !canonicalResult.success {
+                        finishPlanning(with: canonicalResult.summary)
                         return true
                     }
 
                     completedSteps.append(
                         ExecutedPlanStep(
                             step: step,
-                            toolResult: toolResult,
-                            toolResultSummary: toolResultSummary
+                            toolResult: toolResultDetail,
+                            toolResultSummary: canonicalResult.summary
                         )
                     )
-                    toolResultsForAnswer.append((toolName: step.tool, result: toolResultSummary))
+                    toolResultsForAnswer.append((toolName: step.tool, result: canonicalResult.summary))
                 } catch {
                     messages[cardIndex].update(role: .system, content: "done", skillName: displayName)
                     finishPlanning(with: "❌ Tool 执行失败:\(error.localizedDescription)")

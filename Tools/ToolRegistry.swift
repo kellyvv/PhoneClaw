@@ -28,6 +28,7 @@ struct RegisteredTool {
     let skipFollowUp: Bool
 
     let execute: ([String: Any]) async throws -> String
+    let executeCanonical: (([String: Any]) async throws -> CanonicalToolResult)?
 
     init(
         name: String,
@@ -38,7 +39,8 @@ struct RegisteredTool {
         aliases: [String] = [],
         isParameterless: Bool = false,
         skipFollowUp: Bool = false,
-        execute: @escaping ([String: Any]) async throws -> String
+        execute: @escaping ([String: Any]) async throws -> String,
+        executeCanonical: (([String: Any]) async throws -> CanonicalToolResult)? = nil
     ) {
         self.name = name
         self.description = description
@@ -49,6 +51,7 @@ struct RegisteredTool {
         self.isParameterless = isParameterless
         self.skipFollowUp = skipFollowUp
         self.execute = execute
+        self.executeCanonical = executeCanonical
     }
 
     func validates(arguments: [String: Any]) -> Bool {
@@ -121,6 +124,20 @@ class ToolRegistry {
             return "{\"success\": false, \"error\": \"未知工具: \(name)\"}"
         }
         return try await tool.execute(args)
+    }
+
+    func executeCanonical(name: String, args: [String: Any]) async throws -> CanonicalToolResult {
+        guard let tool = find(name: name) else {
+            let payload = failurePayload(error: "未知工具: \(name)")
+            return canonicalToolResult(toolName: name, toolResult: payload)
+        }
+
+        if let executeCanonical = tool.executeCanonical {
+            return try await executeCanonical(args)
+        }
+
+        let toolResult = try await tool.execute(args)
+        return canonicalToolResult(toolName: tool.name, toolResult: toolResult)
     }
 
     /// 根据名称列表获取工具（用于 SKILL.md 的 allowed-tools）

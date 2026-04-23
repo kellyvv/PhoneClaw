@@ -37,7 +37,7 @@ public struct BundledModelOption: Identifiable, Hashable, Sendable {
 /// MLX GPU inference service for Gemma 4.
 /// Forces MLX Metal GPU path — no CPU fallback.
 @Observable
-public class MLXLocalLLMService: LLMEngine {
+public class MLXLocalLLMService: LLMEngine, InferenceService {
     private static var isSimulatorRuntime: Bool {
         #if targetEnvironment(simulator)
         true
@@ -147,6 +147,7 @@ public class MLXLocalLLMService: LLMEngine {
     let capabilitySwitchLock = NSLock()
     var capabilitySwitchPending = false
     var admittedWorkCount = 0  // number of active load/generate tasks admitted past the gate
+    var liveModeSystemPrompt: String?
 
     // MARK: - KV Cache Reuse state
     //
@@ -192,6 +193,14 @@ public class MLXLocalLLMService: LLMEngine {
     /// Convenience init with default model location
     public convenience init() {
         self.init(selectedModelID: nil)
+    }
+
+    private static func makeMLXAudio(from audio: AudioInput) -> UserInput.Audio {
+        .pcm(.init(
+            samples: audio.samples,
+            sampleRate: audio.sampleRate,
+            channelCount: audio.channelCount
+        ))
     }
 
     func loadModel() {
@@ -260,7 +269,8 @@ public class MLXLocalLLMService: LLMEngine {
                 }
 
                 await MainActor.run {
-                    onComplete(.success(fullResponse))
+                    let completedResponse = fullResponse
+                    onComplete(.success(completedResponse))
                 }
             } catch {
                 await MainActor.run {
@@ -287,7 +297,8 @@ public class MLXLocalLLMService: LLMEngine {
                 }
 
                 await MainActor.run {
-                    onComplete(.success(fullResponse))
+                    let completedResponse = fullResponse
+                    onComplete(.success(completedResponse))
                 }
             } catch {
                 await MainActor.run {
@@ -315,7 +326,8 @@ public class MLXLocalLLMService: LLMEngine {
                 }
 
                 await MainActor.run {
-                    onComplete(.success(fullResponse))
+                    let completedResponse = fullResponse
+                    onComplete(.success(completedResponse))
                 }
             } catch {
                 await MainActor.run {
@@ -481,9 +493,72 @@ public class MLXLocalLLMService: LLMEngine {
             // Debug-only opt-in E2E path for live voice validation.
             // Never override the user's selected model, and only launch once
             // per process so reloads/model switches don't start a second audio loop.
-            Task { await LiveComponentTest.runLiveLoop(llm: self) }
+            Task { await LiveComponentTest.runLiveLoop(inference: self) }
         }
         #endif
+    }
+
+    public func load(modelID: String) async throws {
+        if let option = Self.availableModels.first(where: { $0.id == modelID }) {
+            if selectedModel.id != option.id {
+                selectedModel = option
+                if isLoaded || isLoading || modelContainer != nil {
+                    await prepareForReload()
+                }
+            }
+        }
+        try await load()
+        try await warmup()
+    }
+
+    public func generate(prompt: String) -> AsyncThrowingStream<String, Error> {
+        generateStream(prompt: prompt, images: [], audios: [])
+    }
+
+    public func enterLiveMode(systemPrompt: String?) async throws {
+        liveModeSystemPrompt = systemPrompt
+        try await prepareForLiveMode()
+    }
+
+    public func exitLiveMode() async {
+        liveModeSystemPrompt = nil
+    }
+
+    public func generateMultimodal(
+        images: [CIImage],
+        audios: [AudioInput],
+        prompt: String,
+        systemPrompt: String
+    ) -> AsyncThrowingStream<String, Error> {
+        let mlxAudios = audios.map(Self.makeMLXAudio(from:))
+
+        if systemPrompt.isEmpty {
+            return generateStream(prompt: prompt, images: images, audios: mlxAudios)
+        }
+
+        let chatImages = images.map { UserInput.Image.ciImage($0) }
+        let chat: [Chat.Message] = [
+            .system(systemPrompt),
+            .user(prompt, images: chatImages, audios: mlxAudios),
+        ]
+        return generateStream(chat: chat)
+    }
+
+    public func generateRaw(text: String, images: [CIImage]) -> AsyncThrowingStream<String, Error> {
+        generateStream(rawText: text, images: images)
+    }
+
+    public func generateLive(
+        prompt: String,
+        images: [CIImage],
+        audios: [AudioInput]
+    ) -> AsyncThrowingStream<String, Error> {
+        generateMultimodal(
+            images: images,
+            audios: audios,
+            prompt: prompt,
+            systemPrompt: liveModeSystemPrompt ?? ""
+        )
     }
 
     public func generateStream(
@@ -523,18 +598,12 @@ public class MLXLocalLLMService: LLMEngine {
 
     /// Raw text prompt path — 绕开 tokenizer 的 applyChatTemplate.
     ///
-    /// 专为 Live 语音场景设计: 调用方 (PromptBuilder.buildLiveVoicePrompt)
-    /// 手写 `<|turn>system/user/model` 模板, 需要让 Gemma 4 把这段字符串**按
-    /// 原样**编码 (addSpecialTokens=false, 不再额外包装), 系统指令才能完整传达.
+    /// 历史遗留 raw text prompt 路径。
+    /// 调用方手写完整模板时，可用它绕开 tokenizer 的 applyChatTemplate。
     ///
     /// 对比:
-    ///   - `generateStream(prompt:images:audios:)`: 内部包成 `.chat([.user(prompt)])`,
-    ///     Gemma4Processor 走 applyChatTemplate, 把整段字符串当 user content 再包一层.
-    ///   - `generateStream(chat:)`: 按 system/user 角色走 applyChatTemplate, 在 Gemma 4
-    ///     上 system 约束被稀释 (harness 2026-04-16 实测).
-    ///   - 本方法 (纯文本): `UserInput(prompt: .text(rawText))` 命中 Gemma4Processor 的
-    ///     text 分支, 直接 `tokenizer.encode(text:, addSpecialTokens:false)`,
-    ///     模型看到的就是调用方手写的完整 token 序列.
+    ///   - `generateStream(prompt:images:audios:)`: 走标准 chat/user 输入
+    ///   - 本方法 (纯文本): 命中 Gemma4Processor 的 text 分支, 直接按原文编码
     ///
     /// 多模态分流 (真机 2026-04-16 验证):
     ///   `.text` 分支在 E2B + vision 场景下 MLX 内部 forward graph 内存 spike 突破
@@ -670,11 +739,11 @@ public class MLXLocalLLMService: LLMEngine {
                 let effectiveMaxOutputTokens: Int = {
                     // 多模态不再有独立的静态 token 上限 — 完全依赖 headroomFloorMB 运行时检测。
                     // 只保留 thinking/text budget 的公式约束和 UI 滑块上限。
-                    let thinkingCap = thinkingBudget?.maxOutputTokens ?? maxOutputTokens
-                    let textCap = textBudget?.maxOutputTokens ?? maxOutputTokens
-                    return min(maxOutputTokens, thinkingCap, textCap)
+                    let thinkingCap = thinkingBudget?.maxOutputTokens ?? self.maxOutputTokens
+                    let textCap = textBudget?.maxOutputTokens ?? self.maxOutputTokens
+                    return min(self.maxOutputTokens, thinkingCap, textCap)
                 }()
-                var resolvedMaxOutputTokens = effectiveMaxOutputTokens
+                let resolvedMaxOutputTokens = effectiveMaxOutputTokens
 
                 self.isGenerating = true
                 self.cancelled = false
@@ -731,9 +800,9 @@ public class MLXLocalLLMService: LLMEngine {
                         // 吞吐降 ~10-15% (更多 eval 间隔). 无功能损失.
                         let generateParams = GenerateParameters(
                             maxTokens: resolvedMaxOutputTokens,
-                            temperature: samplingTemperature,
-                            topP: samplingTopP,
-                            topK: samplingTopK,
+                            temperature: self.samplingTemperature,
+                            topP: self.samplingTopP,
+                            topK: self.samplingTopK,
                             prefillStepSize: 128
                         )
 
@@ -822,16 +891,16 @@ public class MLXLocalLLMService: LLMEngine {
 
                     let elapsed = CFAbsoluteTimeGetCurrent() - genStart
                     self.stats.ttftMs = firstTokenTime ?? 0
-                    self.stats.tokensPerSec = elapsed > 0
+                    self.stats.chunksPerSec = elapsed > 0
                         ? Double(tokenCount) / elapsed : 0
-                    self.stats.totalTokens = tokenCount
+                    self.stats.totalChunks = tokenCount
 
                     print(
                         "[MLX] Generated \(tokenCount) tokens in \(String(format: "%.1f", elapsed))s"
                     )
                     print(
                         "[MLX] TTFT: \(String(format: "%.0f", self.stats.ttftMs))ms, "
-                            + "Speed: \(String(format: "%.1f", self.stats.tokensPerSec)) tok/s")
+                            + "Speed: \(String(format: "%.1f", self.stats.chunksPerSec)) tok/s")
 
                     // 推理结束后立即释放 Metal activation 缓存，
                     // 确保下一轮有最大可用 headroom。
@@ -926,6 +995,7 @@ public class MLXLocalLLMService: LLMEngine {
         isGenerating = false
         loadedModel = nil
         cancelled = false
+        liveModeSystemPrompt = nil
         stats = LLMStats()
         stats.backend = "mlx-gpu"
         invalidateKVReuseCache()

@@ -11,7 +11,7 @@ func jsonEscape(_ str: String) -> String {
 
 func jsonString(_ object: Any) -> String {
     guard JSONSerialization.isValidJSONObject(object),
-          let data = try? JSONSerialization.data(withJSONObject: object),
+          let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]),
           let string = String(data: data, encoding: .utf8) else {
         return "{\"success\": false, \"error\": \"JSON 编码失败\"}"
     }
@@ -37,6 +37,54 @@ func failurePayload(error: String, extras: [String: Any] = [:]) -> String {
     payload["status"] = "failed"
     payload["error"] = error
     return jsonString(payload)
+}
+
+func canonicalToolResult(
+    toolName: String,
+    toolResult: String
+) -> CanonicalToolResult {
+    let trimmed = toolResult.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else {
+        return CanonicalToolResult(
+            success: true,
+            summary: "工具 \(toolName) 已执行，但没有返回内容。",
+            detail: ""
+        )
+    }
+
+    if let data = trimmed.data(using: .utf8),
+       let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+        if let success = payload["success"] as? Bool,
+           !success {
+            let errorText = (payload["error"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return CanonicalToolResult(
+                success: false,
+                summary: errorText.isEmpty
+                    ? "工具 \(toolName) 执行失败。"
+                    : "工具 \(toolName) 执行失败：\(errorText)",
+                detail: trimmed,
+                errorCode: payload["error_code"] as? String
+            )
+        }
+
+        if let result = payload["result"] as? String {
+            let summary = result.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !summary.isEmpty {
+                return CanonicalToolResult(
+                    success: true,
+                    summary: summary,
+                    detail: trimmed
+                )
+            }
+        }
+    }
+
+    return CanonicalToolResult(
+        success: true,
+        summary: trimmed,
+        detail: trimmed
+    )
 }
 
 // MARK: - Date Helpers

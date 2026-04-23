@@ -22,6 +22,12 @@ class ASRService {
     private(set) var isAvailable = false
 
     func initialize() {
+        #if targetEnvironment(simulator)
+        isAvailable = false
+        print("[ASR] Simulator build: sherpa-onnx disabled")
+        return
+        #endif
+
         // 双路径查找: Bundle 优先 (向后兼容打包方式), 其次 Documents (手机端下载)
         let modelDir: String
         if let bundled = Bundle.main.path(forResource: "sherpa-asr-zh", ofType: nil) {

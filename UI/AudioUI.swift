@@ -10,71 +10,61 @@ struct AudioAttachmentBubble: View {
     @StateObject private var player = AudioAttachmentPlayer()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Label("语音消息", systemImage: "waveform.badge.mic")
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Theme.textPrimary)
-
-                Spacer(minLength: 8)
-
-                Text(attachment.formattedDuration)
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(Theme.textSecondary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Theme.bg.opacity(0.35), in: Capsule())
-            }
-
-            HStack(spacing: 12) {
-                AudioPlaybackActionButton(
-                    isPlaying: player.isPlaying,
-                    action: { player.togglePlayback(data: attachment.wavData) }
-                )
-
-                VStack(alignment: .leading, spacing: 6) {
-                    AudioWaveformView(
-                        levels: attachment.waveform,
-                        progress: player.progress,
-                        isPlaying: player.isPlaying,
-                        activeColor: Theme.accent,
-                        inactiveColor: Theme.textTertiary.opacity(0.45),
-                        barWidth: 4,
-                        minHeight: 8,
-                        maxExtraHeight: 18
+        HStack(spacing: 10) {
+            // 播放按钮 (紧凑)
+            Button(action: { player.togglePlayback(data: attachment.wavData) }) {
+                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.bg)
+                    .frame(width: 32, height: 32)
+                    .background(
+                        LinearGradient(
+                            colors: [Theme.accent, Theme.accent.opacity(0.82)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        in: Circle()
                     )
-                    .frame(height: 30)
-
-                    HStack(spacing: 8) {
-                        Text(player.isPlaying ? "播放中" : "点击播放")
-                            .font(.system(size: 11))
-                            .foregroundStyle(player.isPlaying ? Theme.accent : Theme.textSecondary)
-
-                        Spacer(minLength: 8)
-
-                        Text(player.secondaryStatusText(totalDuration: attachment.duration))
-                            .font(.system(size: 11, weight: .medium, design: .monospaced))
-                            .foregroundStyle(Theme.textTertiary)
-                    }
-                }
             }
+            .buttonStyle(.plain)
+
+            // 波形
+            AudioWaveformView(
+                levels: attachment.waveform,
+                progress: player.progress,
+                isPlaying: player.isPlaying,
+                activeColor: Theme.accent,
+                inactiveColor: Theme.textTertiary.opacity(0.45),
+                barWidth: 3,
+                minHeight: 6,
+                maxExtraHeight: 14
+            )
+            .frame(height: 24)
+
+            // 时长 (始终显示总时长，不随播放变化)
+            Text(attachment.formattedDuration)
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .foregroundStyle(Theme.textSecondary)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(Theme.bg.opacity(0.35), in: Capsule())
         }
-        .frame(minWidth: 230, maxWidth: 272, alignment: .leading)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
+        .frame(minWidth: 200, maxWidth: 260, alignment: .leading)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
         .background(
             LinearGradient(
                 colors: [Theme.bgElevated, Theme.bgHover.opacity(0.94)],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             ),
-            in: RoundedRectangle(cornerRadius: 20, style: .continuous)
+            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .strokeBorder(Theme.borderSubtle, lineWidth: 1)
         )
-        .shadow(color: Color.black.opacity(0.12), radius: 10, y: 4)
+        .shadow(color: Color.black.opacity(0.1), radius: 8, y: 3)
     }
 }
 
@@ -152,9 +142,9 @@ final class AudioAttachmentPlayer: NSObject, ObservableObject, @preconcurrency A
     }
 
     func secondaryStatusText(totalDuration: TimeInterval) -> String {
-        guard totalDuration > 0 else { return "--:--" }
+        guard totalDuration > 0 else { return "--" }
         if isPlaying || currentTime > 0 {
-            return "\(formatTime(currentTime)) / \(formatTime(totalDuration))"
+            return "\(formatTime(currentTime))/\(formatTime(totalDuration))"
         }
         return formatTime(totalDuration)
     }
@@ -200,7 +190,10 @@ final class AudioAttachmentPlayer: NSObject, ObservableObject, @preconcurrency A
 
     private func formatTime(_ time: TimeInterval) -> String {
         let totalSeconds = max(Int(time.rounded()), 0)
-        return String(format: "%02d:%02d", totalSeconds / 60, totalSeconds % 60)
+        if totalSeconds >= 60 {
+            return "\(totalSeconds / 60)′\(String(format: "%02d", totalSeconds % 60))″"
+        }
+        return "\(totalSeconds)″"
     }
 
     private func play(data: Data) {
@@ -256,88 +249,93 @@ struct AudioPlaybackActionButton: View {
     }
 }
 
-// MARK: - Recording Status Card
-
 struct RecordingStatusCard: View {
     let duration: TimeInterval
-    let sampleRate: Double
     let peakLevel: Float
     let onStop: () -> Void
     let onDiscard: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
-                HStack(spacing: 8) {
+        HStack(spacing: 10) {
+            // 停止按钮 (紧凑)
+            Button(action: onStop) {
+                ZStack {
                     Circle()
-                        .fill(Color.red.opacity(0.92))
-                        .frame(width: 8, height: 8)
-                    Text("录音中")
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Theme.textPrimary)
+                        .fill(Color.red.opacity(0.15))
+                        .frame(width: 36, height: 36)
+                    Circle()
+                        .strokeBorder(Color.red.opacity(0.4), lineWidth: 2)
+                        .frame(width: 36, height: 36)
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(Color.red.opacity(0.9))
+                        .frame(width: 14, height: 14)
                 }
-
-                Spacer(minLength: 8)
-
-                audioMetaChip(text: formattedDuration, emphasized: true)
-                audioMetaChip(text: sampleRateText)
             }
+            .buttonStyle(.plain)
 
-            HStack(spacing: 12) {
-                AudioPlaybackActionButton(
-                    isPlaying: false,
-                    symbolName: "stop.fill",
-                    action: onStop
-                )
-                    .overlay(
-                        Circle()
-                            .strokeBorder(Color.red.opacity(0.25), lineWidth: 8)
-                            .scaleEffect(1.08)
-                    )
+            // 波形
+            RecordingLevelBars(level: peakLevel)
+                .frame(height: 24)
+                .frame(maxWidth: .infinity)
 
-                VStack(alignment: .leading, spacing: 8) {
-                    RecordingLevelBars(level: peakLevel)
-                        .frame(height: 28)
+            // 时长
+            Text(formattedDuration)
+                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                .foregroundStyle(Theme.textPrimary)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Theme.bg.opacity(0.35), in: Capsule())
 
-                    Text("点左侧按钮结束录音，发送时会作为音频附件一并发出。")
-                        .font(.system(size: 11))
-                        .foregroundStyle(Theme.textSecondary)
-                        .lineLimit(2)
-                }
+            // 闪烁红点
+            Circle()
+                .fill(Color.red.opacity(0.85))
+                .frame(width: 7, height: 7)
+                .modifier(PulsingDot())
 
-                Button(action: onDiscard) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(Theme.textSecondary)
-                        .frame(width: 30, height: 30)
-                        .background(Theme.bg.opacity(0.42), in: Circle())
-                }
-                .buttonStyle(.plain)
+            // 取消按钮
+            Button(action: onDiscard) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(Theme.textSecondary)
+                    .frame(width: 26, height: 26)
+                    .background(Theme.bg.opacity(0.4), in: Circle())
             }
+            .buttonStyle(.plain)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 14)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
         .background(
             LinearGradient(
                 colors: [Theme.bgElevated, Theme.bgHover.opacity(0.98)],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             ),
-            in: RoundedRectangle(cornerRadius: 22, style: .continuous)
+            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .strokeBorder(Theme.border, lineWidth: 1)
         )
     }
 
     private var formattedDuration: String {
         let totalSeconds = max(Int(duration.rounded()), 0)
-        return String(format: "%02d:%02d", totalSeconds / 60, totalSeconds % 60)
+        if totalSeconds >= 60 {
+            return "\(totalSeconds / 60)′\(String(format: "%02d", totalSeconds % 60))″"
+        }
+        return "\(totalSeconds)″"
     }
+}
 
-    private var sampleRateText: String {
-        String(format: "%.0f kHz", max(sampleRate, 16_000) / 1000)
+/// 红点闪烁动画
+private struct PulsingDot: ViewModifier {
+    @State private var pulsing = false
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(pulsing ? 0.3 : 1)
+            .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: pulsing)
+            .onAppear { pulsing = true }
     }
 }
 
@@ -350,69 +348,68 @@ struct ComposerAudioDraftCard: View {
     @StateObject private var player = AudioAttachmentPlayer()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Label("语音草稿", systemImage: "paperplane.circle.fill")
-                    .font(.system(size: 14, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Theme.textPrimary)
-
-                Spacer(minLength: 8)
-
-                audioMetaChip(text: attachment.formattedDuration, emphasized: true)
-
-                Button(action: onDiscard) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(Theme.textSecondary)
-                        .frame(width: 30, height: 30)
-                        .background(Theme.bg.opacity(0.4), in: Circle())
-                }
-                .buttonStyle(.plain)
-            }
-
-            HStack(spacing: 12) {
-                AudioPlaybackActionButton(
-                    isPlaying: player.isPlaying,
-                    action: { player.togglePlayback(data: attachment.wavData) }
-                )
-
-                VStack(alignment: .leading, spacing: 8) {
-                    AudioWaveformView(
-                        levels: attachment.waveform,
-                        progress: player.progress,
-                        isPlaying: player.isPlaying,
-                        activeColor: Theme.accent,
-                        inactiveColor: Theme.textTertiary.opacity(0.45),
-                        barWidth: 4,
-                        minHeight: 8,
-                        maxExtraHeight: 18
+        HStack(spacing: 10) {
+            // 播放/试听按钮
+            Button(action: { player.togglePlayback(data: attachment.wavData) }) {
+                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.bg)
+                    .frame(width: 32, height: 32)
+                    .background(
+                        LinearGradient(
+                            colors: [Theme.accent, Theme.accent.opacity(0.82)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        in: Circle()
                     )
-                    .frame(height: 30)
-
-                    HStack(spacing: 8) {
-                        Text(player.isPlaying ? "预览播放中" : "可直接发送，也可以先试听")
-                            .font(.system(size: 11))
-                            .foregroundStyle(player.isPlaying ? Theme.accent : Theme.textSecondary)
-
-                        Spacer(minLength: 8)
-
-                        audioMetaChip(text: String(format: "%.0f kHz", attachment.sampleRate / 1000))
-                    }
-                }
             }
+            .buttonStyle(.plain)
+
+            // 波形
+            AudioWaveformView(
+                levels: attachment.waveform,
+                progress: player.progress,
+                isPlaying: player.isPlaying,
+                activeColor: Theme.accent,
+                inactiveColor: Theme.textTertiary.opacity(0.45),
+                barWidth: 3,
+                minHeight: 6,
+                maxExtraHeight: 14
+            )
+            .frame(height: 24)
+            .frame(maxWidth: .infinity)
+
+            // 时长
+            Text(attachment.formattedDuration)
+                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                .foregroundStyle(Theme.textPrimary)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(Theme.bg.opacity(0.35), in: Capsule())
+
+            // 取消按钮
+            Button(action: onDiscard) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(Theme.textSecondary)
+                    .frame(width: 26, height: 26)
+                    .background(Theme.bg.opacity(0.4), in: Circle())
+            }
+            .buttonStyle(.plain)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 14)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
         .background(
             LinearGradient(
                 colors: [Theme.accentSubtle, Theme.bgElevated],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             ),
-            in: RoundedRectangle(cornerRadius: 22, style: .continuous)
+            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .strokeBorder(Theme.accent.opacity(0.2), lineWidth: 1)
         )
     }
@@ -466,19 +463,26 @@ struct RecordingLevelBars: View {
         HStack(alignment: .center, spacing: 3) {
             ForEach(0..<24, id: \.self) { index in
                 let seed = abs(sin(Double(index) * 0.55))
-                let intensity = max(CGFloat(level), 0.08)
+                let intensity = max(displayLevel, 0.08)
                 Capsule()
                     .fill(index < highlightedBarCount ? Theme.accent : Theme.textTertiary.opacity(0.35))
-                    .frame(width: 4, height: 8 + CGFloat(seed) * (8 + intensity * 18))
+                    .frame(width: 4, height: 8 + CGFloat(seed) * (8 + intensity * 26))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .animation(.easeInOut(duration: 0.16), value: highlightedBarCount)
+        .animation(.easeInOut(duration: 0.12), value: highlightedBarCount)
+        .animation(.easeInOut(duration: 0.12), value: displayLevel)
+    }
+
+    /// sqrt 感知映射: 归一化浮点麦克风峰值正常只到 0.02-0.3, 线性塞进 0-1
+    /// bar 高度几乎看不出变化. sqrt 把低幅拉上去: 0.03→0.17, 0.1→0.32, 0.3→0.55.
+    private var displayLevel: CGFloat {
+        let clamped = min(max(CGFloat(level), 0), 1)
+        return clamped.squareRoot()
     }
 
     private var highlightedBarCount: Int {
-        let normalized = min(max(level, 0), 1)
-        return max(2, Int((normalized * 24).rounded(.up)))
+        max(2, Int((displayLevel * 24).rounded(.up)))
     }
 }
 

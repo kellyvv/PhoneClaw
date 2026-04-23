@@ -97,8 +97,7 @@
 		AA1000000000000000000021 /* Gemma4AudioModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2000000000000000000021 /* Gemma4AudioModel.swift */; };
 		AA1000000000000000000022 /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = AA5000000000000000000008 /* FluidAudio */; };
 		AA1000000000000000000023 /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = AA5000000000000000000009 /* MarkdownUI */; };
-		AA1000000000000000000024 /* onnxruntime.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA2000000000000000000024 /* onnxruntime.xcframework */; };
-		AA1000000000000000000025 /* sherpa-onnx.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA2000000000000000000025 /* sherpa-onnx.xcframework */; };
+		AA1000000000000000000030 /* PhoneClawEngine in Frameworks */ = {isa = PBXBuildFile; productRef = AA5000000000000000000010 /* PhoneClawEngine */; };
 		AA1000000000000000000100 /* BundledModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2000000000000000000100 /* BundledModel.swift */; };
 		AA1000000000000000000101 /* RuntimeBudgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2000000000000000000101 /* RuntimeBudgets.swift */; };
 		AA1000000000000000000103 /* ModelInstallState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2000000000000000000103 /* ModelInstallState.swift */; };
@@ -119,6 +118,19 @@
 		B85F211303561796B93E9575 /* (null) in Sources */ = {isa = PBXBuildFile; };
 		B881A2E7F9483D5ED2AC206B /* SkillsManagerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D269F8BFCAB68D82440F704B /* SkillsManagerView.swift */; };
 		B8A84E4D0DDDE011B5929DA2 /* AgentEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = E18A47114A10132E25E220F8 /* AgentEngine.swift */; };
+		BB2000000000000000000001 /* LLMTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000001 /* LLMTypes.swift */; };
+		BB2000000000000000000002 /* InferenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000002 /* InferenceService.swift */; };
+		BB2000000000000000000003 /* ModelCatalogProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000003 /* ModelCatalogProtocol.swift */; };
+		BB2000000000000000000004 /* ModelInstallerProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000004 /* ModelInstallerProtocol.swift */; };
+		BB2000000000000000000005 /* RuntimePolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000005 /* RuntimePolicy.swift */; };
+		BB2000000000000000000006 /* PredefinedModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000006 /* PredefinedModels.swift */; };
+		BB2000000000000000000007 /* LiteRTBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000007 /* LiteRTBackend.swift */; };
+		BB2000000000000000000099 /* AudioBypassTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000099 /* AudioBypassTest.swift */; };
+		BB2000000000000000000008 /* LiteRTCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000008 /* LiteRTCatalog.swift */; };
+		BB2000000000000000000009 /* LiteRTModelStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000009 /* LiteRTModelStore.swift */; };
+		BB2000000000000000000010 /* gemma-4-E2B-it.litertlm in Resources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000010 /* gemma-4-E2B-it.litertlm */; };
+		BB2000000000000000000011 /* gemma-4-E4B-it.litertlm in Resources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000011 /* gemma-4-E4B-it.litertlm */; };
+		BB2000000000000000000012 /* PCLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000012 /* PCLog.swift */; };
 		BD75E7E5620A8FF0A868E9F0 /* libPods-PhoneClaw.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 4F4ACB3F4531FF61E0AADA07 /* libPods-PhoneClaw.a */; };
 		BE6E6C928537BCC4DBC975E9 /* (null) in Sources */ = {isa = PBXBuildFile; };
 		C05906F882C28E546FC97B26 /* (null) in Sources */ = {isa = PBXBuildFile; };
@@ -224,6 +236,18 @@
 		AA2000000000000000000202 /* MLXLocalLLMService+KVReuse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MLXLocalLLMService+KVReuse.swift"; sourceTree = "<group>"; };
 		B1A2C3D4E5F607182930B101 /* Library */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Library; sourceTree = "<group>"; };
 		BA48303BA25916A3A431EDE6 /* OrbBackgroundView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OrbBackgroundView.swift; path = Live/UI/LiveOrb/OrbBackgroundView.swift; sourceTree = SOURCE_ROOT; };
+		BB1000000000000000000001 /* LLMTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMTypes.swift; sourceTree = "<group>"; };
+		BB1000000000000000000002 /* InferenceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InferenceService.swift; sourceTree = "<group>"; };
+		BB1000000000000000000003 /* ModelCatalogProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelCatalogProtocol.swift; sourceTree = "<group>"; };
+		BB1000000000000000000004 /* ModelInstallerProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelInstallerProtocol.swift; sourceTree = "<group>"; };
+		BB1000000000000000000005 /* RuntimePolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimePolicy.swift; sourceTree = "<group>"; };
+		BB1000000000000000000006 /* PredefinedModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PredefinedModels.swift; sourceTree = "<group>"; };
+		BB1000000000000000000007 /* LiteRTBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiteRTBackend.swift; sourceTree = "<group>"; };
+		BB1000000000000000000099 /* AudioBypassTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioBypassTest.swift; sourceTree = "<group>"; };
+		BB1000000000000000000008 /* LiteRTCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiteRTCatalog.swift; sourceTree = "<group>"; };
+		BB1000000000000000000009 /* LiteRTModelStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiteRTModelStore.swift; sourceTree = "<group>"; };
+		BB1000000000000000000010 /* gemma-4-E2B-it.litertlm */ = {isa = PBXFileReference; lastKnownFileType = file; name = "gemma-4-E2B-it.litertlm"; path = "Models/gemma-4-E2B-it.litertlm"; sourceTree = SOURCE_ROOT; };
+		BB1000000000000000000011 /* gemma-4-E4B-it.litertlm */ = {isa = PBXFileReference; lastKnownFileType = file; name = "gemma-4-E4B-it.litertlm"; path = "Models/gemma-4-E4B-it.litertlm"; sourceTree = SOURCE_ROOT; };
 		C1A2B3D4E5F607182930A1B3 /* SkillLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillLoader.swift; sourceTree = "<group>"; };
 		C1A2B3D4E5F607182930A1C3 /* SkillRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillRegistry.swift; sourceTree = "<group>"; };
 		C3C4D5E6F7081A2B3C52D3E5 /* ChatModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatModels.swift; sourceTree = "<group>"; };
@@ -255,6 +279,7 @@
 		F8D921B323B9D6342A22A29E /* LiveAudioIO.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveAudioIO.swift; path = Live/Audio/LiveAudioIO.swift; sourceTree = SOURCE_ROOT; };
 		ICONASSETS0000000000001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+		BB1000000000000000000012 /* PCLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PCLog.swift; path = Shared/PCLog.swift; sourceTree = SOURCE_ROOT; };
 
 /* Begin PBXFrameworksBuildPhase section */
 		4B243621551C86F4B6922A8F /* Frameworks */ = {
@@ -270,8 +295,7 @@
 				AA1000000000000000000016 /* Tokenizers in Frameworks */,
 				AA1000000000000000000022 /* FluidAudio in Frameworks */,
 				AA1000000000000000000023 /* MarkdownUI in Frameworks */,
-				AA1000000000000000000024 /* onnxruntime.xcframework in Frameworks */,
-				AA1000000000000000000025 /* sherpa-onnx.xcframework in Frameworks */,
+				AA1000000000000000000030 /* PhoneClawEngine in Frameworks */,
 				BD75E7E5620A8FF0A868E9F0 /* libPods-PhoneClaw.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -297,6 +321,7 @@
 				AC5E0AA2711EA01E891DE3A7 /* Products */,
 				03C67BBB35FEB376174D7420 /* Pods */,
 				E1D6A9BAE368B2FB909A7774 /* Frameworks */,
+				A313E6512F94017B00B15DE6 /* Recovered References */,
 			);
 			sourceTree = "<group>";
 		};
@@ -317,6 +342,15 @@
 				C1A2B3D4E5F607182930A1C3 /* SkillRegistry.swift */,
 			);
 			path = Skills;
+			sourceTree = "<group>";
+		};
+		A313E6512F94017B00B15DE6 /* Recovered References */ = {
+			isa = PBXGroup;
+			children = (
+				BB1000000000000000000010 /* gemma-4-E2B-it.litertlm */,
+				BB1000000000000000000011 /* gemma-4-E4B-it.litertlm */,
+			);
+			name = "Recovered References";
 			sourceTree = "<group>";
 		};
 		A31476ED2F85741500318978 /* Engine */ = {
@@ -401,9 +435,59 @@
 			children = (
 				AA2000000000000000000001 /* LLMEngine.swift */,
 				AA3000000000000000000001 /* MLX */,
+				BB3000000000000000000001 /* Core */,
+				BB3000000000000000000002 /* Models */,
+				BB3000000000000000000003 /* Backends */,
+				BB3000000000000000000004 /* Installation */,
 				2E7C06DA449D1395217A42D5 /* PromptBuilder.swift */,
 			);
 			path = LLM;
+			sourceTree = "<group>";
+		};
+		BB3000000000000000000001 /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				BB1000000000000000000001 /* LLMTypes.swift */,
+				BB1000000000000000000002 /* InferenceService.swift */,
+				BB1000000000000000000003 /* ModelCatalogProtocol.swift */,
+				BB1000000000000000000004 /* ModelInstallerProtocol.swift */,
+				BB1000000000000000000005 /* RuntimePolicy.swift */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		BB3000000000000000000002 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				BB1000000000000000000006 /* PredefinedModels.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		BB3000000000000000000003 /* Backends */ = {
+			isa = PBXGroup;
+			children = (
+				BB3000000000000000000005 /* LiteRT */,
+			);
+			path = Backends;
+			sourceTree = "<group>";
+		};
+		BB3000000000000000000004 /* Installation */ = {
+			isa = PBXGroup;
+			children = (
+				BB1000000000000000000009 /* LiteRTModelStore.swift */,
+			);
+			path = Installation;
+			sourceTree = "<group>";
+		};
+		BB3000000000000000000005 /* LiteRT */ = {
+			isa = PBXGroup;
+			children = (
+				BB1000000000000000000007 /* LiteRTBackend.swift */,
+				BB1000000000000000000008 /* LiteRTCatalog.swift */,
+				BB1000000000000000000099 /* AudioBypassTest.swift */,
+			);
+			path = LiteRT;
 			sourceTree = "<group>";
 		};
 		D21E6B56B839A63857912FE0 /* PhoneClaw */ = {
@@ -422,6 +506,7 @@
 				357644EE0B2A47696762E171 /* LiveCameraService.swift */,
 				9C503EC6B19AD0CF5515B98E /* LiveComponentTest.swift */,
 				094A760C8A6DFD5E317AF5B8 /* LiveMetrics.swift */,
+				BB1000000000000000000012 /* PCLog.swift */,
 				DAF684F9A04FAEE76440F69C /* OrbAudioAnalyser.swift */,
 				CEA10A9D8F9AB4A2764A1A13 /* SherpaOnnx.swift */,
 				F06A8F86444AB26C7373919B /* TTSService.swift */,
@@ -517,6 +602,7 @@
 				479C4F7A038F48E691B8652F /* Sources */,
 				4B243621551C86F4B6922A8F /* Frameworks */,
 				E6F7081A2B3C4D5E6F708100 /* Resources */,
+				BB2000000000000000000020 /* Re-sign embedded dylibs */,
 			);
 			buildRules = (
 			);
@@ -533,6 +619,7 @@
 				AA5000000000000000000006 /* Tokenizers */,
 				AA5000000000000000000008 /* FluidAudio */,
 				AA5000000000000000000009 /* MarkdownUI */,
+				AA5000000000000000000010 /* PhoneClawEngine */,
 			);
 			productName = PhoneClaw;
 			productReference = 408F2AE98EA54717A74FA4B1 /* PhoneClaw.app */;
@@ -562,6 +649,7 @@
 				AA4000000000000000000003 /* XCRemoteSwiftPackageReference "swift-tokenizers" */,
 				AA4000000000000000000004 /* XCLocalSwiftPackageReference "Packages/FluidAudio" */,
 				AA4000000000000000000005 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */,
+				AA4000000000000000000006 /* XCLocalSwiftPackageReference "LocalPackages/PhoneClawEngine" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = AC5E0AA2711EA01E891DE3A7 /* Products */;
@@ -608,6 +696,25 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
+		BB2000000000000000000020 /* Re-sign embedded dylibs */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Re-sign embedded dylibs";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if [ \"${CODE_SIGNING_ALLOWED}\" != \"YES\" ]; then\n  exit 0\nfi\n\nFRAMEWORKS_DIR=\"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}\"\nif [ ! -d \"${FRAMEWORKS_DIR}\" ]; then\n  exit 0\nfi\n\nfind \"${FRAMEWORKS_DIR}\" -name '*.dylib' -exec codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" --timestamp=none --preserve-metadata=identifier,entitlements {} \\;\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */
@@ -752,6 +859,17 @@
 				D3A1B2C3D4E5F60718290009 /* Reminders.swift in Sources */,
 				D3A1B2C3D4E5F60718290010 /* Contacts.swift in Sources */,
 				D3A1B2C3D4E5F60718290011 /* Health.swift in Sources */,
+				BB2000000000000000000001 /* LLMTypes.swift in Sources */,
+				BB2000000000000000000002 /* InferenceService.swift in Sources */,
+				BB2000000000000000000003 /* ModelCatalogProtocol.swift in Sources */,
+				BB2000000000000000000004 /* ModelInstallerProtocol.swift in Sources */,
+				BB2000000000000000000005 /* RuntimePolicy.swift in Sources */,
+				BB2000000000000000000006 /* PredefinedModels.swift in Sources */,
+				BB2000000000000000000007 /* LiteRTBackend.swift in Sources */,
+				BB2000000000000000000099 /* AudioBypassTest.swift in Sources */,
+				BB2000000000000000000008 /* LiteRTCatalog.swift in Sources */,
+				BB2000000000000000000009 /* LiteRTModelStore.swift in Sources */,
+				BB2000000000000000000012 /* PCLog.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -795,6 +913,7 @@
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -852,6 +971,7 @@
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
+				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -886,20 +1006,30 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = PhoneClaw.entitlements;
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = YES;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				CURRENT_PROJECT_VERSION = 3;
+				DEVELOPMENT_TEAM = ZP4QNJ35TH;
+				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
-					"$(SRCROOT)/Frameworks/onnxruntime.xcframework/Headers",
 					"$(SRCROOT)/Frameworks/sherpa-onnx.xcframework/ios-arm64/Headers",
-					"$(SRCROOT)/Frameworks/sherpa-onnx.xcframework/ios-arm64_x86_64-simulator/Headers",
 				);
 				INFOPLIST_FILE = Info.plist;
+				"LIBRARY_SEARCH_PATHS[sdk=iphoneos*]" = (
+					"$(inherited)",
+					"$(SRCROOT)/Frameworks/onnxruntime.xcframework/ios-arm64",
+					"$(SRCROOT)/Frameworks/sherpa-onnx.xcframework/ios-arm64",
+				);
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.2.1;
+				"OTHER_LDFLAGS[sdk=iphoneos*]" = (
+					"$(inherited)",
+					"-lonnxruntime",
+					"-lsherpa-onnx",
+					"-lc++",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.phoneclaw;
 				SDKROOT = iphoneos;
 				SWIFT_OBJC_BRIDGING_HEADER = "$(SRCROOT)/PhoneClaw-Bridging-Header.h";
@@ -914,20 +1044,30 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = PhoneClaw.entitlements;
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = YES;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				CURRENT_PROJECT_VERSION = 3;
+				DEVELOPMENT_TEAM = ZP4QNJ35TH;
+				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
-					"$(SRCROOT)/Frameworks/onnxruntime.xcframework/Headers",
 					"$(SRCROOT)/Frameworks/sherpa-onnx.xcframework/ios-arm64/Headers",
-					"$(SRCROOT)/Frameworks/sherpa-onnx.xcframework/ios-arm64_x86_64-simulator/Headers",
 				);
 				INFOPLIST_FILE = Info.plist;
+				"LIBRARY_SEARCH_PATHS[sdk=iphoneos*]" = (
+					"$(inherited)",
+					"$(SRCROOT)/Frameworks/onnxruntime.xcframework/ios-arm64",
+					"$(SRCROOT)/Frameworks/sherpa-onnx.xcframework/ios-arm64",
+				);
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.2.1;
+				"OTHER_LDFLAGS[sdk=iphoneos*]" = (
+					"$(inherited)",
+					"-lonnxruntime",
+					"-lsherpa-onnx",
+					"-lc++",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.phoneclaw;
 				SDKROOT = iphoneos;
 				SWIFT_OBJC_BRIDGING_HEADER = "$(SRCROOT)/PhoneClaw-Bridging-Header.h";
@@ -966,6 +1106,10 @@
 		AA4000000000000000000004 /* XCLocalSwiftPackageReference "Packages/FluidAudio" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/FluidAudio;
+		};
+		AA4000000000000000000006 /* XCLocalSwiftPackageReference "LocalPackages/PhoneClawEngine" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = LocalPackages/PhoneClawEngine;
 		};
 /* End XCLocalSwiftPackageReference section */
 
@@ -1041,6 +1185,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = AA4000000000000000000005 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */;
 			productName = MarkdownUI;
+		};
+		AA5000000000000000000010 /* PhoneClawEngine */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AA4000000000000000000006 /* XCLocalSwiftPackageReference "LocalPackages/PhoneClawEngine" */;
+			productName = PhoneClawEngine;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

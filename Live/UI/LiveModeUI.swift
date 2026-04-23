@@ -11,9 +11,10 @@ import UIKit
 struct LiveModeView: View {
     @Binding var isPresented: Bool
 
-    let llm: MLXLocalLLMService
+    let inference: InferenceService
+    let catalog: ModelCatalog
     /// 用户在 SYSPROMPT.md 编辑的 system prompt（来自 AgentEngine.config.systemPrompt）。
-    /// 透传到 LiveModeEngine，与 live voice 强约束拼接成完整 system prompt。
+    /// Phase 1 起 Live 不再读取这份通用 prompt；先保留透传，避免接口层变化。
     let userSystemPrompt: String?
 
     @State private var liveEngine = LiveModeEngine()
@@ -27,6 +28,10 @@ struct LiveModeView: View {
     /// UserDefaults 全程不动 — 用户在 Configurations 的持久化偏好不被 Live 污染.
     @State private var preLiveModelID: String? = nil
 
+    private var liveStrings: LiveLocaleConfig.StatusStrings {
+        LiveLocale.zhCN.config.statusStrings
+    }
+
     private var accentColor: Color {
         switch liveEngine.state {
         case .idle: return Theme.textTertiary
@@ -37,8 +42,12 @@ struct LiveModeView: View {
         }
     }
 
+    private var isPreparingLive: Bool {
+        liveEngine.statusMessage.hasPrefix(liveStrings.preparingPrefix)
+    }
+
     /// 基于 engine.state 的状态文字. 对齐原始设计 (6d0b310) ——
-    /// "正在准备 Live" 特例放在 switch 之前, 覆盖任何 state 字面;
+    /// “正在准备”特例放在 switch 之前, 覆盖任何 state 字面;
     /// 因为 engine.start() 启动瞬间就把 state 设成 .listening, 加载期间
     /// 这个特例是唯一能显示加载字面的路径.
     ///
@@ -46,15 +55,15 @@ struct LiveModeView: View {
     ///   1. .idle 分支不再显示 "LIVE 未启动" (返回 nil)
     ///   2. "正在准备" 改叫 "正在加载"
     private var headline: String? {
-        if liveEngine.statusMessage == "正在准备 Live" {
-            return "正在加载"
+        if isPreparingLive {
+            return liveStrings.loadingHeadline
         }
         switch liveEngine.state {
         case .idle:       return nil
-        case .listening:  return "我在听"
-        case .recording:  return "正在听你说"
-        case .processing: return "正在理解"
-        case .speaking:   return "正在回答"
+        case .listening:  return liveStrings.listeningHeadline
+        case .recording:  return liveStrings.recordingHeadline
+        case .processing: return liveStrings.processingHeadline
+        case .speaking:   return liveStrings.speakingHeadline
         }
     }
 
@@ -87,21 +96,27 @@ struct LiveModeView: View {
                 .ignoresSafeArea()
 
             // ── 背景层 ──
+            // OrbSceneView 全程挂载, 切摄像头只改 opacity, 避免 WKWebView 销毁重建
+            // 导致 JS 内的 one-shot reveal 状态 (revealStartTime / maskOpacity) 被
+            // 重置, 关摄像头后再触发一次 .speaking 又重播暗→亮动画 (实测 bug).
+            // CameraPreviewView 仍走条件挂载 — 它需要随开关启停 capture session.
+            #if canImport(UIKit)
+            OrbSceneView(
+                inputAnalyser: liveEngine.inputAnalyser,
+                outputAnalyser: liveEngine.outputAnalyser,
+                state: liveEngine.state
+            )
+            .ignoresSafeArea()
+            .opacity(isCameraEnabled ? 0 : 1)
+            #else
+            OrbBackgroundView()
+                .ignoresSafeArea()
+                .opacity(isCameraEnabled ? 0 : 1)
+            #endif
+
             if isCameraEnabled {
                 CameraPreviewView(previewLayer: camera.previewLayer)
                     .ignoresSafeArea()
-            } else {
-                #if canImport(UIKit)
-                OrbSceneView(
-                    inputAnalyser: liveEngine.inputAnalyser,
-                    outputAnalyser: liveEngine.outputAnalyser,
-                    state: liveEngine.state
-                )
-                .ignoresSafeArea()
-                #else
-                OrbBackgroundView()
-                    .ignoresSafeArea()
-                #endif
             }
 
             // ── 加载蒙版 (Orb 之上、UI 之下) ──
@@ -111,10 +126,10 @@ struct LiveModeView: View {
             // 相机模式下不蒙, 那时 Orb 已经被相机画面替换.
             if !isCameraEnabled {
                 Color.black
-                    .opacity(liveEngine.statusMessage == "正在准备 Live" ? 0.85 : 0)
+                    .opacity(isPreparingLive ? 0.55 : 0)
                     .ignoresSafeArea()
                     .allowsHitTesting(false)
-                    .animation(.easeOut(duration: 0.6), value: liveEngine.statusMessage)
+                    .animation(.easeOut(duration: 0.6), value: isPreparingLive)
             }
 
             // ── 前景 UI 层 ──
@@ -139,22 +154,9 @@ struct LiveModeView: View {
         }
         .preferredColorScheme(.dark)
         .task {
-            // E4B 在 Live 模式下物理超 jetsam (真机 2026-04-16 验证):
-            //   E4B 权重 4 GB + Live runtime (TTS Keqing/AudioIO/VAD/Orb) ~800 MB
-            //   + KV cache prefill 临时 buffer ~500 MB ≈ 5.3 GB baseline,
-            //   推理任意 spike 都突破 jetsam 6144. 不论是否开摄像头.
-            //
-            // 强制切 E2B (~2.5 GB), Live runtime + 推理总 < 4.5 GB, 安全.
-            // 退出 Live (LiveModeView 销毁) 后, 用户原选模型保留在 ChatUI 不丢.
-            // 注意: 这是单向切换 — 我们不在 onDisappear 回切, 因为 Live 退出
-            // 后用户回到 ChatUI 自己选, MLXLocalLLMService 还是 E2B 没问题.
-            // 如果用户想用 E4B 文本, 在 Configurations 里手动切回去即可.
-            if llm.loadedModelID?.contains("e4b") == true {
-                print("[Live] ⚠️ E4B 在 Live 模式内存超限, 自动切到 E2B")
-                _ = llm.selectModel(id: "gemma-4-e2b-it-4bit")
-                try? await llm.load()
-            }
-            liveEngine.setup(llm: llm)
+            // 注: 之前 E4B 在 Live 有 jetsam 风险, 已在 iPhone 17 Pro Max 验证
+            // headroom 充足 (~2.7 GB), 不再强制切 E2B.
+            liveEngine.setup(inference: inference)
             liveEngine.userSystemPrompt = userSystemPrompt
             await liveEngine.start()
         }
@@ -209,7 +211,7 @@ struct LiveModeView: View {
                         .foregroundStyle(.white.opacity(0.55))
 
                     if liveEngine.state == .speaking || liveEngine.state == .processing {
-                        Text("可以直接打断")
+                        Text(liveStrings.interruptHint)
                             .font(.system(size: 10, weight: .light, design: .rounded))
                             .foregroundStyle(.white.opacity(0.4))
                             .transition(.opacity)
@@ -386,6 +388,7 @@ struct LiveModeView: View {
             camera.stop()
             liveEngine.frameProvider = nil
             isCameraEnabled = false
+            liveEngine.notifyCameraStateChanged(isOn: false)
         } else {
             guard !isCameraStarting else { return }
             isCameraStarting = true
@@ -395,6 +398,7 @@ struct LiveModeView: View {
                 if ok {
                     liveEngine.frameProvider = { [camera] in camera.captureLatestFrame() }
                     isCameraEnabled = true
+                    liveEngine.notifyCameraStateChanged(isOn: true)
                 } else {
                     print("[Live] Camera start failed — permission denied or device unavailable")
                 }

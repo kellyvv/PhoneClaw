@@ -6,6 +6,7 @@ version: "1.0.0"
 icon: calendar
 disabled: false
 type: device
+requires-time-anchor: true
 chip_prompt: "帮我创建明天下午两点的产品评审会议"
 chip_label: "创建日程"
 

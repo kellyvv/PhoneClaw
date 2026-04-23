@@ -6,6 +6,7 @@ version: "1.0.0"
 icon: bell
 disabled: false
 type: device
+requires-time-anchor: true
 chip_prompt: "提醒我今晚八点发文件"
 chip_label: "创建提醒"
 

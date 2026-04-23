@@ -11,103 +11,14 @@ enum ContactsTools {
             description: "创建或更新联系人；若提供手机号则优先按手机号查重再更新",
             parameters: "name: 联系人姓名, phone: 手机号（可选）, company: 公司（可选）, email: 邮箱（可选）, notes: 备注（可选）",
             requiredParameters: ["name"],
-            aliases: ["contacts_upsert"]
-        ) { args in
-            guard let rawName = args["name"] as? String else {
-                return failurePayload(error: "缺少 name 参数")
+            aliases: ["contacts_upsert"],
+            execute: { args in
+                try await upsertCanonical(args).detail
+            },
+            executeCanonical: { args in
+                try await upsertCanonical(args)
             }
-            let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !name.isEmpty else {
-                return failurePayload(error: "缺少 name 参数")
-            }
-
-            let phone = (args["phone"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let company = (args["company"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let email = (args["email"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let notes = (args["notes"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-
-            #if !os(iOS)
-            // Mac mock: 跨工具内存 store, harness 测端到端 SKILL flow.
-            let result = MacContactsMock.upsert(name: name, phone: phone, company: company, email: email, notes: notes)
-            let actionText = result.action == "updated" ? "已更新" : "已创建"
-            return successPayload(
-                result: "\(actionText)联系人\u{201C}\(name)\u{201D}。",
-                extras: [
-                    "action": result.action,
-                    "name": result.entry.name,
-                    "phone": result.entry.phone,
-                    "company": result.entry.company,
-                    "email": result.entry.email,
-                    "notes": result.entry.notes,
-                    "_macMock": "true"
-                ]
-            )
-            #else
-            do {
-                guard try await ToolRegistry.shared.requestAccess(for: .contacts) else {
-                    return failurePayload(error: "未获得通讯录权限")
-                }
-
-                let existingContact = phone.flatMap { try? findExistingContact(phone: $0) }
-                let mutableContact: CNMutableContact
-                let action: String
-
-                if let existingContact {
-                    mutableContact = existingContact.mutableCopy() as! CNMutableContact
-                    action = "updated"
-                } else {
-                    mutableContact = CNMutableContact()
-                    action = "created"
-                }
-
-                mutableContact.givenName = name
-                mutableContact.familyName = ""
-
-                if let phone, !phone.isEmpty {
-                    mutableContact.phoneNumbers = [
-                        CNLabeledValue(
-                            label: CNLabelPhoneNumberMobile,
-                            value: CNPhoneNumber(stringValue: phone)
-                        )
-                    ]
-                }
-                if let company, !company.isEmpty {
-                    mutableContact.organizationName = company
-                }
-                if let email, !email.isEmpty {
-                    mutableContact.emailAddresses = [
-                        CNLabeledValue(label: CNLabelWork, value: email as NSString)
-                    ]
-                }
-                if let notes, !notes.isEmpty {
-                    mutableContact.note = notes
-                }
-
-                let saveRequest = CNSaveRequest()
-                if existingContact != nil {
-                    saveRequest.update(mutableContact)
-                } else {
-                    saveRequest.add(mutableContact, toContainerWithIdentifier: nil)
-                }
-                try SystemStores.contacts.execute(saveRequest)
-
-                let actionText = action == "updated" ? "已更新" : "已创建"
-                return successPayload(
-                    result: "\(actionText)联系人\u{201C}\(name)\u{201D}。",
-                    extras: [
-                        "action": action,
-                        "name": name,
-                        "phone": phone ?? "",
-                        "company": company ?? "",
-                        "email": email ?? "",
-                        "notes": notes ?? ""
-                    ]
-                )
-            } catch {
-                return failurePayload(error: "保存联系人失败：\(error.localizedDescription)")
-            }
-            #endif
-        })
+        ))
 
         // ── contacts-search ──
         registry.register(RegisteredTool(
@@ -115,71 +26,14 @@ enum ContactsTools {
             description: "搜索联系人，可按姓名、手机号、邮箱、identifier 或关键词查询联系方式",
             parameters: "query: 搜索关键词（可选）, identifier: 联系人标识（可选）, name: 姓名（可选）, phone: 手机号（可选）, email: 邮箱（可选）",
             requiredAnyOfParameters: ["query", "identifier", "name", "phone", "email"],
-            aliases: ["contacts_search"]
-        ) { args in
-            let identifier = (args["identifier"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let name = (args["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let phone = (args["phone"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let email = (args["email"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let query = (args["query"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-
-            guard identifier?.isEmpty == false
-                || name?.isEmpty == false
-                || phone?.isEmpty == false
-                || email?.isEmpty == false
-                || query?.isEmpty == false else {
-                return failurePayload(error: "请至少提供 query、name、phone、email 或 identifier 其中一个参数")
+            aliases: ["contacts_search"],
+            execute: { args in
+                try await searchCanonical(args).detail
+            },
+            executeCanonical: { args in
+                try await searchCanonical(args)
             }
-
-            #if !os(iOS)
-            let mockMatches = Array(MacContactsMock.search(identifier: identifier, name: name, phone: phone, email: email, query: query).prefix(5))
-            let mockItems = mockMatches.map(MacContactsMock.summaryDict)
-            if mockMatches.isEmpty {
-                return successPayload(result: "未找到匹配的联系人。", extras: ["count": 0, "items": mockItems])
-            }
-            let mockLines = mockMatches.map(MacContactsMock.summaryText)
-            return successPayload(
-                result: "找到 \(mockMatches.count) 个联系人：\(mockLines.joined(separator: "；"))。",
-                extras: ["count": mockMatches.count, "items": mockItems]
-            )
-            #else
-            do {
-                guard try await ToolRegistry.shared.requestAccess(for: .contacts) else {
-                    return failurePayload(error: "未获得通讯录权限")
-                }
-
-                let matches = Array(try searchContacts(
-                    identifier: identifier,
-                    name: name,
-                    phone: phone,
-                    email: email,
-                    query: query
-                ).prefix(5))
-
-                let items = matches.map(contactSummaryDictionary)
-                if matches.isEmpty {
-                    return successPayload(
-                        result: "未找到匹配的联系人。",
-                        extras: [
-                            "count": 0,
-                            "items": items
-                        ]
-                    )
-                }
-
-                let lines = matches.map(contactSummaryText)
-                return successPayload(
-                    result: "找到 \(matches.count) 个联系人：\(lines.joined(separator: "；"))。",
-                    extras: [
-                        "count": matches.count,
-                        "items": items
-                    ]
-                )
-            } catch {
-                return failurePayload(error: "搜索联系人失败：\(error.localizedDescription)")
-            }
-            #endif
-        })
+        ))
 
         // ── contacts-delete ──
         registry.register(RegisteredTool(
@@ -187,112 +41,14 @@ enum ContactsTools {
             description: "删除联系人，可按姓名、手机号、邮箱、identifier 或关键词匹配后删除；匹配多个时可传 all=true 批量删除",
             parameters: "query: 搜索关键词（可选）, identifier: 联系人标识（可选）, name: 姓名（可选）, phone: 手机号（可选）, email: 邮箱（可选）, all: 多匹配时是否全部删除（可选，默认 false）",
             requiredAnyOfParameters: ["query", "identifier", "name", "phone", "email"],
-            aliases: ["contacts_delete", "contacts-delete-contact"]
-        ) { args in
-            let identifier = (args["identifier"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let rawName = (args["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let phone = (args["phone"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let email = (args["email"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let query = (args["query"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let name = rawName?.trimmingCharacters(in: CharacterSet(charactersIn: "，。,？！!? "))
-            // `all` 支持 bool 或字符串形式 (LLM 常出 "true" 字符串)
-            let deleteAll: Bool = {
-                if let b = args["all"] as? Bool { return b }
-                if let s = args["all"] as? String { return ["true", "yes", "1"].contains(s.lowercased()) }
-                return false
-            }()
-
-            guard identifier?.isEmpty == false
-                || name?.isEmpty == false
-                || phone?.isEmpty == false
-                || email?.isEmpty == false
-                || query?.isEmpty == false else {
-                return failurePayload(error: "请至少提供 query、name、phone、email 或 identifier 其中一个参数")
+            aliases: ["contacts_delete", "contacts-delete-contact"],
+            execute: { args in
+                try await deleteCanonical(args).detail
+            },
+            executeCanonical: { args in
+                try await deleteCanonical(args)
             }
-
-            #if !os(iOS)
-            let mockMatches = MacContactsMock.search(identifier: identifier, name: name, phone: phone, email: email, query: query)
-            if mockMatches.isEmpty {
-                return failurePayload(error: "未找到匹配的联系人")
-            }
-            if mockMatches.count > 1 && !deleteAll {
-                let previews = mockMatches.prefix(5).map(MacContactsMock.summaryText).joined(separator: "；")
-                return failurePayload(error: "匹配到多个联系人，请提供更具体的信息，或传 all=true 全部删除：\(previews)")
-            }
-            MacContactsMock.delete(mockMatches)
-            if mockMatches.count == 1 {
-                let c = mockMatches[0]
-                return successPayload(
-                    result: "已删除联系人\u{201C}\(c.name)\u{201D}。",
-                    extras: ["identifier": c.identifier, "name": c.name, "phone": c.phone, "email": c.email, "deletedCount": "1"]
-                )
-            } else {
-                let names = mockMatches.map(\.name)
-                return successPayload(
-                    result: "已删除 \(mockMatches.count) 位联系人：\(names.joined(separator: "、"))。",
-                    extras: ["deletedCount": "\(mockMatches.count)", "deletedNames": names.joined(separator: ",")]
-                )
-            }
-            #else
-            do {
-                guard try await ToolRegistry.shared.requestAccess(for: .contacts) else {
-                    return failurePayload(error: "未获得通讯录权限")
-                }
-
-                let matches = try searchContacts(
-                    identifier: identifier,
-                    name: name,
-                    phone: phone,
-                    email: email,
-                    query: query
-                )
-
-                if matches.isEmpty {
-                    return failurePayload(error: "未找到匹配的联系人")
-                }
-
-                // 多匹配: 未指定 all 时拒绝并列候选; 指定 all=true 时批量删除
-                if matches.count > 1 && !deleteAll {
-                    let previews = matches.prefix(5).map(contactSummaryText).joined(separator: "；")
-                    return failurePayload(error: "匹配到多个联系人，请提供更具体的信息，或传 all=true 全部删除：\(previews)")
-                }
-
-                // 批量 / 单删统一走 CNSaveRequest 一次 commit
-                let saveRequest = CNSaveRequest()
-                var deletedNames: [String] = []
-                for contact in matches {
-                    let mutableContact = contact.mutableCopy() as! CNMutableContact
-                    saveRequest.delete(mutableContact)
-                    deletedNames.append(formattedContactName(contact))
-                }
-                try SystemStores.contacts.execute(saveRequest)
-
-                if matches.count == 1 {
-                    let contact = matches[0]
-                    return successPayload(
-                        result: "已删除联系人\u{201C}\(formattedContactName(contact))\u{201D}。",
-                        extras: [
-                            "identifier": contact.identifier,
-                            "name": formattedContactName(contact),
-                            "phone": primaryPhone(contact) ?? "",
-                            "email": primaryEmail(contact) ?? "",
-                            "deletedCount": "1"
-                        ]
-                    )
-                } else {
-                    return successPayload(
-                        result: "已删除 \(matches.count) 位联系人：\(deletedNames.joined(separator: "、"))。",
-                        extras: [
-                            "deletedCount": "\(matches.count)",
-                            "deletedNames": deletedNames.joined(separator: ",")
-                        ]
-                    )
-                }
-            } catch {
-                return failurePayload(error: "删除联系人失败：\(error.localizedDescription)")
-            }
-            #endif
-        })
+        ))
     }
 
     // MARK: - Private Helpers
@@ -510,6 +266,359 @@ enum ContactsTools {
         return matches.sorted {
             formattedContactName($0).localizedCaseInsensitiveCompare(formattedContactName($1)) == .orderedAscending
         }
+    }
+
+    // 约定:
+    // - 业务失败不抛出, 统一返回 CanonicalToolResult(success: false, ...)
+    // - 系统失败才 throw, 由上层 ToolChain / Planner 的 catch 统一兜底
+    private static func upsertCanonical(_ args: [String: Any]) async throws -> CanonicalToolResult {
+        guard let rawName = args["name"] as? String else {
+            return contactsFailure(
+                summary: "联系人叫什么名字?",
+                detail: "缺少 name 参数",
+                errorCode: "NAME_MISSING"
+            )
+        }
+        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else {
+            return contactsFailure(
+                summary: "联系人叫什么名字?",
+                detail: "缺少 name 参数",
+                errorCode: "NAME_MISSING"
+            )
+        }
+
+        let phone = (args["phone"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let company = (args["company"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let email = (args["email"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let notes = (args["notes"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        #if !os(iOS)
+        let result = MacContactsMock.upsert(name: name, phone: phone, company: company, email: email, notes: notes)
+        let actionText = result.action == "updated" ? "已更新" : "已创建"
+        let summary = "\(actionText)联系人\u{201C}\(name)\u{201D}。"
+        let detail = successPayload(
+            result: summary,
+            extras: [
+                "action": result.action,
+                "name": result.entry.name,
+                "phone": result.entry.phone,
+                "company": result.entry.company,
+                "email": result.entry.email,
+                "notes": result.entry.notes,
+                "_macMock": true
+            ]
+        )
+        return CanonicalToolResult(success: true, summary: summary, detail: detail)
+        #else
+        guard try await ToolRegistry.shared.requestAccess(for: .contacts) else {
+            return contactsFailure(
+                summary: "请先在系统设置里允许通讯录权限。",
+                detail: "未获得通讯录权限",
+                errorCode: "CONTACTS_PERMISSION_DENIED"
+            )
+        }
+
+        let existingContact: CNContact?
+        if let phone, !phone.isEmpty {
+            existingContact = try findExistingContact(phone: phone)
+        } else {
+            existingContact = nil
+        }
+
+        let mutableContact: CNMutableContact
+        let action: String
+        if let existingContact {
+            mutableContact = existingContact.mutableCopy() as! CNMutableContact
+            action = "updated"
+        } else {
+            mutableContact = CNMutableContact()
+            action = "created"
+        }
+
+        mutableContact.givenName = name
+        mutableContact.familyName = ""
+
+        if let phone, !phone.isEmpty {
+            mutableContact.phoneNumbers = [
+                CNLabeledValue(
+                    label: CNLabelPhoneNumberMobile,
+                    value: CNPhoneNumber(stringValue: phone)
+                )
+            ]
+        }
+        if let company, !company.isEmpty {
+            mutableContact.organizationName = company
+        }
+        if let email, !email.isEmpty {
+            mutableContact.emailAddresses = [
+                CNLabeledValue(label: CNLabelWork, value: email as NSString)
+            ]
+        }
+        if let notes, !notes.isEmpty {
+            mutableContact.note = notes
+        }
+
+        let saveRequest = CNSaveRequest()
+        if existingContact != nil {
+            saveRequest.update(mutableContact)
+        } else {
+            saveRequest.add(mutableContact, toContainerWithIdentifier: nil)
+        }
+        try SystemStores.contacts.execute(saveRequest)
+
+        let actionText = action == "updated" ? "已更新" : "已创建"
+        let summary = "\(actionText)联系人\u{201C}\(name)\u{201D}。"
+        let detail = successPayload(
+            result: summary,
+            extras: [
+                "action": action,
+                "name": name,
+                "phone": phone ?? "",
+                "company": company ?? "",
+                "email": email ?? "",
+                "notes": notes ?? ""
+            ]
+        )
+        return CanonicalToolResult(success: true, summary: summary, detail: detail)
+        #endif
+    }
+
+    private static func searchCanonical(_ args: [String: Any]) async throws -> CanonicalToolResult {
+        let identifier = (args["identifier"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let name = (args["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let phone = (args["phone"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let email = (args["email"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let query = (args["query"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard identifier?.isEmpty == false
+            || name?.isEmpty == false
+            || phone?.isEmpty == false
+            || email?.isEmpty == false
+            || query?.isEmpty == false else {
+            return contactsFailure(
+                summary: "您想查谁呢? 请提供姓名、电话、邮箱或关键词。",
+                detail: "请至少提供 query、name、phone、email 或 identifier 其中一个参数",
+                errorCode: "CONTACTS_QUERY_MISSING"
+            )
+        }
+
+        #if !os(iOS)
+        let matches = Array(MacContactsMock.search(
+            identifier: identifier,
+            name: name,
+            phone: phone,
+            email: email,
+            query: query
+        ).prefix(5))
+        let items = matches.map(MacContactsMock.summaryDict)
+        if matches.isEmpty {
+            let summary = "未找到匹配的联系人。"
+            let detail = successPayload(
+                result: summary,
+                extras: ["count": 0, "items": items, "_macMock": true]
+            )
+            return CanonicalToolResult(success: true, summary: summary, detail: detail)
+        }
+        let lines = matches.map(MacContactsMock.summaryText)
+        let summary = "找到 \(matches.count) 个联系人：\(lines.joined(separator: "；"))。"
+        let detail = successPayload(
+            result: summary,
+            extras: ["count": matches.count, "items": items, "_macMock": true]
+        )
+        return CanonicalToolResult(success: true, summary: summary, detail: detail)
+        #else
+        guard try await ToolRegistry.shared.requestAccess(for: .contacts) else {
+            return contactsFailure(
+                summary: "请先在系统设置里允许通讯录权限。",
+                detail: "未获得通讯录权限",
+                errorCode: "CONTACTS_PERMISSION_DENIED"
+            )
+        }
+
+        let matches = Array(try searchContacts(
+            identifier: identifier,
+            name: name,
+            phone: phone,
+            email: email,
+            query: query
+        ).prefix(5))
+        let items = matches.map(contactSummaryDictionary)
+        if matches.isEmpty {
+            let summary = "未找到匹配的联系人。"
+            let detail = successPayload(
+                result: summary,
+                extras: ["count": 0, "items": items]
+            )
+            return CanonicalToolResult(success: true, summary: summary, detail: detail)
+        }
+
+        let lines = matches.map(contactSummaryText)
+        let summary = "找到 \(matches.count) 个联系人：\(lines.joined(separator: "；"))。"
+        let detail = successPayload(
+            result: summary,
+            extras: ["count": matches.count, "items": items]
+        )
+        return CanonicalToolResult(success: true, summary: summary, detail: detail)
+        #endif
+    }
+
+    private static func deleteCanonical(_ args: [String: Any]) async throws -> CanonicalToolResult {
+        let identifier = (args["identifier"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let rawName = (args["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let phone = (args["phone"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let email = (args["email"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let query = (args["query"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let name = rawName?.trimmingCharacters(in: CharacterSet(charactersIn: "，。,？！!? "))
+        let deleteAll: Bool = {
+            if let b = args["all"] as? Bool { return b }
+            if let s = args["all"] as? String { return ["true", "yes", "1"].contains(s.lowercased()) }
+            return false
+        }()
+
+        guard identifier?.isEmpty == false
+            || name?.isEmpty == false
+            || phone?.isEmpty == false
+            || email?.isEmpty == false
+            || query?.isEmpty == false else {
+            return contactsFailure(
+                summary: "您想删谁呢? 请提供姓名、电话、邮箱或关键词。",
+                detail: "请至少提供 query、name、phone、email 或 identifier 其中一个参数",
+                errorCode: "CONTACTS_QUERY_MISSING"
+            )
+        }
+
+        #if !os(iOS)
+        let matches = MacContactsMock.search(identifier: identifier, name: name, phone: phone, email: email, query: query)
+        if matches.isEmpty {
+            let summary = "未找到匹配的联系人。"
+            let detail = successPayload(
+                result: summary,
+                extras: ["count": 0, "deletedCount": "0", "_macMock": true]
+            )
+            return CanonicalToolResult(success: true, summary: summary, detail: detail)
+        }
+        if matches.count > 1 && !deleteAll {
+            let previews = matches.prefix(5).map(MacContactsMock.summaryText).joined(separator: "；")
+            return contactsFailure(
+                summary: "匹配到多个联系人，请提供更具体的信息，或明确说全部删除。",
+                detail: "匹配到多个联系人，请提供更具体的信息，或传 all=true 全部删除：\(previews)",
+                errorCode: "CONTACTS_AMBIGUOUS_MATCH"
+            )
+        }
+
+        MacContactsMock.delete(matches)
+        if matches.count == 1 {
+            let contact = matches[0]
+            let summary = "已删除联系人\u{201C}\(contact.name)\u{201D}。"
+            let detail = successPayload(
+                result: summary,
+                extras: [
+                    "identifier": contact.identifier,
+                    "name": contact.name,
+                    "phone": contact.phone,
+                    "email": contact.email,
+                    "deletedCount": "1",
+                    "_macMock": true
+                ]
+            )
+            return CanonicalToolResult(success: true, summary: summary, detail: detail)
+        }
+
+        let names = matches.map(\.name)
+        let summary = "已删除 \(matches.count) 位联系人：\(names.joined(separator: "、"))。"
+        let detail = successPayload(
+            result: summary,
+            extras: [
+                "deletedCount": "\(matches.count)",
+                "deletedNames": names.joined(separator: ","),
+                "_macMock": true
+            ]
+        )
+        return CanonicalToolResult(success: true, summary: summary, detail: detail)
+        #else
+        guard try await ToolRegistry.shared.requestAccess(for: .contacts) else {
+            return contactsFailure(
+                summary: "请先在系统设置里允许通讯录权限。",
+                detail: "未获得通讯录权限",
+                errorCode: "CONTACTS_PERMISSION_DENIED"
+            )
+        }
+
+        let matches = try searchContacts(
+            identifier: identifier,
+            name: name,
+            phone: phone,
+            email: email,
+            query: query
+        )
+
+        if matches.isEmpty {
+            let summary = "未找到匹配的联系人。"
+            let detail = successPayload(
+                result: summary,
+                extras: ["count": 0, "deletedCount": "0"]
+            )
+            return CanonicalToolResult(success: true, summary: summary, detail: detail)
+        }
+
+        if matches.count > 1 && !deleteAll {
+            let previews = matches.prefix(5).map(contactSummaryText).joined(separator: "；")
+            return contactsFailure(
+                summary: "匹配到多个联系人，请提供更具体的信息，或明确说全部删除。",
+                detail: "匹配到多个联系人，请提供更具体的信息，或传 all=true 全部删除：\(previews)",
+                errorCode: "CONTACTS_AMBIGUOUS_MATCH"
+            )
+        }
+
+        let saveRequest = CNSaveRequest()
+        var deletedNames: [String] = []
+        for contact in matches {
+            let mutableContact = contact.mutableCopy() as! CNMutableContact
+            saveRequest.delete(mutableContact)
+            deletedNames.append(formattedContactName(contact))
+        }
+        try SystemStores.contacts.execute(saveRequest)
+
+        if matches.count == 1 {
+            let contact = matches[0]
+            let summary = "已删除联系人\u{201C}\(formattedContactName(contact))\u{201D}。"
+            let detail = successPayload(
+                result: summary,
+                extras: [
+                    "identifier": contact.identifier,
+                    "name": formattedContactName(contact),
+                    "phone": primaryPhone(contact) ?? "",
+                    "email": primaryEmail(contact) ?? "",
+                    "deletedCount": "1"
+                ]
+            )
+            return CanonicalToolResult(success: true, summary: summary, detail: detail)
+        }
+
+        let summary = "已删除 \(matches.count) 位联系人：\(deletedNames.joined(separator: "、"))。"
+        let detail = successPayload(
+            result: summary,
+            extras: [
+                "deletedCount": "\(matches.count)",
+                "deletedNames": deletedNames.joined(separator: ",")
+            ]
+        )
+        return CanonicalToolResult(success: true, summary: summary, detail: detail)
+        #endif
+    }
+
+    private static func contactsFailure(
+        summary: String,
+        detail: String,
+        errorCode: String
+    ) -> CanonicalToolResult {
+        CanonicalToolResult(
+            success: false,
+            summary: summary,
+            detail: failurePayload(error: detail, extras: ["error_code": errorCode]),
+            errorCode: errorCode
+        )
     }
 }
 

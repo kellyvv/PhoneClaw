@@ -1,6 +1,126 @@
 /// swift-api-examples/SherpaOnnx.swift
 /// Copyright (c)  2023  Xiaomi Corporation
 
+#if targetEnvironment(simulator)
+
+import Foundation
+
+struct SherpaOnnxOnlineTransducerModelConfig {}
+struct SherpaOnnxFeatureConfig {}
+struct SherpaOnnxOnlineModelConfig {}
+struct SherpaOnnxOnlineRecognizerConfig {}
+struct SherpaOnnxOfflineTtsVitsModelConfig {}
+struct SherpaOnnxOfflineTtsModelConfig {}
+struct SherpaOnnxOfflineTtsConfig {}
+
+func sherpaOnnxOnlineTransducerModelConfig(
+  encoder: String = "",
+  decoder: String = "",
+  joiner: String = ""
+) -> SherpaOnnxOnlineTransducerModelConfig {
+  SherpaOnnxOnlineTransducerModelConfig()
+}
+
+func sherpaOnnxFeatureConfig(
+  sampleRate: Int = 16_000,
+  featureDim: Int = 80
+) -> SherpaOnnxFeatureConfig {
+  SherpaOnnxFeatureConfig()
+}
+
+func sherpaOnnxOnlineModelConfig(
+  tokens: String = "",
+  transducer: SherpaOnnxOnlineTransducerModelConfig = sherpaOnnxOnlineTransducerModelConfig(),
+  numThreads: Int = 1,
+  debug: Int = 0
+) -> SherpaOnnxOnlineModelConfig {
+  SherpaOnnxOnlineModelConfig()
+}
+
+func sherpaOnnxOnlineRecognizerConfig(
+  featConfig: SherpaOnnxFeatureConfig,
+  modelConfig: SherpaOnnxOnlineModelConfig,
+  enableEndpoint: Bool = false,
+  rule1MinTrailingSilence: Float = 0,
+  rule2MinTrailingSilence: Float = 0,
+  rule3MinUtteranceLength: Float = 0
+) -> SherpaOnnxOnlineRecognizerConfig {
+  SherpaOnnxOnlineRecognizerConfig()
+}
+
+final class SherpaOnnxOnlineRecongitionResult {
+  let text: String
+  let tokens: [String]
+
+  init(text: String = "", tokens: [String] = []) {
+    self.text = text
+    self.tokens = tokens
+  }
+}
+
+final class SherpaOnnxRecognizer {
+  init?(config: UnsafePointer<SherpaOnnxOnlineRecognizerConfig>) {}
+
+  func acceptWaveform(samples: [Float], sampleRate: Int = 16_000) {}
+  func isReady() -> Bool { false }
+  func decode() {}
+  func getResult() -> SherpaOnnxOnlineRecongitionResult { SherpaOnnxOnlineRecongitionResult() }
+  func reset(hotwords: String = "") {}
+  func inputFinished() {}
+  func isEndpoint() -> Bool { false }
+}
+
+func sherpaOnnxOfflineTtsVitsModelConfig(
+  model: String = "",
+  lexicon: String = "",
+  tokens: String = "",
+  dataDir: String = "",
+  noiseScale: Float = 0.667,
+  noiseScaleW: Float = 0.8,
+  lengthScale: Float = 1.0,
+  dictDir: String = ""
+) -> SherpaOnnxOfflineTtsVitsModelConfig {
+  SherpaOnnxOfflineTtsVitsModelConfig()
+}
+
+func sherpaOnnxOfflineTtsModelConfig(
+  vits: SherpaOnnxOfflineTtsVitsModelConfig = sherpaOnnxOfflineTtsVitsModelConfig(),
+  numThreads: Int = 1,
+  debug: Int = 0
+) -> SherpaOnnxOfflineTtsModelConfig {
+  SherpaOnnxOfflineTtsModelConfig()
+}
+
+func sherpaOnnxOfflineTtsConfig(
+  model: SherpaOnnxOfflineTtsModelConfig,
+  ruleFsts: String = "",
+  maxNumSentences: Int = 1
+) -> SherpaOnnxOfflineTtsConfig {
+  SherpaOnnxOfflineTtsConfig()
+}
+
+final class SherpaOnnxGeneratedAudioWrapper {
+  let samples: [Float]
+  let sampleRate: Int32
+  let n: Int32
+
+  init(samples: [Float] = [], sampleRate: Int32 = 22_050) {
+    self.samples = samples
+    self.sampleRate = sampleRate
+    self.n = Int32(samples.count)
+  }
+}
+
+final class SherpaOnnxOfflineTtsWrapper {
+  init(config: UnsafePointer<SherpaOnnxOfflineTtsConfig>!) {}
+
+  func generate(text: String, sid: Int = 0, speed: Float = 1.0) -> SherpaOnnxGeneratedAudioWrapper {
+    SherpaOnnxGeneratedAudioWrapper()
+  }
+}
+
+#else
+
 import Foundation  // For NSString
 
 /// Convert a String from swift to a `const char*` so that we can pass it to
@@ -2247,3 +2367,5 @@ class SourceSeparator {
     }
   }
 }
+
+#endif

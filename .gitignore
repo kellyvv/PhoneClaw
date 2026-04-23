@@ -56,8 +56,12 @@ LiteRT-LM/
 *.dylib
 *.a
 *.o
-# 但保留 xcframework 内的静态库 (issue #12)
+# 但保留 xcframework 内的静态库 + 动态库 (issue #12)
+# LocalPackages/**/*.xcframework — vendored LiteRTLM (see
+# LocalPackages/PhoneClawEngine/Package.swift for build pipeline).
 !Frameworks/**/*.a
+!LocalPackages/**/*.a
+!LocalPackages/**/*.dylib
 
 # ─── PhoneClawCLI (本地开发测试工具, 不入仓库) ───────────────────
 PhoneClawCLI/

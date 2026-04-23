@@ -43,6 +43,7 @@ struct SkillMetadata {
     let icon: String
     let disabled: Bool
     let type: SkillType         // 类别 (frontmatter `type:` 必填, 缺省视为 .device)
+    let requiresTimeAnchor: Bool
     let triggers: [String]
     let allowedTools: [String]
     let examples: [SkillExample]
@@ -124,6 +125,7 @@ enum SkillLoader {
             icon: frontmatter["icon"] as? String ?? "wrench",
             disabled: frontmatter["disabled"] as? Bool ?? false,
             type: type,
+            requiresTimeAnchor: frontmatter["requires-time-anchor"] as? Bool ?? false,
             triggers: frontmatter["triggers"] as? [String] ?? [],
             allowedTools: frontmatter["allowed-tools"] as? [String] ?? [],
             examples: parseExamples(frontmatter["examples"]),
@@ -180,4 +182,3 @@ enum SkillLoader {
         }
     }
 }
-

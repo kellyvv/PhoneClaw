@@ -105,6 +105,43 @@ extension AgentEngine {
         return nil
     }
 
+    private func normalizeLoadSkillArguments(_ arguments: [String: Any]) -> [String: Any]? {
+        let rawSkillName = ((arguments["skill"] as? String) ?? (arguments["name"] as? String) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !rawSkillName.isEmpty else { return nil }
+
+        let directSkillId = skillRegistry.canonicalSkillId(for: rawSkillName)
+        let resolvedSkillId: String? = {
+            if let def = skillRegistry.getDefinition(directSkillId), def.isEnabled {
+                return directSkillId
+            }
+
+            return skillRegistry.discoverSkills().first { definition in
+                guard definition.isEnabled else { return false }
+                let candidates = [
+                    definition.id,
+                    definition.metadata.name,
+                    definition.metadata.localizedNameZh ?? "",
+                    definition.metadata.displayName
+                ]
+                return candidates.contains { candidate in
+                    !candidate.isEmpty && candidate.compare(
+                        rawSkillName,
+                        options: [.caseInsensitive, .diacriticInsensitive],
+                        range: nil,
+                        locale: .current
+                    ) == .orderedSame
+                }
+            }?.id
+        }()
+
+        guard let resolvedSkillId else { return nil }
+
+        var normalizedArguments = arguments
+        normalizedArguments["skill"] = resolvedSkillId
+        return normalizedArguments
+    }
+
     // MARK: - tool_call 文本解析
     //
     // Cage: parser 是框架边界, 同时承担"白名单校验"职责。任何不在
@@ -128,6 +165,13 @@ extension AgentEngine {
         let raw = rawParseToolCalls(text)
         return raw.compactMap { call in
             let canonical = canonicalToolName(call.name, arguments: call.arguments)
+            if canonical == "load_skill" {
+                guard let normalizedArguments = normalizeLoadSkillArguments(call.arguments) else {
+                    print("[Parser] dropped invalid load_skill request: \(call.arguments)")
+                    return nil
+                }
+                return (canonical, normalizedArguments)
+            }
             if Self.protocolTools.contains(canonical) {
                 return (canonical, call.arguments)
             }

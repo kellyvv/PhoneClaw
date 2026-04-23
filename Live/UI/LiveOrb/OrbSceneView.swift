@@ -87,16 +87,18 @@ struct OrbSceneView: UIViewRepresentable {
         @objc private func tick() {
             guard isReady, let webView else { return }
 
-            // 原版每帧直接读 analyser.data[n]，无节流、无版本比较。
-            // 这里每个 CADisplayLink tick 都推，保证 JS 侧每帧都有新数据。
-            // evaluateJavaScript fire-and-forget，不 await，不阻塞主线程。
             let input  = inputAnalyser?.snapshot3()  ?? (b0: 0, b1: 0, b2: 0, version: 0)
             let output = outputAnalyser?.snapshot3() ?? (b0: 0, b1: 0, b2: 0, version: 0)
 
+            // one-shot reveal 只跟随 TTS 播放态:
+            // .speaking 由 LiveModeEngine 在 playback-start 时切入。
+            let revealTrigger: Double = (state == .speaking) ? 1.0 : 0.0
+
             let script = String(
-                format: "window.__orbUpdate(%0.2f,%0.2f,%0.2f,%0.2f,%0.2f,%0.2f);",
+                format: "window.__orbUpdate(%0.2f,%0.2f,%0.2f,%0.2f,%0.2f,%0.2f,%0.2f);",
                 input.b0,  input.b1,  input.b2,
-                output.b0, output.b1, output.b2
+                output.b0, output.b1, output.b2,
+                revealTrigger
             )
             webView.evaluateJavaScript(script, completionHandler: nil)
         }
@@ -185,6 +187,7 @@ private enum OrbWebSource {
 </head>
 <body>
   <canvas id="orb"></canvas>
+  <div id="mask" style="position:absolute;inset:0;background:rgba(0,0,0,0.45);pointer-events:none;z-index:1;"></div>
   <script type="importmap">
     {
       "imports": {
@@ -352,6 +355,7 @@ void main() {
     const pmremGenerator = new THREE.PMREMGenerator(renderer);
     pmremGenerator.compileEquirectangularShader();
 
+    const baseEmissiveIntensity = 1.2;
     const sphereMaterial = new THREE.MeshStandardMaterial({
       color: 0x2a1a08,
       metalness: 0.85,
@@ -390,12 +394,14 @@ void main() {
 
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
-    composer.addPass(new UnrealBloomPass(
+    const bloomPass = new UnrealBloomPass(
       new THREE.Vector2(window.innerWidth, window.innerHeight),
-      5,
+      0.3,   // 初始 bloom 很低 (加载中), 满值 5
       0.5,
       0
-    ));
+    );
+    composer.addPass(bloomPass);
+    const fullBloomStrength = 5;
 
     function onWindowResize() {
       camera.aspect = window.innerWidth / window.innerHeight;
@@ -414,15 +420,26 @@ void main() {
     const input  = { x: 0, y: 0, z: 0 };
     const output = { x: 0, y: 0, z: 0 };
     const target = { ix: 0, iy: 0, iz: 0, ox: 0, oy: 0, oz: 0 };
+    const baseDim = 0.12;
+    let targetBrightness = 0;
+    let currentBrightness = 0;
     const rotation = new THREE.Vector3(0, 0, 0);
     let prevTime = performance.now();
 
-    // Native CADisplayLink 以 30Hz 推送目标值，JS 侧 60fps lerp 插值。
-    // 原版在同一 JS 帧内直读 AnalyserNode（零延迟），这里用 lerp 补偿
-    // evaluateJavaScript IPC bridge 的延迟和时序抖动。
-    window.__orbUpdate = (i0, i1, i2, o0, o1, o2) => {
+    // 蒙版控制: TTS 播放后 1s 延迟, 然后 6s 淡出 (wall-clock time)
+    const mask = document.getElementById('mask');
+    const initialMaskOpacity = 0.45;
+    let maskOpacity = initialMaskOpacity;
+    let revealStartTime = -1;  // -1 = 未触发
+    const revealDelayMs = 1000;   // 1s delay
+    const revealDurationMs = 2000; // 2s ramp, total reveal = 3s with 1s hold
+
+    window.__orbUpdate = (i0, i1, i2, o0, o1, o2, br) => {
       target.ix = i0; target.iy = i1; target.iz = i2;
       target.ox = o0; target.oy = o1; target.oz = o2;
+      if (br !== undefined && br > 0.5 && revealStartTime < 0) {
+        revealStartTime = performance.now();
+      }
     };
 
     function animate() {
@@ -442,6 +459,18 @@ void main() {
       output.z += (target.oz - output.z) * k;
 
       backdrop.material.uniforms.rand.value = Math.random() * 10000;
+
+      // 蒙版 + bloom: 1s delay + 6s 淡出 (wall-clock)
+      if (revealStartTime >= 0) {
+        const elapsed = t - revealStartTime;
+        if (elapsed > revealDelayMs) {
+          const progress = Math.min((elapsed - revealDelayMs) / revealDurationMs, 1.0);
+          const eased = progress * progress * (3 - 2 * progress);
+          maskOpacity = initialMaskOpacity * (1.0 - eased);
+          bloomPass.strength = 0.3 + (fullBloomStrength - 0.3) * eased;
+        }
+      }
+      mask.style.opacity = maskOpacity;
 
       if (sphereMaterial.userData.shader) {
         // 对齐原版：1 + (0.2 * data[1]) / 255

@@ -1,0 +1,12 @@
+{
+  "date": "2026-04-21",
+  "backend": "mlx-gpu",
+  "cases": [
+{"model":"e2b","bucket":"low","prompt_tokens":90,"ttft_ms":225,"decode_tps":17.8,"headroom_mb":2946},
+{"model":"e2b","bucket":"mid","prompt_tokens":486,"ttft_ms":333,"decode_tps":20.1,"headroom_mb":2757},
+{"model":"e2b","bucket":"high","prompt_tokens":1986,"ttft_ms":755,"decode_tps":2.5,"headroom_mb":2718},
+{"model":"e4b","bucket":"low","prompt_tokens":90,"ttft_ms":844,"decode_tps":8.4,"headroom_mb":1414},
+{"model":"e4b","bucket":"mid","prompt_tokens":486,"ttft_ms":636,"decode_tps":10.8,"headroom_mb":1017},
+{"model":"e4b","bucket":"high","prompt_tokens":1986,"ttft_ms":1695,"decode_tps":7.8,"headroom_mb":1024}
+  ]
+}

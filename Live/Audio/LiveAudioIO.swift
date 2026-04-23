@@ -288,7 +288,6 @@ class LiveAudioIO {
         // Reconnecting disrupts AEC reference signal tracking.
         playerNode.stop()
         isPlaying = true
-        onPlaybackStarted?()
 
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             continuationLock.withLock {
@@ -302,6 +301,8 @@ class LiveAudioIO {
                 self.resumeContinuation()
             }
             playerNode.play()
+            // 回调在 play() 之后触发 — 此时音频已开始播放
+            onPlaybackStarted?()
         }
     }
 

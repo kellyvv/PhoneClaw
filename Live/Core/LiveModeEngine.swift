@@ -1,7 +1,6 @@
 import Foundation
 import AVFoundation
 import CoreImage
-import MLXLMCommon
 
 enum LiveIncompleteTurnType: Equatable {
     case short
@@ -150,7 +149,7 @@ class LiveModeEngine {
     private let asr = ASRService()
     private var audioIO: LiveAudioIO?
     private var ttsQueue: AudioPlaybackQueue?
-    private weak var llm: MLXLocalLLMService?
+    private weak var inference: (any InferenceService)?
 
     private var turnPhase: TurnPhase = .inactive
     private var turnGeneration: UInt64 = 0
@@ -199,11 +198,36 @@ class LiveModeEngine {
     /// 摄像头帧提供器，由 UI 层注入。Engine 不直接依赖 LiveCameraService。
     var frameProvider: (() -> CIImage?)?
 
-    func setup(llm: MLXLocalLLMService) {
-        self.llm = llm
+    /// 通知 engine 摄像头状态变化，engine 向 conversation 发一条系统事件消息.
+    /// 让模型知道当前能否看到画面，防止基于旧 KV cache 幻觉.
+    func notifyCameraStateChanged(isOn: Bool) {
+        guard let inference else { return }
+        let msg = isOn
+            ? "(系统通知：用户已开启摄像头，你现在可以看到画面了)"
+            : "(系统通知：用户已关闭摄像头，你现在无法看到任何画面。如果用户问你看到什么，告诉他需要先开启摄像头)"
+        print("[Live] 📷 Camera state → \(isOn ? "ON" : "OFF"), injecting system event")
+        // prompt prefill 后立即 cancel, 只保留 KV cache 上下文, 不浪费 decode 计算
+        Task {
+            let t0 = CFAbsoluteTimeGetCurrent()
+            for try await _ in inference.generateLive(prompt: msg, images: [], audios: []) {
+                // 首个 token 说明 prefill 完成, 立即 cancel 停止 decode
+                inference.cancel()
+                let ms = Int((CFAbsoluteTimeGetCurrent() - t0) * 1000)
+                print("[Live] 📷 Camera event prefilled & cancelled in \(ms)ms (saved ~2s decode)")
+                break
+            }
+        }
+    }
+
+    private var liveLocaleConfig: LiveLocaleConfig { LiveLocale.zhCN.config }
+    private var liveStrings: LiveLocaleConfig.StatusStrings { liveLocaleConfig.statusStrings }
+
+    func setup(inference: InferenceService) {
+        self.inference = inference
     }
 
     /// 调用方注入的用户 SYSPROMPT.md 内容（来自 AgentEngine.config.systemPrompt）。
+    /// Phase 1 起 Live 不再读取这份通用 system prompt；先保留注入口，避免接口变化。
     var userSystemPrompt: String?
 
     func start() async {
@@ -217,7 +241,7 @@ class LiveModeEngine {
         guard turnPhase == .inactive else { return }
         turnPhase = .starting
         state = .listening
-        statusMessage = "正在准备 Live"
+        statusMessage = liveStrings.preparingLive
         print("[Live] Starting (legacy)...")
 
         // 检查 LIVE 语音模型是否已就绪 (ASR + TTS)
@@ -225,7 +249,7 @@ class LiveModeEngine {
             print("[Live] ❌ LIVE voice models not available")
             turnPhase = .inactive
             state = .idle
-            statusMessage = "请先在配置页下载 LIVE 语音模型"
+            statusMessage = liveStrings.liveModelMissing
             return
         }
 
@@ -236,7 +260,7 @@ class LiveModeEngine {
             print("[Live] ❌ Audio engine error: \(error)")
             turnPhase = .inactive
             state = .idle
-            statusMessage = "音频引擎启动失败"
+            statusMessage = liveStrings.audioEngineFailed
             return
         }
         audioIO = io
@@ -269,7 +293,7 @@ class LiveModeEngine {
             print("[Live] ❌ VAD not available")
             turnPhase = .inactive
             state = .idle
-            statusMessage = "VAD 不可用"
+            statusMessage = liveStrings.vadUnavailable
             return
         }
         guard turnPhase == .starting else { return }
@@ -287,7 +311,7 @@ class LiveModeEngine {
             self.liveCaption = ""
             self.turnPhase = .recording
             self.state = .recording
-            self.statusMessage = "正在听你说"
+            self.statusMessage = self.liveStrings.recording
             print("[Live] 🎤 Recording...")
         }
 
@@ -297,7 +321,7 @@ class LiveModeEngine {
             self.turnGeneration &+= 1
             self.turnPhase = .processing
             self.state = .processing
-            self.statusMessage = "正在理解"
+            self.statusMessage = self.liveStrings.processing
             // Don't stop VAD — keep it running for barge-in detection during processing/speaking
             let dur = Double(samples.count) / 16000.0
             print("[Live] 🔇 Turn confirmed (\(String(format: "%.1f", dur))s audio)")
@@ -311,7 +335,7 @@ class LiveModeEngine {
             print("[Live] ⚠️ Turn cancelled (pendingStop timeout)")
             self.turnPhase = .listening
             self.state = .listening
-            self.statusMessage = "我在听，请说话"
+            self.statusMessage = self.liveStrings.listeningPrompt
         }
 
         // Wire VAD callbacks
@@ -364,49 +388,121 @@ class LiveModeEngine {
                 self.turnController.reset()
                 self.turnPhase = .listening
                 self.state = .listening
-                self.statusMessage = "我在听，请说话"
+                self.statusMessage = self.liveStrings.listeningPrompt
             }
         }
 
-        // Announce then listen, with concurrent LLM warmup
-        turnPhase = .speaking
-        state = .speaking
+        // Announce then listen, with conversation-powered greeting.
+        // 用 persistent multimodal conversation 推理替代固定文案, 一举三得:
+        //   1. shader 预热 (首次推理触发 XNNPACK 编译)
+        //   2. Live 的 system prompt 灌入同一个 conversation KV cache
+        //   3. 文本 turn / 图像 turn 后续都复用这一份会话上下文
+        //
+        // Orb 动画时序:
+        //   .idle (暗色)  → LLM 推理 + TTS 合成, 用户体感 "加载中"
+        //   .speaking     → TTS 播放开始, orb 亮起
+        turnPhase = .starting
+        // state 保持 .idle — orb 暗色, 用户看到 "加载中"
+        statusMessage = liveStrings.preparing
 
-        // Kick off LLM shader warmup concurrently with TTS greeting.
-        // Only for small models (E2B) where warmup is safe; E4B skips due to OOM risk.
-        let warmupTask: Task<Void, Never>? = {
-            guard let llm = self.llm,
-                  llm.loadedModelID?.contains("e2b") == true else { return nil }
-            return Task {
-                let t0 = CFAbsoluteTimeGetCurrent()
-                let stream = llm.generateStream(prompt: "你好")
-                do {
-                    for try await _ in stream {
-                        break  // 1 token is enough to compile shaders
-                    }
-                } catch {}
-                llm.cancel()
-                let ms = (CFAbsoluteTimeGetCurrent() - t0) * 1000
-                print("[Live] ⚡ LLM warmup done in \(Int(ms))ms")
+        guard let inference, inference.isLoaded else {
+            turnPhase = .inactive
+            state = .idle
+            statusMessage = liveStrings.loadModelFirst
+            return
+        }
+
+        let liveSystemPrompt = PromptBuilder.buildLiveVoiceSystemPrompt(
+            userSystemPrompt: userSystemPrompt,
+            locale: .zhCN
+        )
+
+        do {
+            // 双保险: API systemMessage (E4B 可能支持) + 嵌入首条 user message (E2B 需要)
+            try await inference.enterLiveMode(systemPrompt: liveSystemPrompt)
+        } catch {
+            print("[Live] ❌ Failed to enter Live conversation: \(error)")
+            turnPhase = .inactive
+            state = .idle
+            statusMessage = liveStrings.initializationFailed
+            return
+        }
+
+        // 2. 用 Live conversation 生成一句简短开场白
+        //    把 system prompt 嵌入第一条 user message, 确保模型看到指令
+        var greetingText = ""
+        let greetingUserText = liveLocaleConfig.greetingPrompt
+        let greetingPrompt = """
+        【系统指令】
+        \(liveSystemPrompt)
+
+        【用户】
+        \(greetingUserText)
+        """
+        let t0 = CFAbsoluteTimeGetCurrent()
+        let stream = inference.generateLive(prompt: greetingPrompt, images: [], audios: [])
+        do {
+            for try await token in stream {
+                greetingText += token
             }
-        }()
+        } catch {}
+        let ms = (CFAbsoluteTimeGetCurrent() - t0) * 1000
+        print("[Live] 🎤 Greeting generated in \(Int(ms))ms: \"\(greetingText.prefix(80))\"")
 
-        // TTS 开始前就结束 "正在加载" 状态 — 用户听到声音 = 加载完成
-        // (tts.speak 会阻塞 ~1.2s 等音频播完, 原来的 statusMessage 在 speak 之后
-        //  才更新, 导致整段 TTS 播放期间 UI 还在显示"正在加载", 和语音反馈错位)
-        statusMessage = ""
-        await tts.speak("我在听，请说话。")
+        guard turnPhase == .starting else { return }
+
+        // 3. 解析 marker + 清理输出, TTS 播报
+        let cleaned = OutputSanitizer.sanitizeFinal(greetingText, mode: .liveVoice)
+        let spoken: String
+        if cleaned.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            spoken = liveStrings.listeningPrompt + "。"
+        } else {
+            // 去掉 marker (✓/○/◐) 前缀 — 兼容有无空格: "✓ 哈喽" 和 "✓哈喽"
+            var text = cleaned
+            for marker in ["✓", "○", "◐"] {
+                if text.hasPrefix(marker) {
+                    text = String(text.dropFirst(marker.count))
+                    if text.hasPrefix(" ") { text = String(text.dropFirst()) }
+                    break
+                }
+            }
+            spoken = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        // TTS: 先合成 (orb 暗), 合成完成后播放 (orb 在 playerNode.play 时亮起)
+        print("[TTS] 🔊 [greeting] \"\(spoken.prefix(40))\"")
+
+        // 用 onPlaybackStarted 回调精准触发 orb 亮起 —
+        // 在 playerNode.play() 调用时触发, 不是合成完就亮
+        let playbackStartT0 = CFAbsoluteTimeGetCurrent()
+        audioIO?.onPlaybackStarted = { [weak self] in
+            let stateT = CFAbsoluteTimeGetCurrent()
+            self?.turnPhase = .speaking
+            self?.state = .speaking
+            self?.statusMessage = ""
+            print("[Live] 🔆 Orb bright at playback start (Δ\(Int((stateT - playbackStartT0) * 1000))ms from synth start)")
+        }
+
+        if let wavData = tts.synthesize(spoken) {
+            await tts.playWAV(wavData)
+        } else {
+            turnPhase = .speaking
+            state = .speaking
+            statusMessage = ""
+            await tts.speakSystem(spoken)
+        }
+
+        // 清理回调
+        audioIO?.onPlaybackStarted = nil
         lastAssistantPlaybackEndTime = CFAbsoluteTimeGetCurrent()
 
-        // Wait for warmup if it's still running (usually finishes before TTS)
-        await warmupTask?.value
-
+        // 4. conversation 已有 context (system + greeting)，后续 turn 直接复用
         guard turnPhase == .speaking else { return }
 
         turnPhase = .listening
         state = .listening
         inputLevel = 0
-        statusMessage = "我在听，请说话"
+        statusMessage = liveStrings.listeningPrompt
         await vad.startListening(audioIO: io)
     }
 
@@ -422,6 +518,8 @@ class LiveModeEngine {
         vad.stopListening()
         await cancelActiveGeneration()
 
+        await inference?.exitLiveMode()
+
         // 先断 handler，再清 analyser（防止 displayLink 读到 deallocating 对象）
         audioIO?.visualisationInputRawHandler = nil
         audioIO?.visualisationInputHandler  = nil
@@ -434,11 +532,12 @@ class LiveModeEngine {
         tts.audioIO = nil
 
         turnController.reset()
+
         turnPhase = .inactive
         state = .idle
         liveCaption = ""
         inputLevel = 0
-        statusMessage = "Live 已结束"
+        statusMessage = liveStrings.ended
         print("[Live] Stopped")
     }
 
@@ -554,7 +653,7 @@ class LiveModeEngine {
         Task { [weak self] in
             guard let self else { return }
             await self.ttsQueue?.reset()
-            self.llm?.cancel()
+            self.inference?.cancel()
         }
     }
 
@@ -565,22 +664,6 @@ class LiveModeEngine {
 
     private var isAssistantTurnActive: Bool {
         turnPhase == .processing || turnPhase == .speaking
-    }
-
-    private func liveVoiceSystemPrompt() -> String {
-        PromptBuilder.defaultSystemPrompt + """
-        你正在进行实时语音对话，必须先判断用户这句话在对话上是否已经说完整。若已经完整，第一字符必须输出 `✓`，后面紧跟一个空格和你的正常回答；若用户像是被打断、几秒内还会继续，只输出 `○`；若用户像是在思考、需要更久，只输出 `◐`。`○` 和 `◐` 后面绝对不能再输出任何字。正常回答时用纯中文口语，根据用户意图决定详略：默认简短（一两句），当用户要求"详细""展开""多说一点"等时可以展开，但始终保持口语化、多用中文逗号句号，禁止英文和 markdown 符号。你叫手机龙虾。
-        """
-    }
-
-    /// 根据是否有摄像头画面，返回合适的 Live system prompt。
-    /// 无画面 = 纯语音约束；有画面 = 语音约束 + 视觉感知。
-    private func liveSystemPrompt(hasVision: Bool) -> String {
-        var base = liveVoiceSystemPrompt()
-        if hasVision {
-            base += "\n你可以看到用户摄像头的实时画面。如果用户的问题和画面有关，请结合画面内容回答。如果用户提到具体的画面细节但你看不清，可以让用户把摄像头固定一下再问。"
-        }
-        return base
     }
 
     private func cancelIncompleteTurnFollowUp() {
@@ -635,7 +718,7 @@ class LiveModeEngine {
             self.turnGeneration = followUpGen
             self.turnPhase = .speaking
             self.state = .speaking
-            self.statusMessage = "正在回答"
+            self.statusMessage = self.liveStrings.speaking
             self.lastReply = cleaned
             await self.ttsQueue?.reset()
             await self.enqueueForPlayback(cleaned, generation: followUpGen)
@@ -646,7 +729,7 @@ class LiveModeEngine {
             self.lastAssistantPlaybackEndTime = CFAbsoluteTimeGetCurrent()
             self.turnPhase = .listening
             self.state = .listening
-            self.statusMessage = "我在听，请说话"
+            self.statusMessage = self.liveStrings.listeningPrompt
             print("[Live] 👂 Listening...")
         }
     }
@@ -655,7 +738,7 @@ class LiveModeEngine {
         for type: LiveIncompleteTurnType,
         transcript: String
     ) async -> (spokenText: String, historyText: String) {
-        guard let llm, llm.isLoaded else {
+        guard let inference, inference.isLoaded else {
             let fallback = fallbackIncompleteTurnFollowUp(for: type)
             return (fallback, "✓ \(fallback)")
         }
@@ -668,18 +751,18 @@ class LiveModeEngine {
             userMessage = "用户刚才更像是在思考，稍等后请用一句很短的中文口语温和提醒他想好了再继续。你必须输出 `✓` 加一个空格再接提醒正文，绝不能输出 `○` 或 `◐`。提醒只能一句，不要解释。用户刚才说的是：\(transcript)"
         }
 
-        let prompt = PromptBuilder.buildLightweightTextPrompt(
-            userMessage: userMessage,
-            history: liveHistory,
-            systemPrompt: PromptBuilder.defaultSystemPrompt + " 你正在语音模式，只能输出一句简短自然的中文口语提醒，不要列表，不要英文，不要 markdown。必须用 `✓` 开头。"
+        let prompt = PromptBuilder.buildLiveVoiceUserPrompt(
+            userTranscript: userMessage,
+            locale: .zhCN,
+            hasVision: false
         )
 
         var text = ""
         do {
-            for try await token in llm.generateStream(prompt: prompt, images: [], audios: []) {
+            for try await token in inference.generateLive(prompt: prompt, images: [], audios: []) {
                 text += token
                 if text.count >= 48 {
-                    llm.cancel()
+                    inference.cancel()
                     break
                 }
             }
@@ -723,7 +806,7 @@ class LiveModeEngine {
     /// immediately while old assistant output is cancelled in the background.
     private func cancelActiveGeneration() async {
         turnGeneration &+= 1
-        llm?.cancel()
+        inference?.cancel()
         stopSynthesisPipeline()
         await ttsQueue?.flush()
         cancelCurrentTurnPreview()
@@ -769,7 +852,7 @@ class LiveModeEngine {
 
         await ttsQueue?.reset()
 
-        guard let llm, llm.isLoaded else {
+        guard let inference, inference.isLoaded else {
             print("[Live] ❌ LLM not loaded")
             guard turnPhase == .processing, turnGeneration == gen else { return }
             turnPhase = .listening
@@ -796,7 +879,7 @@ class LiveModeEngine {
             turnPhase = .listening
             state = .listening
             liveCaption = ""
-            statusMessage = "我在听，请说话"
+            statusMessage = liveStrings.listeningPrompt
             return
         }
         lastTranscript = transcript
@@ -817,12 +900,7 @@ class LiveModeEngine {
         //        用户感知"看不到图". 100 MB 算激进 (margin 紧), trade-off:
         //        宁可偶尔崩重启, 也比永远看不到图体验好. 长期解法是 Live + 摄像头
         //        强制切 E2B, 这里先按真机当前模型做差异阈值.
-        let visionHeadroomThreshold: Int = {
-            if llm.loadedModelID?.contains("e4b") == true {
-                return 100
-            }
-            return 500
-        }()
+        let visionHeadroomThreshold: Int = 500  // TODO: per-model tuning via catalog
         let currentHeadroom = MemoryStats.headroomMB
         var frame: CIImage? = nil
         if frameProvider != nil {
@@ -844,28 +922,14 @@ class LiveModeEngine {
 
         // ── 单轮处理: 委托给 LiveTurnProcessor ──────────────────────────
         //
-        // 原本这里直接调 `llm.generateStream(chat: chatMessages)` 走 chat path,
-        // 但 harness (2026-04-16) 实测在 Gemma 4 上 system role 被 applyChatTemplate
-        // 稀释 — E2B 丢 persona (自称"大型语言模型"), marker 失效, 简短约束失控.
+        // Live 进入时已打开 persistent multimodal conversation，并把一次性
+        // system prompt 注入 conversation config。这里每轮只发送新的 user 文本
+        // 与可选画面；历史上下文和 KV cache 由 conversation 自己维护。
         //
-        // LiveTurnProcessor 内部走 MLXLocalLLMService.generateStream(rawText:images:)
-        // 的 `.text` 路径, bypass applyChatTemplate. Prompt 由 PromptBuilder
-        // .buildLiveVoicePrompt 手写 <|turn>system/user/model 模板, 模型看到
-        // 完整的 system 指令 (含 marker 规则 + persona), 输出 token 流由
-        // LiveOutputParser 解析成 LiveOutputEvent (marker / speechToken / done /
-        // 预留 skillCall / skillResult).
-        let historyForTurn: [LiveHistoryMessage] = liveHistory
-            .suffix(maxLiveHistoryDepth)
-            .compactMap { msg in
-                switch msg.role {
-                case .user:      return LiveHistoryMessage(role: .user, content: msg.content)
-                case .assistant: return LiveHistoryMessage(role: .assistant, content: msg.content)
-                default:         return nil
-                }
-            }
-
-        let processor = LiveTurnProcessor(llm: llm)
-        processor.historyDepth = maxLiveHistoryDepth
+        // LiveTurnProcessor 负责把 transcript/frame 变成本轮 payload，并把输出
+        // token 流解析成 LiveOutputEvent (marker / speechToken / done / 预留
+        // skillCall / skillResult)。
+        let processor = LiveTurnProcessor(inference: inference)
         processor.enableSkillInvocation = false   // 阶段 1 MVP, 阶段 3 再打开
 
         metrics.llmStartedAt = CFAbsoluteTimeGetCurrent()
@@ -881,9 +945,7 @@ class LiveModeEngine {
 
         let eventStream = processor.processTurn(
             transcript: transcript,
-            frame: frame,
-            history: historyForTurn,
-            userSystemPrompt: userSystemPrompt
+            frame: frame
         )
 
         do {
@@ -910,10 +972,10 @@ class LiveModeEngine {
                                 sawCompleteMarker = true   // ✓, 继续接 speechToken 作为正常回答
                             case .interrupted:
                                 incompleteType = .short
-                                self.llm?.cancel()
+                                self.inference?.cancel()
                             case .thinking:
                                 incompleteType = .long
-                                self.llm?.cancel()
+                                self.inference?.cancel()
                             }
 
                         case .speechToken(let delta):
@@ -942,9 +1004,8 @@ class LiveModeEngine {
 
                         case .skillCall(let call):
                             // 阶段 1 MVP 不应触发 (enableSkillInvocation=false).
-                            // 但 SYSPROMPT.md 里有 <tool_call> 调用格式示例, 偶尔模型
-                            // 会自发 invoke. PromptBuilder.defaultLiveSkillSuppressionInstruction
-                            // 已经在 system prompt 末尾强压制, 但小模型有时仍漏网.
+                            // 现在 Live prompt 已经不再继承 Chat 的工具协议文案；这里
+                            // 仍保留兜底, 防止模型偶发产出控制块.
                             // Fallback: 朗读简短歉意, 不进 history.
                             // 阶段 3 实装: 这里调 toolRegistry.execute(call), 再启第二轮 LLM 总结.
                             print("[Live] ⚠️ unexpected tool_call in MVP: \(call.name)")
@@ -953,7 +1014,7 @@ class LiveModeEngine {
                             sentenceBuffer = ""
                             rawBuffer = fallback   // 防 history append 时 lastReply 是空导致 history 不记 turn
                             self.synthesisPipeline?.yield(fallback)
-                            self.llm?.cancel()
+                            self.inference?.cancel()
 
                         case .skillResult(let summary):
                             // 同上, 阶段 3 才会触发 — 第二轮 LLM 对工具结果的口语总结.
@@ -1008,7 +1069,7 @@ class LiveModeEngine {
 
             turnPhase = .listening
             state = .listening
-            statusMessage = "我在听，请说话"
+            statusMessage = liveStrings.listeningPrompt
             scheduleIncompleteTurnFollowUp(type: incompleteType, transcript: transcript, generation: gen)
             print("[Live] 👂 Listening...")
             return
@@ -1025,7 +1086,7 @@ class LiveModeEngine {
         }
         turnPhase = .speaking
         state = .speaking
-        statusMessage = "正在回答"
+        statusMessage = liveStrings.speaking
         await ttsQueue?.waitUntilDone()
 
         // Sync TTS timestamp from shared metrics (set by enqueueForPlayback)
@@ -1054,7 +1115,7 @@ class LiveModeEngine {
         lastAssistantPlaybackEndTime = CFAbsoluteTimeGetCurrent()
         turnPhase = .listening
         state = .listening
-        statusMessage = "我在听，请说话"
+        statusMessage = liveStrings.listeningPrompt
         inputLevel = 0
         print("[Live] 👂 Listening...")
     }
@@ -1129,7 +1190,10 @@ class LiveModeEngine {
         let softChinesePunctuation: Set<Character> = ["，", "、", "："]
         let hardEnglishPunctuation: Set<Character> = [".", "!", "?", ";"]
         let softEnglishPunctuation: Set<Character> = [",", ":"]
-        let minSoftClauseLength = 8
+        // minSoftClauseLength: 5 (was 8). 更激进地切逗号 → 首段 chunk 更小 →
+        // TTS 合成更快出第一段音频 → TTFS 从 ~2.6s 降到 ~0.8s.
+        // 5 个汉字对应约 2-3 个词, 仍然是自然的语调停顿点.
+        let minSoftClauseLength = 5
 
         var i = buffer.startIndex
         while i < buffer.endIndex {

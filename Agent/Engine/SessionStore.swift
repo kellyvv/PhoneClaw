@@ -68,6 +68,7 @@ extension AgentEngine {
         sessionSummaries = loadSessionsIndex().sorted { $0.updatedAt > $1.updatedAt }
 
         if let record = loadSessionRecord(id: currentSessionID) {
+            resetPromptPipelineState()
             messages = record.messages
             updateSessionSummary(
                 .init(
@@ -81,12 +82,14 @@ extension AgentEngine {
         }
 
         if let first = sessionSummaries.first, let record = loadSessionRecord(id: first.id) {
+            resetPromptPipelineState()
             currentSessionID = first.id
             UserDefaults.standard.set(currentSessionID.uuidString, forKey: Self.currentSessionDefaultsKey)
             messages = record.messages
             return
         }
 
+        resetPromptPipelineState()
         currentSessionID = UUID()
         UserDefaults.standard.set(currentSessionID.uuidString, forKey: Self.currentSessionDefaultsKey)
         messages = []

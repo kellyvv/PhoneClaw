@@ -9,7 +9,6 @@ struct AIResponseView: View {
     let isThinkingExpanded: Bool
     let onToggle: (UUID) -> Void
     let onToggleThinking: () -> Void
-    let renderMarkdown: Bool
     let onRetry: (() -> Void)?
 
     private var hasSkill: Bool { !block.skills.isEmpty }
@@ -54,27 +53,11 @@ struct AIResponseView: View {
                 }
 
                 if let text = block.responseText {
-                    if renderMarkdown {
-                        Markdown(text)
-                            .markdownTextStyle {
-                                FontSize(15)
-                                ForegroundColor(Theme.textPrimary)
-                            }
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(.leading, 4)
-                    } else {
-                        Text(Self.inlineMarkdown(text))
-                            .font(.system(size: 15))
-                            .foregroundStyle(Theme.textPrimary)
-                            .textSelection(.enabled)
-                            .lineSpacing(5)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(.leading, 4)
-                            .animation(nil, value: text)
-                    }
+                    StreamingMarkdownView(
+                        content: text,
+                        isStreaming: block.isThinking
+                    )
+                    .padding(.leading, 4)
                 }
 
                 if let onRetry, !block.isThinking {
@@ -97,12 +80,32 @@ struct AIResponseView: View {
             Spacer(minLength: Theme.aiMinSpacer)
         }
     }
+}
 
-    private static func inlineMarkdown(_ text: String) -> AttributedString {
-        (try? AttributedString(
-            markdown: text,
-            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        )) ?? AttributedString(text)
+// MARK: - Streaming Markdown
+
+/// Single-renderer streaming markdown. MarkdownUI throughout — no mid-stream
+/// or end-of-stream renderer swap, so there is never a "re-render" visual jump.
+///
+/// `.contentTransition(.opacity)` is an environment value that cascades into
+/// MarkdownUI's internal Text views. When content grows, new glyphs crossfade
+/// in using the animation context provided by `.animation(_:value:)`.
+/// This mirrors the per-glyph fade used by React-based streaming markdown
+/// (e.g. Claude Code desktop) while keeping view identity stable.
+private struct StreamingMarkdownView: View {
+    let content: String
+    let isStreaming: Bool
+
+    var body: some View {
+        Markdown(content)
+            .markdownTextStyle {
+                FontSize(15)
+                ForegroundColor(Theme.textPrimary)
+            }
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .animation(nil, value: content)
     }
 }
 

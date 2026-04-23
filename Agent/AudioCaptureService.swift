@@ -7,33 +7,47 @@ struct AudioCaptureSnapshot: Sendable {
     let sampleRate: Double
     let channelCount: Int
     let duration: TimeInterval
+    /// 原始录音文件字节 (WAV/M4A) — 可直接传给引擎，绕过手动 WAV 编码
+    let rawFileData: Data?
+
+    init(pcm: [Float], sampleRate: Double, channelCount: Int, duration: TimeInterval, rawFileData: Data? = nil) {
+        self.pcm = pcm
+        self.sampleRate = sampleRate
+        self.channelCount = channelCount
+        self.duration = duration
+        self.rawFileData = rawFileData
+    }
 }
 
 @MainActor
 @Observable
-final class AudioCaptureService {
+final class AudioCaptureService: NSObject, @preconcurrency AVAudioRecorderDelegate {
     private static let preferredSampleRate: Double = 16_000
-    private static let maxStoredSeconds: Double = 30
 
     var permissionStatus: AppPermissionStatus = .notDetermined
     var isCapturing = false
-    var sampleRate: Double = 0
-    var channelCount: Int = 0
-    var capturedSampleCount = 0
-    var bufferedSampleCount = 0
     var duration: TimeInterval = 0
     var peakLevel: Float = 0
     var statusText = ""
     var lastErrorMessage: String?
 
-    @ObservationIgnored private let audioEngine = AVAudioEngine()
+    // AVAudioRecorder 直接录到文件 —— 与文件导入走完全相同的解码路径
     @ObservationIgnored private let audioSession = AVAudioSession.sharedInstance()
-    @ObservationIgnored private let pcmLock = NSLock()
-    @ObservationIgnored private var rollingPCM: [Float] = []
+    @ObservationIgnored private var recorder: AVAudioRecorder?
+    @ObservationIgnored private var meterTimer: Timer?
+    @ObservationIgnored private var recordingURL: URL?
+    @ObservationIgnored private var decodedSnapshot: AudioCaptureSnapshot?
 
-    init() {
+    override init() {
+        super.init()
         refreshPermissionStatus()
     }
+
+    // MARK: - 旧接口兼容属性 (UI 仍然读这些)
+    var sampleRate: Double { Self.preferredSampleRate }
+    var channelCount: Int { 1 }
+    var capturedSampleCount: Int { Int(duration * Self.preferredSampleRate) }
+    var bufferedSampleCount: Int { capturedSampleCount }
 
     func refreshPermissionStatus() {
         switch audioSession.recordPermission {
@@ -76,34 +90,45 @@ final class AudioCaptureService {
 
         guard !isCapturing else { return true }
 
-        resetCaptureState()
         lastErrorMessage = nil
         statusText = "准备录音..."
+        decodedSnapshot = nil
+
+        // 录音文件路径
+        let tempDir = FileManager.default.temporaryDirectory
+        let url = tempDir.appendingPathComponent("mic_recording_\(UUID().uuidString).m4a")
+        recordingURL = url
 
         do {
             try audioSession.setCategory(
                 .playAndRecord,
-                mode: .measurement,
+                mode: .default,
                 options: [.defaultToSpeaker, .allowBluetooth]
             )
-            try audioSession.setPreferredSampleRate(Self.preferredSampleRate)
             try audioSession.setActive(true)
 
-            let inputNode = audioEngine.inputNode
-            let inputFormat = inputNode.outputFormat(forBus: 0)
-            sampleRate = inputFormat.sampleRate
-            channelCount = Int(inputFormat.channelCount)
+            // 录制为 M4A (44.1kHz AAC) — 高质量，与导入文件相同的解码路径
+            let settings: [String: Any] = [
+                AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+                AVSampleRateKey: 44100,
+                AVNumberOfChannelsKey: 1,
+                AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
+            ]
 
-            inputNode.removeTap(onBus: 0)
-            inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [weak self] buffer, _ in
-                self?.handleIncomingPCM(buffer)
+            let rec = try AVAudioRecorder(url: url, settings: settings)
+            rec.delegate = self
+            rec.isMeteringEnabled = true
+            rec.prepareToRecord()
+
+            guard rec.record() else {
+                lastErrorMessage = "AVAudioRecorder.record() 返回 false"
+                return false
             }
 
-            audioEngine.prepare()
-            try audioEngine.start()
-
+            recorder = rec
             isCapturing = true
-            updateStatusText()
+            duration = 0
+            startMeterUpdates()
             return true
         } catch {
             stopCapture(deactivateSession: false)
@@ -115,28 +140,47 @@ final class AudioCaptureService {
 
     @discardableResult
     func stopCapture(deactivateSession: Bool = true) -> AudioCaptureSnapshot? {
-        audioEngine.inputNode.removeTap(onBus: 0)
-        audioEngine.stop()
+        meterTimer?.invalidate()
+        meterTimer = nil
+        recorder?.stop()
+        recorder = nil
+
         if deactivateSession {
             try? audioSession.setActive(false, options: [.notifyOthersOnDeactivation])
         }
 
-        let snapshot = latestSnapshot()
         isCapturing = false
         peakLevel = 0
 
-        if let snapshot, snapshot.duration > 0 {
-            statusText = String(
-                format: "已录制 %.1f 秒音频（%.0f Hz，%d 声道），可以直接发送给模型。",
-                snapshot.duration,
-                snapshot.sampleRate,
-                snapshot.channelCount
-            )
-        } else if lastErrorMessage == nil {
-            statusText = ""
+        // 用 decodeAudioFile 解码 — 和文件导入完全相同的路径
+        if let url = recordingURL {
+            do {
+                let snapshot = try Self.decodeAudioFile(url: url)
+                decodedSnapshot = snapshot
+
+                // debug: 保存一份 WAV 到 Documents 方便验证
+                let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+                let debugFile = docs.appendingPathComponent("debug_mic.wav")
+                let wavData = AudioInput.from(snapshot: snapshot).wavData
+                try? wavData.write(to: debugFile)
+                print("[AudioCapture] Recording decoded: \(snapshot.pcm.count) samples @ \(Int(snapshot.sampleRate))Hz, \(String(format: "%.1f", snapshot.duration))s, wavBytes=\(wavData.count)")
+                print("[AudioCapture] 🔊 Debug WAV saved: \(debugFile.path)")
+
+                statusText = String(
+                    format: "已录制 %.1f 秒音频，可以直接发送给模型。",
+                    snapshot.duration
+                )
+            } catch {
+                lastErrorMessage = "读取录音文件失败: \(error.localizedDescription)"
+                statusText = lastErrorMessage ?? ""
+                print("[AudioCapture] Failed to read recording: \(error)")
+            }
+            // 清理临时文件
+            try? FileManager.default.removeItem(at: url)
+            recordingURL = nil
         }
 
-        return snapshot
+        return decodedSnapshot
     }
 
     func clearStatus() {
@@ -145,25 +189,79 @@ final class AudioCaptureService {
     }
 
     func consumeLatestSnapshot() -> AudioCaptureSnapshot? {
-        let snapshot = latestSnapshot()
-        resetCaptureState()
+        let snapshot = decodedSnapshot
+        decodedSnapshot = nil
         clearStatus()
         return snapshot
     }
 
     func latestSnapshot() -> AudioCaptureSnapshot? {
-        pcmLock.lock()
-        let pcm = rollingPCM
-        pcmLock.unlock()
+        decodedSnapshot
+    }
 
-        guard !pcm.isEmpty, sampleRate > 0 else { return nil }
+    // MARK: - Audio File Decoder (与 ContentView.decodeAudioFile 完全一致)
+
+    /// 解码任意音频文件为 16kHz mono PCM Float
+    static func decodeAudioFile(url: URL) throws -> AudioCaptureSnapshot {
+        let file = try AVAudioFile(forReading: url)
+        let srcFormat = file.processingFormat
+        let frameCount = AVAudioFrameCount(file.length)
+
+        let targetSR: Double = 16_000
+        guard let targetFormat = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: targetSR,
+            channels: 1,
+            interleaved: false
+        ) else {
+            throw NSError(domain: "AudioDecode", code: -1,
+                          userInfo: [NSLocalizedDescriptionKey: "Cannot create target format"])
+        }
+
+        guard let srcBuffer = AVAudioPCMBuffer(pcmFormat: srcFormat, frameCapacity: frameCount) else {
+            throw NSError(domain: "AudioDecode", code: -2,
+                          userInfo: [NSLocalizedDescriptionKey: "Cannot create source buffer"])
+        }
+        try file.read(into: srcBuffer)
+
+        guard let converter = AVAudioConverter(from: srcFormat, to: targetFormat) else {
+            throw NSError(domain: "AudioDecode", code: -3,
+                          userInfo: [NSLocalizedDescriptionKey: "Cannot create converter"])
+        }
+        let ratio = targetSR / srcFormat.sampleRate
+        let outputFrameCount = AVAudioFrameCount(Double(frameCount) * ratio)
+        guard let outBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: outputFrameCount) else {
+            throw NSError(domain: "AudioDecode", code: -4,
+                          userInfo: [NSLocalizedDescriptionKey: "Cannot create output buffer"])
+        }
+
+        var error: NSError?
+        let status = converter.convert(to: outBuffer, error: &error) { _, outStatus in
+            outStatus.pointee = .haveData
+            return srcBuffer
+        }
+        if let error { throw error }
+        guard status != .error else {
+            throw NSError(domain: "AudioDecode", code: -5,
+                          userInfo: [NSLocalizedDescriptionKey: "Conversion failed"])
+        }
+
+        guard let channelData = outBuffer.floatChannelData else {
+            throw NSError(domain: "AudioDecode", code: -6,
+                          userInfo: [NSLocalizedDescriptionKey: "No channel data"])
+        }
+        let count = Int(outBuffer.frameLength)
+        let samples = Array(UnsafeBufferPointer(start: channelData[0], count: count))
+
         return AudioCaptureSnapshot(
-            pcm: pcm,
-            sampleRate: sampleRate,
+            pcm: samples,
+            sampleRate: targetSR,
             channelCount: 1,
-            duration: Double(pcm.count) / sampleRate
+            duration: Double(count) / targetSR
         )
     }
+
+    // MARK: - Private
 
     private func requestPermission() async -> Bool {
         let granted = await withCheckedContinuation { continuation in
@@ -175,76 +273,46 @@ final class AudioCaptureService {
         return granted
     }
 
-    private func resetCaptureState() {
-        pcmLock.lock()
-        rollingPCM.removeAll(keepingCapacity: true)
-        pcmLock.unlock()
-
-        capturedSampleCount = 0
-        bufferedSampleCount = 0
-        duration = 0
-        peakLevel = 0
-        sampleRate = 0
-        channelCount = 0
-    }
-
-    private func handleIncomingPCM(_ buffer: AVAudioPCMBuffer) {
-        let frameCount = Int(buffer.frameLength)
-        guard frameCount > 0 else { return }
-        let formatChannelCount = Int(buffer.format.channelCount)
-        guard let channelData = buffer.floatChannelData else { return }
-
-        let samples: [Float]
-        if formatChannelCount <= 1 {
-            samples = Array(UnsafeBufferPointer(start: channelData[0], count: frameCount))
-        } else {
-            var mixed = Array(repeating: Float.zero, count: frameCount)
-            let scale = 1.0 / Float(formatChannelCount)
-            for channel in 0 ..< formatChannelCount {
-                let channelSamples = UnsafeBufferPointer(start: channelData[channel], count: frameCount)
-                for index in 0 ..< frameCount {
-                    mixed[index] += channelSamples[index] * scale
-                }
+    private func startMeterUpdates() {
+        meterTimer?.invalidate()
+        meterTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, let rec = self.recorder, rec.isRecording else { return }
+                rec.updateMeters()
+                self.duration = rec.currentTime
+                // 将 dB 转换为 0-1 范围的 peak level
+                let avgPower = rec.averagePower(forChannel: 0)
+                let peakPower = rec.peakPower(forChannel: 0)
+                // dB 范围通常 -160 到 0, 映射到 0-1
+                let normalizedPeak = max(0, min(1, (peakPower + 50) / 50))
+                self.peakLevel = normalizedPeak
+                self.updateStatusText()
             }
-            samples = mixed
         }
-        let rms = sqrt(samples.reduce(0) { $0 + ($1 * $1) } / Float(max(frameCount, 1)))
-        let peak = samples.map { abs($0) }.max() ?? 0
-
-        pcmLock.lock()
-        rollingPCM.append(contentsOf: samples)
-        let maxStoredSamples = Int(max(sampleRate, Self.preferredSampleRate) * Self.maxStoredSeconds)
-        if rollingPCM.count > maxStoredSamples {
-            rollingPCM.removeFirst(rollingPCM.count - maxStoredSamples)
-        }
-        let bufferedCount = rollingPCM.count
-        pcmLock.unlock()
-
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            capturedSampleCount += frameCount
-            bufferedSampleCount = bufferedCount
-            if sampleRate == 0 {
-                sampleRate = buffer.format.sampleRate
-            }
-            if channelCount == 0 {
-                channelCount = 1
-            }
-            if sampleRate > 0 {
-                duration = Double(capturedSampleCount) / sampleRate
-            }
-            peakLevel = max(rms, peak)
-            updateStatusText()
-        }
+        RunLoop.main.add(meterTimer!, forMode: .common)
     }
 
     private func updateStatusText() {
         guard isCapturing else { return }
         statusText = String(
-            format: "录音中 %.1f 秒 · %.0f Hz · 缓冲 %.1f 秒 PCM",
-            duration,
-            max(sampleRate, Self.preferredSampleRate),
-            sampleRate > 0 ? Double(bufferedSampleCount) / sampleRate : 0
+            format: "录音中 %.1f 秒",
+            duration
         )
+    }
+
+    // MARK: - AVAudioRecorderDelegate
+
+    nonisolated func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
+        if !flag {
+            Task { @MainActor in
+                self.lastErrorMessage = "录音意外终止"
+            }
+        }
+    }
+
+    nonisolated func audioRecorderEncodeErrorDidOccur(_ recorder: AVAudioRecorder, error: Error?) {
+        Task { @MainActor in
+            self.lastErrorMessage = "录音编码错误: \(error?.localizedDescription ?? "未知")"
+        }
     }
 }

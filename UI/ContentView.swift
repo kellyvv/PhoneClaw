@@ -24,6 +24,12 @@ private extension ProcessInfo {
 // MARK: - 主入口
 
 private enum CaptureOrigin { case menu, holdToTalk }
+private struct ScrollSignal: Equatable {
+    let lastMessageID: UUID?
+    let messageCount: Int
+    let lastMessageContentCount: Int
+    let isProcessing: Bool
+}
 
 struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
@@ -48,45 +54,22 @@ struct ContentView: View {
     @State private var captureOrigin: CaptureOrigin = .menu
     @State private var showPhotoPicker = false
     @State private var showFilePicker = false
+    @State private var importedAudioSnapshot: AudioCaptureSnapshot?
+    @State private var importedAudioFilename: String?
     @State private var holdToTalkASR = ASRService()
 
     private var displayItems: [DisplayItem] {
         buildDisplayItems(from: engine.messages, isProcessing: engine.isProcessing)
     }
 
-    private var scrollAnchorState: String {
-        guard let last = displayItems.last else {
-            return "empty:\(engine.isProcessing)"
-        }
-
-        switch last {
-        case .user(let msg):
-            return [
-                "user",
-                msg.id.uuidString,
-                String(msg.content.count),
-                String(msg.images.count),
-                String(msg.audios.count)
-            ].joined(separator: ":")
-        case .response(let block):
-            let skillSignature = block.skills.map {
-                [
-                    $0.id.uuidString,
-                    $0.skillName,
-                    $0.skillStatus ?? "",
-                    $0.toolName ?? ""
-                ].joined(separator: "|")
-            }.joined(separator: "||")
-
-            return [
-                "response",
-                block.id.uuidString,
-                block.thinkingText ?? "",
-                block.responseText ?? "",
-                block.isThinking ? "1" : "0",
-                skillSignature
-            ].joined(separator: ":")
-        }
+    private var scrollSignal: ScrollSignal {
+        let lastMessage = engine.messages.last
+        return ScrollSignal(
+            lastMessageID: lastMessage?.id,
+            messageCount: engine.messages.count,
+            lastMessageContentCount: lastMessage?.content.count ?? 0,
+            isProcessing: engine.isProcessing
+        )
     }
 
     var body: some View {
@@ -135,7 +118,8 @@ struct ContentView: View {
         .fullScreenCover(isPresented: $showLiveMode) {
             LiveModeView(
                 isPresented: $showLiveMode,
-                llm: engine.llm,
+                inference: engine.inference,
+                catalog: engine.catalog,
                 userSystemPrompt: engine.config.systemPrompt
             )
         }
@@ -165,7 +149,6 @@ struct ContentView: View {
                                 isThinkingExpanded: expandedThoughts.contains(block.id),
                                 onToggle: { toggleExpand($0) },
                                 onToggleThinking: { toggleThinking(block.id) },
-                                renderMarkdown: !(item.id == displayItems.last?.id && engine.isProcessing),
                                 onRetry: canRetry(item: item, block: block)
                                     ? { Task { await engine.retryLastResponse() } }
                                     : nil
@@ -177,24 +160,25 @@ struct ContentView: View {
                 .padding(.vertical, 20)
             }
             .scrollIndicators(.hidden)
-            .onAppear { scrollTo(proxy, animated: false) }
-            .onChange(of: engine.messages.count) { _, _ in scrollTo(proxy) }
-            .onChange(of: engine.isProcessing) { _, _ in scrollTo(proxy) }
-            .onChange(of: scrollAnchorState) { _, _ in scrollTo(proxy) }
+            .task(id: scrollSignal) {
+                let signal = scrollSignal
+                await Task.yield()
+                guard !Task.isCancelled else { return }
+                scrollTo(proxy, animated: !signal.isProcessing)
+            }
         }
     }
 
+    @MainActor
     private func scrollTo(_ proxy: ScrollViewProxy, animated: Bool = true) {
         guard let last = displayItems.last else { return }
         let lastID = last.id
-        DispatchQueue.main.async {
-            if animated {
-                withAnimation(.easeOut(duration: 0.2)) {
-                    proxy.scrollTo(lastID, anchor: .bottom)
-                }
-            } else {
+        if animated {
+            withAnimation(.easeOut(duration: 0.2)) {
                 proxy.scrollTo(lastID, anchor: .bottom)
             }
+        } else {
+            proxy.scrollTo(lastID, anchor: .bottom)
         }
     }
 
@@ -225,7 +209,7 @@ struct ContentView: View {
 
     private func canRetry(item: DisplayItem, block: ResponseBlock) -> Bool {
         guard item.id == displayItems.last?.id else { return false }
-        guard !engine.isProcessing, engine.llm.isLoaded else { return false }
+        guard !engine.isProcessing, engine.inference.isLoaded else { return false }
         guard block.responseText != nil else { return false }
         guard let lastUser = engine.messages.last(where: { $0.role == .user }) else { return false }
         return lastUser.audios.isEmpty
@@ -253,9 +237,9 @@ struct ContentView: View {
             // 中：模型状态
             HStack(spacing: 6) {
                 Circle()
-                    .fill(engine.llm.isLoaded ? Theme.accentGreen : Theme.accent)
+                    .fill(engine.inference.isLoaded ? Theme.accentGreen : Theme.accent)
                     .frame(width: 6, height: 6)
-                Text(engine.llm.isLoaded ? engine.llm.modelDisplayName : engine.llm.statusMessage)
+                Text(engine.inference.isLoaded ? engine.catalog.modelDisplayName : engine.inference.statusMessage)
                     .font(.system(size: 12, weight: .medium, design: .rounded))
                     .foregroundStyle(Theme.textSecondary)
             }
@@ -589,9 +573,16 @@ struct ContentView: View {
         if (audioCapture.isCapturing && captureOrigin == .menu)
             || hasCompletedDraft
             || audioCapture.lastErrorMessage != nil
-            || !selectedImages.isEmpty {
+            || !selectedImages.isEmpty
+            || importedAudioSnapshot != nil {
             VStack(spacing: 10) {
                 audioComposerPanel
+
+                // 导入的音频文件附件卡片
+                if let snapshot = importedAudioSnapshot {
+                    importedAudioCard(snapshot: snapshot)
+                        .padding(.horizontal, Theme.inputPadH)
+                }
 
                 if !selectedImages.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -627,12 +618,56 @@ struct ContentView: View {
         }
     }
 
+    /// 导入音频文件的附件预览卡片
+    private func importedAudioCard(snapshot: AudioCaptureSnapshot) -> some View {
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Theme.accent.opacity(0.15))
+                    .frame(width: 40, height: 40)
+                Image(systemName: "waveform")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Theme.accent)
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(importedAudioFilename ?? "音频文件")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Theme.textPrimary)
+                    .lineLimit(1)
+                Text(String(format: "%.1f 秒 · %d kHz", snapshot.duration, Int(snapshot.sampleRate / 1000)))
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textTertiary)
+            }
+
+            Spacer()
+
+            Button {
+                withAnimation(.easeOut(duration: 0.2)) {
+                    importedAudioSnapshot = nil
+                    importedAudioFilename = nil
+                }
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 20))
+                    .foregroundStyle(Theme.textTertiary)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Theme.bgElevated, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .strokeBorder(Theme.border, lineWidth: 1)
+        )
+    }
+
     @ViewBuilder
     private var audioComposerPanel: some View {
         if audioCapture.isCapturing && captureOrigin == .menu {
             RecordingStatusCard(
                 duration: audioCapture.duration,
-                sampleRate: max(audioCapture.sampleRate, 16_000),
                 peakLevel: audioCapture.peakLevel,
                 onStop: {
                     _ = audioCapture.stopCapture()
@@ -669,16 +704,17 @@ struct ContentView: View {
             !inputText.trimmingCharacters(in: .whitespaces).isEmpty
                 || !selectedImages.isEmpty
                 || hasCompletedDraft
+                || importedAudioSnapshot != nil
         )
-        && !engine.isProcessing && engine.llm.isLoaded
+        && !engine.isProcessing && engine.inference.isLoaded
     }
 
     private var canEnterLiveMode: Bool {
-        engine.llm.isLoaded
+        engine.inference.isLoaded
     }
 
     private var canCancelGeneration: Bool {
-        engine.isProcessing || engine.llm.isGenerating
+        engine.isProcessing || engine.inference.isGenerating
     }
 
     private func send() async {
@@ -687,10 +723,13 @@ struct ContentView: View {
         if audioCapture.isCapturing {
             _ = audioCapture.stopCapture()
         }
-        let audioSnapshot = audioCapture.consumeLatestSnapshot()
+        // 优先用导入的音频文件, 其次用麦克风录音
+        let audioSnapshot = importedAudioSnapshot ?? audioCapture.consumeLatestSnapshot()
         inputText = ""
         selectedImages = []
         selectedPhotoItem = nil
+        importedAudioSnapshot = nil
+        importedAudioFilename = nil
         isInputFocused = false
         await engine.processInput(text, images: images, audio: audioSnapshot)
     }
@@ -737,11 +776,13 @@ struct ContentView: View {
             // 音频文件 → 读取为 PCM 并走音频附件路径
             if ["wav", "mp3", "m4a", "aac", "caf", "flac", "ogg"].contains(ext) {
                 do {
-                    let data = try Data(contentsOf: url)
-                    inputText += (inputText.isEmpty ? "" : "\n") + "[附件: \(filename), \(data.count / 1024)KB 音频文件]"
-                    print("[UI] Audio file imported: \(filename) (\(data.count) bytes)")
+                    let snapshot = try Self.decodeAudioFile(url: url)
+                    importedAudioSnapshot = snapshot
+                    importedAudioFilename = filename
+                    print("[UI] Audio file decoded: \(filename) → \(snapshot.pcm.count) samples @ \(Int(snapshot.sampleRate))Hz, \(String(format: "%.1f", snapshot.duration))s")
                 } catch {
-                    print("[UI] Failed to read audio file: \(error)")
+                    inputText += (inputText.isEmpty ? "" : "\n") + "[附件: \(filename) — 音频解码失败]"
+                    print("[UI] Failed to decode audio file: \(error)")
                 }
             }
             // PDF → 提取文字内容
@@ -795,6 +836,72 @@ struct ContentView: View {
         case .failure(let error):
             print("[UI] File import failed: \(error)")
         }
+    }
+
+    // MARK: - Audio File Decoder
+
+    /// 解码任意音频文件 (MP3/WAV/M4A/AAC/…) 为 16kHz mono PCM Float
+    private static func decodeAudioFile(url: URL) throws -> AudioCaptureSnapshot {
+        let file = try AVAudioFile(forReading: url)
+        let srcFormat = file.processingFormat
+        let frameCount = AVAudioFrameCount(file.length)
+
+        // 目标: 16kHz mono Float32
+        let targetSR: Double = 16_000
+        guard let targetFormat = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: targetSR,
+            channels: 1,
+            interleaved: false
+        ) else {
+            throw NSError(domain: "AudioDecode", code: -1,
+                          userInfo: [NSLocalizedDescriptionKey: "Cannot create target format"])
+        }
+
+        // 读原始 PCM
+        guard let srcBuffer = AVAudioPCMBuffer(pcmFormat: srcFormat, frameCapacity: frameCount) else {
+            throw NSError(domain: "AudioDecode", code: -2,
+                          userInfo: [NSLocalizedDescriptionKey: "Cannot create source buffer"])
+        }
+        try file.read(into: srcBuffer)
+
+        // 转换到 16kHz mono
+        guard let converter = AVAudioConverter(from: srcFormat, to: targetFormat) else {
+            throw NSError(domain: "AudioDecode", code: -3,
+                          userInfo: [NSLocalizedDescriptionKey: "Cannot create converter"])
+        }
+        let ratio = targetSR / srcFormat.sampleRate
+        let outputFrameCount = AVAudioFrameCount(Double(frameCount) * ratio)
+        guard let outBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: outputFrameCount) else {
+            throw NSError(domain: "AudioDecode", code: -4,
+                          userInfo: [NSLocalizedDescriptionKey: "Cannot create output buffer"])
+        }
+
+        var error: NSError?
+        let status = converter.convert(to: outBuffer, error: &error) { _, outStatus in
+            outStatus.pointee = .haveData
+            return srcBuffer
+        }
+        if let error { throw error }
+        guard status != .error else {
+            throw NSError(domain: "AudioDecode", code: -5,
+                          userInfo: [NSLocalizedDescriptionKey: "Conversion failed"])
+        }
+
+        // 提取 Float samples
+        guard let channelData = outBuffer.floatChannelData else {
+            throw NSError(domain: "AudioDecode", code: -6,
+                          userInfo: [NSLocalizedDescriptionKey: "No channel data"])
+        }
+        let count = Int(outBuffer.frameLength)
+        let samples = Array(UnsafeBufferPointer(start: channelData[0], count: count))
+
+        return AudioCaptureSnapshot(
+            pcm: samples,
+            sampleRate: targetSR,
+            channelCount: 1,
+            duration: Double(count) / targetSR
+        )
     }
 }
 

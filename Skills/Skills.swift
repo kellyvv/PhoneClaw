@@ -23,6 +23,7 @@ struct SkillEntry: Identifiable {
     var description: String
     var icon: String
     var type: SkillType
+    var requiresTimeAnchor: Bool = false
     var samplePrompt: String
     /// 欢迎页快捷 chip 的发送内容 (来源 SKILL.md `chip_prompt` 字段).
     /// 不声明的 skill 不会出现在 chip 列表里.
@@ -41,6 +42,7 @@ struct SkillEntry: Identifiable {
         self.description = def.metadata.description
         self.icon = def.metadata.icon
         self.type = def.metadata.type
+        self.requiresTimeAnchor = def.metadata.requiresTimeAnchor
         self.samplePrompt = def.metadata.examples.first?.query ?? ""
         self.chipPrompt = def.metadata.chipPrompt?.isEmpty == true ? nil : def.metadata.chipPrompt
         self.chipLabel = def.metadata.chipLabel?.isEmpty == true ? nil : def.metadata.chipLabel
@@ -61,6 +63,7 @@ struct SkillInfo {
     var displayName: String = ""
     var icon: String = "wrench"
     var type: SkillType = .device
+    var requiresTimeAnchor: Bool = false
     var samplePrompt: String = ""
     var chipPrompt: String? = nil
     var chipLabel: String? = nil
