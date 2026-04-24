@@ -24,6 +24,10 @@ allowed-tools:
 examples:
   - query: "Create a product review meeting tomorrow at 2pm"
     scenario: "Create a calendar event"
+
+# Sync anchor (see scripts/check-skill-sync.sh):
+translation-source-commit: 034c373
+translation-source-sha256: b963af0c9babd57afb64bc39d1d646238c34ebce1f30a69aef53cbd3997b10a6
 ---
 
 # Calendar Event Creation

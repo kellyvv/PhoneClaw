@@ -1,16 +1,34 @@
 #!/usr/bin/env bash
-# PhoneClaw pre-commit hook — harness 守门
+# PhoneClaw pre-commit hook — harness 守门 + skill i18n sync 守门
 #
-# 当 staged 文件触碰到 agent 框架/skill/prompt/router 时, 自动跑 CLI harness
-# **两个模型都跑 (E2B + E4B)** — 用户部署默认只有 E2B, E4B-only 验证等于没验证.
-# 不绿拒绝 commit。可用 `git commit --no-verify` 跳过 (慎用)。
+# 两个检查独立:
+#   1. Skill bilingual sync (总是跑, 不吃 HARNESS skip)
+#      跳过: PHONECLAW_SKIP_SKILL_SYNC=1 git commit ...
+#   2. CLI harness (仅当 staged 文件触碰 agent/skill/prompt/router 时跑
+#      E2B + E4B 两个模型全绿)
+#      跳过: PHONECLAW_SKIP_HARNESS=1 git commit ...
+#
+# 任一拒绝就拒 commit。`git commit --no-verify` 跳所有 (慎用).
 #
 # 安装: git config core.hooksPath .githooks
-# 跳过单次: PHONECLAW_SKIP_HARNESS=1 git commit ...
 
 set -e
 
-# 快速出口: 手动跳过
+REPO_ROOT=$(git rev-parse --show-toplevel)
+
+# ── 1. Skill bilingual sync 检查 ──────────────────────────────────
+# 总是跑 — 独立于 harness skip. 只看 staged 里的 SKILL.md 改动,
+# 拒绝 zh 改了 en 没改 / en 缺失 / en 缺 anchor / en anchor 过期 这类情况。
+if [[ -x "$REPO_ROOT/scripts/check-skill-sync.sh" ]]; then
+    if ! "$REPO_ROOT/scripts/check-skill-sync.sh" --staged-only; then
+        echo ""
+        echo "[pre-commit] ❌ Skill bilingual sync 检查失败 — 见上面的输出"
+        exit 1
+    fi
+fi
+
+# ── 2. Harness 检查 ───────────────────────────────────────────────
+# 快速出口: 手动跳过 harness 只
 if [[ -n "${PHONECLAW_SKIP_HARNESS:-}" ]]; then
     echo "[pre-commit] PHONECLAW_SKIP_HARNESS set — harness 跳过"
     exit 0

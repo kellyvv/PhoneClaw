@@ -58,6 +58,10 @@ examples:
     scenario: "Check yesterday's step count"
   - query: "How are my steps this week?"
     scenario: "Check this week's step count"
+
+# Sync anchor (see scripts/check-skill-sync.sh):
+translation-source-commit: 034c373
+translation-source-sha256: a37b853870edd73ce311efa0291df26139d0839158edc35ae9b27718d35858fa
 ---
 
 # Health Data Query

@@ -30,6 +30,10 @@ examples:
     scenario: "Look up a contact's phone"
   - query: "Delete John Smith from my contacts"
     scenario: "Delete a contact"
+
+# Sync anchor (see scripts/check-skill-sync.sh):
+translation-source-commit: 034c373
+translation-source-sha256: 18724539790b9c31eff323d4e917775354a6aa7aa8a9bfc34747e1c286c0a1c6
 ---
 
 # Contact Lookup and Management

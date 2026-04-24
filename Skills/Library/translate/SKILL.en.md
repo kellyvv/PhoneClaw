@@ -35,6 +35,10 @@ examples:
     scenario: "English to Chinese"
   - query: "Translate that previous passage into Japanese"
     scenario: "Referring to prior context"
+
+# Sync anchor (see scripts/check-skill-sync.sh):
+translation-source-commit: 034c373
+translation-source-sha256: 89b5dfd5a5e9b071f81bb0fc73d5217134643dcd0d2aa4254c8aa7ea55e372f7
 ---
 
 # Professional Translation

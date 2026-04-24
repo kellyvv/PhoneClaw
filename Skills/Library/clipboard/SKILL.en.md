@@ -24,6 +24,10 @@ examples:
     scenario: "Read the clipboard"
   - query: "Copy this text to the clipboard"
     scenario: "Write to the clipboard"
+
+# Sync anchor (see scripts/check-skill-sync.sh):
+translation-source-commit: 034c373
+translation-source-sha256: 563c470ee1465d828ced53ec8e821e3f3f7f72126870fd18536cc8d20c1cb91a
 ---
 
 # Clipboard Operations

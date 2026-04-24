@@ -24,6 +24,10 @@ allowed-tools:
 examples:
   - query: "Remind me to send the file at 8pm tonight"
     scenario: "Create a new reminder"
+
+# Sync anchor (see scripts/check-skill-sync.sh):
+translation-source-commit: 034c373
+translation-source-sha256: 41d06aedebcbcd4f33370798ac393df2be8d1113f987c9b520977eba22efa4fc
 ---
 
 # Reminder Creation
