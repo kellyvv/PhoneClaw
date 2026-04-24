@@ -9,13 +9,19 @@ import Foundation
 
 struct PromptBuilder {
 
-    static let defaultSystemPrompt = "你是 PhoneClaw，一个运行在本地的私人 AI 助手。你完全运行在设备上，不联网。"
+    /// 短 persona, 用在 secondary 推理 (tool follow-up 等). 跟 AgentEngine 的
+    /// 长 kDefaultSystemPrompt 区分 — 后者是用户可编辑的 SYSPROMPT.md 内容。
+    static var defaultSystemPrompt: String { PromptLocale.current.defaultSystemPromptShort }
+
+    // 内部 sentinel 标记, 纯数据, 无需本地化
     private static let thinkingOpenMarker = "[[PHONECLAW_THINK]]"
     private static let thinkingCloseMarker = "[[/PHONECLAW_THINK]]"
-    private static let thinkingLanguageInstruction = "如果启用了思考模式，思考通道和最终回答都必须使用简体中文，不要使用英文。"
-    private static let imageHistoryMarker = "[用户在此轮发送了图片]"
-    private static let imageFollowUpContextOpenMarker = "[上一轮图片上下文]"
-    private static let imageFollowUpContextCloseMarker = "[/上一轮图片上下文]"
+
+    // 发给模型的指令 / 对话内标记, 按当前语言取
+    private static var thinkingLanguageInstruction: String { PromptLocale.current.thinkingLanguageInstruction }
+    private static var imageHistoryMarker: String { PromptLocale.current.imageHistoryMarker }
+    private static var imageFollowUpContextOpenMarker: String { PromptLocale.current.imageFollowUpContextOpenMarker }
+    private static var imageFollowUpContextCloseMarker: String { PromptLocale.current.imageFollowUpContextCloseMarker }
 
     static func multimodalSystemPrompt(hasImages: Bool, hasAudio: Bool, enableThinking: Bool = false) -> String {
         let base: String
@@ -53,13 +59,15 @@ struct PromptBuilder {
     /// 工具参数提取阶段需要的"当前时间锚点"。
     /// 模型必须知道"现在是何时"才能解析"明天/下午两点"等相对时间表达
     /// 并写出正确的 ISO 8601 字符串。
-    /// 用本地时区(用户设备时区), 周几用中文,方便中文模型理解。
-    /// 热修阶段按小时粒度取整，减少前缀缓存污染。
+    /// 用本地时区 (用户设备时区), 周几按当前语言 locale (zh_CN / en_US)
+    /// 输出, 方便对应语言模型理解。热修阶段按小时粒度取整, 减少前缀缓存污染。
     private static func currentTimeAnchorBlock() -> String {
+        let locale = PromptLocale.current
+        let format = locale.timeAnchorFormat
         if let fixed = ProcessInfo.processInfo.environment["PHONECLAW_FIXED_CURRENT_TIME_ANCHOR"]?
             .trimmingCharacters(in: .whitespacesAndNewlines),
            !fixed.isEmpty {
-            return "当前时间锚点(用于解析\"今天/明天/下午两点\"等相对时间): \(fixed)"
+            return String(format: format, fixed)
         }
 
         let calendar = Calendar.current
@@ -72,11 +80,11 @@ struct PromptBuilder {
         ) ?? now
 
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.locale = Locale(identifier: locale.dateFormatterLocaleIdentifier)
         formatter.timeZone = .current
         formatter.dateFormat = "yyyy-MM-dd EEEE HH:mm"
         let anchor = formatter.string(from: roundedNow)
-        return "当前时间锚点(用于解析\"今天/明天/下午两点\"等相对时间): \(anchor)"
+        return String(format: format, anchor)
     }
 
     private static func extractSystemBlock(from prompt: String, includeTimeAnchor: Bool = false) -> String {
@@ -87,7 +95,8 @@ struct PromptBuilder {
             raw = prompt
         }
         guard includeTimeAnchor else { return raw }
-        guard !raw.contains("当前时间锚点(") else { return raw }
+        // 检查两种 locale 的 anchor 前缀 — 对话跨语言切换时仍能识别已注入过的 anchor
+        guard !PromptLocale.containsTimeAnchor(raw) else { return raw }
         return injectIntoSystemBlock(raw, extraInstructions: currentTimeAnchorBlock())
     }
 

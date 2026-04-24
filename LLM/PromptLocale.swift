@@ -135,9 +135,24 @@ struct PromptLocale {
 
     // MARK: - Current
 
-    /// 当前生效的 locale. 读 `AppLanguage.current`, 跟 UI tr() 保持同源。
+    /// 当前生效的 locale. 读 `LanguageService.shared.current.isChinese`,
+    /// 跟 UI `tr()` helper 保持同源。
     static var current: PromptLocale {
-        AppLanguage.current.isChinese ? .zhHans : .en
+        LanguageService.shared.current.isChinese ? .zhHans : .en
+    }
+
+    // MARK: - Time anchor 检测
+
+    /// `timeAnchorFormat` 里 `%@` 之前的固定前缀 (用作语言无关的"是否已注入"标记).
+    /// 跨 locale 统一用这个 set 来检查, 避免语言切换后重复注入 anchor。
+    private static let timeAnchorPrefixes: [String] = [
+        zhHans.timeAnchorFormat,
+        en.timeAnchorFormat,
+    ].map { String($0.prefix { $0 != "%" }) }
+
+    /// 检查一段文本是否已经含有某种 locale 的 time anchor 前缀。
+    static func containsTimeAnchor(_ text: String) -> Bool {
+        timeAnchorPrefixes.contains { !$0.isEmpty && text.contains($0) }
     }
 }
 
