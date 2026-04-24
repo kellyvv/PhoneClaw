@@ -1,0 +1,13 @@
+/* 中文 (简体) Info.plist 权限文案
+ * Base Info.plist 是英文 (developmentRegion = en), 这个文件在
+ * zh-Hans 系统下覆盖对应 key. iOS 权限弹窗会按当前系统语言选。
+ */
+
+"NSCalendarsUsageDescription" = "PhoneClaw 需要访问日历以创建事项";
+"NSCalendarsWriteOnlyAccessUsageDescription" = "PhoneClaw 需要创建日历事项";
+"NSRemindersUsageDescription" = "PhoneClaw 需要访问提醒事项";
+"NSRemindersFullAccessUsageDescription" = "PhoneClaw 需要创建提醒事项";
+"NSContactsUsageDescription" = "PhoneClaw 需要存储联系人信息";
+"NSCameraUsageDescription" = "PhoneClaw 需要摄像头以便在 Live 模式中观察周围环境";
+"NSMicrophoneUsageDescription" = "PhoneClaw 需要麦克风来录制语音并采集音频输入";
+"NSHealthShareUsageDescription" = "PhoneClaw 需要读取健康数据（例如步数、睡眠）以便在本地为你生成摘要和建议, 数据不会离开本机。";

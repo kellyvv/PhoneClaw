@@ -2,51 +2,51 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>CFBundleName</key>
-	<string>PhoneClaw</string>
 	<key>CFBundleDisplayName</key>
 	<string>PhoneClaw</string>
-	<key>CFBundleIdentifier</key>
-	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
-	<key>CFBundleVersion</key>
-	<string>$(CURRENT_PROJECT_VERSION)</string>
-	<key>CFBundleShortVersionString</key>
-	<string>$(MARKETING_VERSION)</string>
-	<key>CFBundlePackageType</key>
-	<string>APPL</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleName</key>
+	<string>PhoneClaw</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
-	<true/>
-	<key>UILaunchScreen</key>
-	<dict/>
-	<key>UIFileSharingEnabled</key>
 	<true/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
-	<key>UISupportedInterfaceOrientations</key>
-	<array>
-		<string>UIInterfaceOrientationPortrait</string>
-	</array>
+	<key>NSCalendarsUsageDescription</key>
+	<string>PhoneClaw needs calendar access to create events</string>
+	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
+	<string>PhoneClaw needs to create calendar events</string>
+	<key>NSCameraUsageDescription</key>
+	<string>PhoneClaw uses the camera in LIVE mode to perceive your surroundings</string>
+	<key>NSContactsUsageDescription</key>
+	<string>PhoneClaw needs to store contact information</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>PhoneClaw reads Health data (steps, sleep, etc.) locally to generate summaries and insights. Nothing leaves your device.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>PhoneClaw uses the microphone to record your voice and capture audio input</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>PhoneClaw needs Reminders access to create reminders</string>
+	<key>NSRemindersUsageDescription</key>
+	<string>PhoneClaw needs access to Reminders</string>
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>UILaunchScreen</key>
+	<dict/>
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
 		<string>arm64</string>
 	</array>
-	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
-	<string>PhoneClaw 需要创建日历事项</string>
-	<key>NSCalendarsUsageDescription</key>
-	<string>PhoneClaw 需要访问日历以创建事项</string>
-	<key>NSRemindersFullAccessUsageDescription</key>
-	<string>PhoneClaw 需要创建提醒事项</string>
-	<key>NSRemindersUsageDescription</key>
-	<string>PhoneClaw 需要访问提醒事项</string>
-	<key>NSContactsUsageDescription</key>
-	<string>PhoneClaw 需要存储联系人信息</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>PhoneClaw 需要麦克风来录制语音并采集音频输入</string>
-	<key>NSCameraUsageDescription</key>
-	<string>PhoneClaw 需要摄像头以便在 Live 模式中观察周围环境</string>
-	<key>NSHealthShareUsageDescription</key>
-	<string>PhoneClaw 需要读取健康数据（例如步数、睡眠）以便在本地为你生成摘要和建议, 数据不会离开本机。</string>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
 </dict>
 </plist>

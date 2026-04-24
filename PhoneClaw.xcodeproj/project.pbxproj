@@ -128,9 +128,10 @@
 		BB2000000000000000000008 /* LiteRTCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000008 /* LiteRTCatalog.swift */; };
 		BB2000000000000000000009 /* LiteRTModelStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000009 /* LiteRTModelStore.swift */; };
 		BB2000000000000000000012 /* PCLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000012 /* PCLog.swift */; };
+		BB2000000000000000000099 /* AudioBypassTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000099 /* AudioBypassTest.swift */; };
 		BB2000000000000000000100 /* LanguageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000100 /* LanguageService.swift */; };
 		BB2000000000000000000101 /* L10n.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000101 /* L10n.swift */; };
-		BB2000000000000000000099 /* AudioBypassTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000099 /* AudioBypassTest.swift */; };
+		B1A2C3D4E5F607182930C002 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = B1A2C3D4E5F607182930C000 /* InfoPlist.strings */; };
 		BD75E7E5620A8FF0A868E9F0 /* libPods-PhoneClaw.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 4F4ACB3F4531FF61E0AADA07 /* libPods-PhoneClaw.a */; };
 		BE6E6C928537BCC4DBC975E9 /* (null) in Sources */ = {isa = PBXBuildFile; };
 		C05906F882C28E546FC97B26 /* (null) in Sources */ = {isa = PBXBuildFile; };
@@ -235,6 +236,7 @@
 		AA2000000000000000000110 /* LiveModelDownloader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveModelDownloader.swift; sourceTree = "<group>"; };
 		AA2000000000000000000202 /* MLXLocalLLMService+KVReuse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MLXLocalLLMService+KVReuse.swift"; sourceTree = "<group>"; };
 		B1A2C3D4E5F607182930B101 /* Library */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Library; sourceTree = "<group>"; };
+		B1A2C3D4E5F607182930C001 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		BA48303BA25916A3A431EDE6 /* OrbBackgroundView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OrbBackgroundView.swift; path = Live/UI/LiveOrb/OrbBackgroundView.swift; sourceTree = SOURCE_ROOT; };
 		BB1000000000000000000001 /* LLMTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMTypes.swift; sourceTree = "<group>"; };
 		BB1000000000000000000002 /* InferenceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InferenceService.swift; sourceTree = "<group>"; };
@@ -248,9 +250,9 @@
 		BB1000000000000000000010 /* gemma-4-E2B-it.litertlm */ = {isa = PBXFileReference; lastKnownFileType = file; name = "gemma-4-E2B-it.litertlm"; path = "Models/gemma-4-E2B-it.litertlm"; sourceTree = SOURCE_ROOT; };
 		BB1000000000000000000011 /* gemma-4-E4B-it.litertlm */ = {isa = PBXFileReference; lastKnownFileType = file; name = "gemma-4-E4B-it.litertlm"; path = "Models/gemma-4-E4B-it.litertlm"; sourceTree = SOURCE_ROOT; };
 		BB1000000000000000000012 /* PCLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PCLog.swift; path = Shared/PCLog.swift; sourceTree = SOURCE_ROOT; };
+		BB1000000000000000000099 /* AudioBypassTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioBypassTest.swift; sourceTree = "<group>"; };
 		BB1000000000000000000100 /* LanguageService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LanguageService.swift; path = Shared/LanguageService.swift; sourceTree = SOURCE_ROOT; };
 		BB1000000000000000000101 /* L10n.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = L10n.swift; path = Shared/L10n.swift; sourceTree = SOURCE_ROOT; };
-		BB1000000000000000000099 /* AudioBypassTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioBypassTest.swift; sourceTree = "<group>"; };
 		C1A2B3D4E5F607182930A1B3 /* SkillLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillLoader.swift; sourceTree = "<group>"; };
 		C1A2B3D4E5F607182930A1C3 /* SkillRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillRegistry.swift; sourceTree = "<group>"; };
 		C3C4D5E6F7081A2B3C52D3E5 /* ChatModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatModels.swift; sourceTree = "<group>"; };
@@ -527,6 +529,7 @@
 				83C5B0E5FD420CCB6BD8D1A4 /* LiveModeEngine.swift */,
 				840B21562E52B6B93D4410D0 /* LiveModeUI.swift */,
 				52F30C6348B834E5D157205F /* Info.plist */,
+				B1A2C3D4E5F607182930C000 /* InfoPlist.strings */,
 				38FC1001EB728212335AC141 /* PhoneClaw.entitlements */,
 				ICONASSETS0000000000001 /* Assets.xcassets */,
 				E0660A5AE3C683B7B20600EE /* Agent */,
@@ -644,6 +647,7 @@
 			knownRegions = (
 				Base,
 				en,
+				"zh-Hans",
 			);
 			mainGroup = 4A876E909BCB4E1CAF5C50F5;
 			minimizedProjectReferenceProxies = 1;
@@ -674,6 +678,7 @@
 				B1A2C3D4E5F607182930B100 /* Library in Resources */,
 				B1A2C3D4E5F607182930B107 /* piz_compressed.exr in Resources */,
 				B1A2C3D4E5F607182930B108 /* studio_env.hdr in Resources */,
+				B1A2C3D4E5F607182930C002 /* InfoPlist.strings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -880,6 +885,17 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXVariantGroup section */
+		B1A2C3D4E5F607182930C000 /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				B1A2C3D4E5F607182930C001 /* zh-Hans */,
+			);
+			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
 		173FD5E3042F677AC8EEF557 /* Release */ = {
