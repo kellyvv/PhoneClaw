@@ -121,6 +121,7 @@ struct ConfigurationsView: View {
             VStack(alignment: .leading, spacing: 20) {
                 modelSection
                 backendSection
+                languageSection
                 liveModelSection
             }
             .padding()
@@ -326,6 +327,44 @@ struct ConfigurationsView: View {
             .foregroundStyle(Theme.textSecondary)
             .labelStyle(.titleAndIcon)
             .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
+        .background(Theme.bg, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .strokeBorder(Theme.border, lineWidth: 1)
+        )
+    }
+
+    // MARK: - Language
+
+    /// Language preference picker — Auto (跟随系统) / 中文 / English。
+    /// 读写 `LanguageService.shared.selected`, 绑定是直接的 Binding 封装
+    /// (比 @Bindable + @Observable 的混搭更显式, 也不需要额外 @State 镜像)。
+    /// 切换立即触发 SwiftUI observation, 整个 app 视图重渲染新语言。
+    private var languageSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(L10n.Config.language)
+                .font(.headline)
+                .foregroundStyle(Theme.textPrimary)
+
+            Picker(
+                L10n.Config.language,
+                selection: Binding(
+                    get: { LanguageService.shared.selected },
+                    set: { LanguageService.shared.selected = $0 }
+                )
+            ) {
+                ForEach(AppLanguage.allCases, id: \.self) { lang in
+                    Text(lang.displayName).tag(lang)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            Text(L10n.Config.languageFooter)
+                .font(.caption)
+                .foregroundStyle(Theme.textTertiary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(16)
         .background(Theme.bg, in: RoundedRectangle(cornerRadius: 16))
