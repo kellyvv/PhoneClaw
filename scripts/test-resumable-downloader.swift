@@ -234,15 +234,7 @@ struct ResumableDownloaderTest {
                         downloadedBytes: Int64(fallbackOffset),
                         expectedBytes: Int64(payload.count),
                         selectedSourceLabel: "no-range",
-                        metadata: DownloadFileMetadata(
-                            sourceURL: MockDownloadURLProtocol.noRangeURL,
-                            sourceHost: MockDownloadURLProtocol.noRangeURL.host,
-                            etag: "\"fixture-etag\"",
-                            contentLength: Int64(payload.count),
-                            lastModified: "Fri, 24 Apr 2026 00:00:00 GMT",
-                            checksumSHA256: nil,
-                            updatedAt: now
-                        )
+                        metadata: nil
                     )
                 ]
             ),
@@ -271,7 +263,7 @@ struct ResumableDownloaderTest {
         )
         precondition(
             MockDownloadURLProtocol.rangeHeaders.contains("download.test:bytes=\(fallbackOffset)-"),
-            "Downloader should keep the partial file and try another source when one source ignores Range"
+            "Downloader should keep metadata-free partials and try another source when one source ignores Range"
         )
 
         print("ResumableAssetDownloader tests passed")

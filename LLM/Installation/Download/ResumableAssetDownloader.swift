@@ -257,18 +257,10 @@ actor ResumableAssetDownloader {
         }
 
         if offset > 0, httpResponse.statusCode == 416 {
-            try? fileManager.removeItem(at: partialURL)
-            return try await transfer(
-                file: file,
-                asset: asset,
-                source: source,
-                partialURL: partialURL,
-                initialOffset: 0,
-                metadata: metadata,
-                manifest: manifest,
-                completedFiles: completedFiles,
-                completedBytes: completedBytes,
-                totalBytes: totalBytes
+            throw DownloadFailure.validatorMismatch(
+                expected: "valid byte range from \(offset)",
+                actual: "HTTP 416",
+                field: "Range"
             )
         }
 
@@ -424,23 +416,27 @@ actor ResumableAssetDownloader {
         guard existingBytes > 0 else { return (0, nil, false) }
 
         guard let entry = manifest.files.first(where: { $0.relativePath == file.relativePath }) else {
-            return (0, nil, true)
+            return (existingBytes, nil, false)
         }
 
         let headMetadata = try? await fetchHeadMetadata(for: source)
 
         guard let storedMetadata = entry.metadata else {
-            guard entry.selectedSourceLabel == source.label else {
-                return (0, headMetadata, true)
-            }
-
             if let headMetadata {
                 let expectedBytes = entry.expectedBytes ?? file.expectedSize
                 if let expectedBytes, let currentLength = headMetadata.contentLength, currentLength != expectedBytes {
-                    return (0, headMetadata, true)
+                    throw DownloadFailure.validatorMismatch(
+                        expected: "\(expectedBytes)",
+                        actual: "\(currentLength)",
+                        field: "Content-Length"
+                    )
                 }
                 if let currentLength = headMetadata.contentLength, currentLength < existingBytes {
-                    return (0, headMetadata, true)
+                    throw DownloadFailure.validatorMismatch(
+                        expected: ">= \(existingBytes)",
+                        actual: "\(currentLength)",
+                        field: "Content-Length"
+                    )
                 }
                 return (existingBytes, headMetadata, false)
             }
@@ -452,11 +448,22 @@ actor ResumableAssetDownloader {
             return (existingBytes, headMetadata, false)
         }
 
-        if headMetadata == nil, storedMetadata.sourceURL == source.url {
-            return (existingBytes, storedMetadata, false)
+        if headMetadata == nil {
+            return (existingBytes, storedMetadata.sourceURL == source.url ? storedMetadata : nil, false)
         }
 
-        return (0, headMetadata, true)
+        if let expectedBytes = file.expectedSize,
+           let currentLength = headMetadata?.contentLength,
+           currentLength == expectedBytes,
+           currentLength >= existingBytes {
+            return (existingBytes, headMetadata, false)
+        }
+
+        throw DownloadFailure.validatorMismatch(
+            expected: storedMetadata.etag ?? storedMetadata.lastModified ?? "\(storedMetadata.contentLength ?? 0)",
+            actual: headMetadata?.etag ?? headMetadata?.lastModified ?? "\(headMetadata?.contentLength ?? 0)",
+            field: "metadata"
+        )
     }
 
     private func fetchHeadMetadata(for source: DownloadFile.Source) async throws -> DownloadFileMetadata {
