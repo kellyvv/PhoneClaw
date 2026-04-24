@@ -92,32 +92,33 @@ enum SkillLoader {
     ///   - 英文 locale 先找 `SKILL.en.md`, 找不到 fallback 回 `SKILL.md`
     ///   - 中文 locale 直接 `SKILL.md`
     ///   - 这样增量: skill 作者可以先只维护 zh, 后续陆续加 en 版
+    ///
+    /// 注: 不用 `Bundle.main.url(forResource:withExtension:subdirectory:)` —
+    /// 该 API 在多点文件名 ("SKILL.en.md") 上行为不稳 (会把 `.en` 当 extension,
+    /// 真机拿不到 URL). 改用手动拼接 `bundleURL + "Library/<id>/SKILL.en.md"`
+    /// 然后 FileManager 检查存在性, 这条路径在 iOS 真机 / simulator 都一致。
     static func loadFromBundle(id: String) -> SkillDefinition? {
-        let resourceName: String = {
-            if LanguageService.shared.current.isEnglish,
-               Bundle.main.url(
-                   forResource: "SKILL.en",
-                   withExtension: "md",
-                   subdirectory: "Library/\(id)"
-               ) != nil {
-                return "SKILL.en"
+        let libraryURL = Bundle.main.bundleURL.appendingPathComponent("Library/\(id)", isDirectory: true)
+
+        let candidateFile: URL = {
+            if LanguageService.shared.current.isEnglish {
+                let enURL = libraryURL.appendingPathComponent("SKILL.en.md")
+                if FileManager.default.fileExists(atPath: enURL.path) {
+                    return enURL
+                }
             }
-            return "SKILL"
+            return libraryURL.appendingPathComponent("SKILL.md")
         }()
 
-        guard let bundleURL = Bundle.main.url(
-            forResource: resourceName,
-            withExtension: "md",
-            subdirectory: "Library/\(id)"
-        ) else {
-            print("[SkillLoader] skill '\(id)' 未找到: Bundle.main/Library/\(id)/\(resourceName).md")
+        guard FileManager.default.fileExists(atPath: candidateFile.path) else {
+            print("[SkillLoader] skill '\(id)' 未找到: \(candidateFile.path)")
             return nil
         }
-        guard let content = try? String(contentsOf: bundleURL, encoding: .utf8) else {
+        guard let content = try? String(contentsOf: candidateFile, encoding: .utf8) else {
             print("[SkillLoader] skill '\(id)' 读取失败")
             return nil
         }
-        return parseDefinition(id: id, content: content, filePath: bundleURL)
+        return parseDefinition(id: id, content: content, filePath: candidateFile)
     }
 
     /// 从任意 URL 读取并解析
