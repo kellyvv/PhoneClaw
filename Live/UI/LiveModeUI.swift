@@ -358,7 +358,7 @@ struct LiveModeView: View {
                 HStack(spacing: 8) {
                     Image(systemName: "phone.down.fill")
                         .font(.system(size: 14, weight: .bold))
-                    Text("结束")
+                    Text(tr("结束", "End"))
                         .font(.system(size: 14, weight: .semibold, design: .rounded))
                 }
                 .foregroundStyle(.white)
