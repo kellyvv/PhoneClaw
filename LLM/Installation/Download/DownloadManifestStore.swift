@@ -78,6 +78,25 @@ actor DownloadManifestStore {
         }
     }
 
+    func pruneOrphans(knownAssetIDs: Set<String>) throws {
+        let workspaceRoot = try workspaceRootDirectory()
+        let knownDirectoryNames = Set(knownAssetIDs.map(sanitizedAssetID))
+        guard let children = try? fileManager.contentsOfDirectory(
+            at: workspaceRoot,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return
+        }
+
+        for child in children {
+            let values = try child.resourceValues(forKeys: [.isDirectoryKey])
+            guard values.isDirectory == true else { continue }
+            guard !knownDirectoryNames.contains(child.lastPathComponent) else { continue }
+            try fileManager.removeItem(at: child)
+        }
+    }
+
     private func ensureDirectory(_ url: URL, excludedFromBackup: Bool) throws {
         if !fileManager.fileExists(atPath: url.path) {
             try fileManager.createDirectory(at: url, withIntermediateDirectories: true)

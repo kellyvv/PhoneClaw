@@ -90,7 +90,7 @@ actor ResumableAssetDownloader {
     }
 
     func pruneOrphans(knownAssetIDs: Set<String>) async throws {
-        fatalError("Phase 4")
+        try await manifestStore.pruneOrphans(knownAssetIDs: knownAssetIDs)
     }
 
     private func downloadFile(

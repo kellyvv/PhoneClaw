@@ -74,6 +74,21 @@ struct DownloadManifestStoreTest {
             ".downloads workspace root should be created"
         )
 
+        _ = try await store.workspaceDirectory(for: "stale-asset")
+        _ = try await store.workspaceDirectory(for: "gemma-4-e2b")
+        try await store.pruneOrphans(knownAssetIDs: ["gemma-4-e2b"])
+        precondition(
+            FileManager.default.fileExists(
+                atPath: workspaceRoot.appendingPathComponent("gemma-4-e2b", isDirectory: true).path
+            ),
+            "Known asset workspace should be kept"
+        )
+        let staleURL = workspaceRoot.appendingPathComponent("stale-asset", isDirectory: true)
+        precondition(
+            !FileManager.default.fileExists(atPath: staleURL.path),
+            "Unknown asset workspace should be pruned"
+        )
+
         print("DownloadManifestStore tests passed")
     }
 }

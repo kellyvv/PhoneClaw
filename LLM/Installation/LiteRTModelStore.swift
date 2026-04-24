@@ -112,7 +112,7 @@ final class LiteRTModelStore: ModelInstaller {
         guard let path = artifactPath(for: model) else {
             throw LiteRTDownloadError.invalidResponse
         }
-        try validateDownloadedFile(model: model, at: path)
+        try await validateDownloadedFile(model: model, at: path)
     }
 
     /// 根据 URL host 返回镜像名称
@@ -124,7 +124,7 @@ final class LiteRTModelStore: ModelInstaller {
         return host
     }
 
-    private func validateDownloadedFile(model: ModelDescriptor, at url: URL) throws {
+    private func validateDownloadedFile(model: ModelDescriptor, at url: URL) async throws {
         let fileAttrs = try FileManager.default.attributesOfItem(atPath: url.path)
         let actualSize = (fileAttrs[.size] as? Int64) ?? 0
         if model.expectedFileSize > 0, actualSize < model.expectedFileSize * 9 / 10 {
@@ -132,7 +132,7 @@ final class LiteRTModelStore: ModelInstaller {
             let actualMB = actualSize / 1_000_000
             print("[Download] ❌ 文件大小异常: 期望 ~\(expectedMB)MB, 实际 \(actualMB)MB")
             try? FileManager.default.removeItem(at: url)
-            Task { try? await downloadCoordinator().purge(assetID: model.id) }
+            try? await downloadCoordinator().purge(assetID: model.id)
             throw LiteRTDownloadError.invalidResponse
         }
     }
