@@ -98,7 +98,8 @@ struct ContentView: View {
         .task {
             guard !ProcessInfo.processInfo.isRunningXCTest else { return }
             engine.setup()
-            holdToTalkASR.initialize()
+            // 不在这里 initialize hold-to-talk ASR. 改为用户第一次按住说话时
+            // 通过 ASRService.ensureInitialized 懒加载, 避免 cold start 就占 ~160MB.
         }
         .task(id: selectedPhotoItem) {
             await loadSelectedPhoto()
@@ -111,6 +112,14 @@ struct ContentView: View {
             engine.flushPendingSessionSave()
             engine.cancelActiveGeneration()
             _ = audioCapture.stopCapture()
+        }
+        .onChange(of: engine.messages.isEmpty) { wasEmpty, isEmpty in
+            // 新会话: 卸载 hold-to-talk ASR 以释放 ~160MB. 下次按住说话会 lazy 重新加载.
+            // 注意 onChange 只在**变化**时 fire, 初次 render 不会触发. wasEmpty 参数
+            // 保证我们只响应 "有消息 -> 清空" 这个方向, 忽略新开一条消息的方向.
+            if isEmpty && !wasEmpty {
+                holdToTalkASR.unload()
+            }
         }
         .sheet(isPresented: $showHistory) {
             SessionHistorySheet(engine: engine)
@@ -566,6 +575,7 @@ struct ContentView: View {
                                 print("[UI] Hold-to-talk: empty ASR result, ignoring")
                                 return
                             }
+                            print("[UI] Hold-to-talk ASR transcript: \"\(transcript)\"")
                             inputText = transcript
                             await send()
                         }

@@ -21,7 +21,13 @@ class ASRService {
     private var streamingRecognizer: SherpaOnnxRecognizer?
     private(set) var isAvailable = false
 
+    /// 曾经查找过但失败. 避免每次 transcribe 反复尝试 init 浪费时间.
+    /// 一旦 ensureInitialized 检测到模型文件存在, 会清零重试.
+    private var initAttempted = false
+
     func initialize() {
+        initAttempted = true
+
         #if targetEnvironment(simulator)
         isAvailable = false
         print("[ASR] Simulator build: sherpa-onnx disabled")
@@ -34,8 +40,10 @@ class ASRService {
             modelDir = bundled
         } else if let downloaded = LiveModelDefinition.resolve(for: LiveModelDefinition.asr) {
             modelDir = downloaded.path
+            print("[ASR] Using downloaded model at: \(downloaded.path)")
         } else {
-            print("[ASR] ❌ Model not found in bundle or downloads")
+            let docPath = LiveModelDefinition.downloadedDirectory(for: LiveModelDefinition.asr).path
+            print("[ASR] ❌ Model not found in bundle or downloads (expected: \(docPath))")
             return
         }
 
@@ -70,6 +78,7 @@ class ASRService {
 
     /// 识别完整 PCM 音频 → 返回中文文字
     func transcribe(samples: [Float], sampleRate: Int = 16000) -> String {
+        ensureInitialized()
         guard let recognizer = fullTurnRecognizer else { return "" }
 
         // Reset for new utterance
@@ -94,7 +103,25 @@ class ASRService {
     /// 开始一个新的流式识别 session。
     /// 用于 Pipecat 风格的 interruption 确认：边说边拿 partial transcript。
     func beginStreaming() {
+        ensureInitialized()
         streamingRecognizer?.reset()
+    }
+
+    /// 当 recognizer 还是 nil 但模型已就位 (e.g. 用户在 app 运行期间下载了 LIVE 模型),
+    /// 重新初始化一次. 避免用户被迫重启 app 才能用语音输入.
+    private func ensureInitialized() {
+        guard fullTurnRecognizer == nil else { return }
+        // 只有当"以前试过但失败"且"模型现在已就绪"才值得再试一次.
+        // hasRequiredFiles 快 (只 stat 4 个文件), 不会让 hot path 变慢太多.
+        let asset = LiveModelDefinition.asr
+        let downloaded = LiveModelDefinition.downloadedDirectory(for: asset)
+        let hasBundle = Bundle.main.path(forResource: "sherpa-asr-zh", ofType: nil) != nil
+        let hasDownloaded = LiveModelDefinition.hasRequiredFiles(asset, at: downloaded)
+        guard hasBundle || hasDownloaded else { return }
+        if initAttempted {
+            print("[ASR] Retry initialize: LIVE models now present")
+        }
+        initialize()
     }
 
     /// 喂入一段 chunk，返回当前 partial transcript。
@@ -129,6 +156,17 @@ class ASRService {
     /// 放弃当前流式 session。
     func cancelStreaming() {
         streamingRecognizer?.reset()
+    }
+
+    /// 释放 recognizer, 节省约 ~160MB 内存. 典型用法: 用户新建会话时.
+    /// 下次 transcribe 会通过 ensureInitialized 再装回来.
+    func unload() {
+        guard fullTurnRecognizer != nil || streamingRecognizer != nil else { return }
+        fullTurnRecognizer = nil
+        streamingRecognizer = nil
+        isAvailable = false
+        initAttempted = false
+        print("[ASR] Unloaded (free ~160MB)")
     }
 
     private func makeStreamingResult(from result: SherpaOnnxOnlineRecongitionResult) -> StreamingResult {
