@@ -327,7 +327,7 @@ extension AgentEngine {
         guard let parsedCall = parseToolCall(fullText) else {
             let cleaned = cleanOutput(fullText)
             if let lastAssistant = messages.lastIndex(where: { $0.role == .assistant }) {
-                messages[lastAssistant].update(content: cleaned.isEmpty ? "（无回复）" : cleaned)
+                messages[lastAssistant].update(content: cleaned.isEmpty ? PromptLocale.current.emptyReplyPlaceholder : cleaned)
             }
             isProcessing = false
             return
@@ -351,8 +351,10 @@ extension AgentEngine {
             }
             let listing = results.map { "\($0.id): \($0.description)" }.joined(separator: "\n")
             let resultText = results.isEmpty
-                ? "没有找到匹配「\(query)」的能力。"
-                : "可用能力（\(results.count) 个）：\n\(listing)"
+                ? tr("没有找到匹配「\(query)」的能力。",
+                     "No abilities found matching \"\(query)\".")
+                : tr("可用能力（\(results.count) 个）：\n\(listing)",
+                     "Available abilities (\(results.count)):\n\(listing)")
             log("[Agent] list_skills query=\"\(query)\" results=\(results.count)")
 
             let toolResultSummary = toolResultSummaryForModel(toolName: "list_skills", toolResult: resultText)
@@ -383,7 +385,7 @@ extension AgentEngine {
                 )
             } else {
                 let cleaned = cleanOutput(nextText)
-                messages[followUpIndex].update(content: cleaned.isEmpty ? "（无回复）" : cleaned)
+                messages[followUpIndex].update(content: cleaned.isEmpty ? PromptLocale.current.emptyReplyPlaceholder : cleaned)
                 isProcessing = false
             }
             return
@@ -546,7 +548,7 @@ extension AgentEngine {
                     } else {
                         let retryCleaned = cleanOutput(retryText)
                         let loadedSkillName = loadedDisplayNames.joined(separator: ", ").isEmpty
-                            ? "已加载的能力"
+                            ? tr("已加载的能力", "loaded ability")
                             : loadedDisplayNames.joined(separator: ", ")
                         let finalReply = retryCleaned.isEmpty
                             || looksLikeStructuredIntermediateOutput(retryCleaned)
@@ -584,7 +586,10 @@ extension AgentEngine {
 
         guard ownerSkillId != nil else {
             messages[cardIndex].update(role: .system, content: "done", skillName: displayName)
-            messages.append(ChatMessage(role: .assistant, content: "⚠️ 未知工具: \(call.name)"))
+            messages.append(ChatMessage(role: .assistant, content: tr(
+                "⚠️ 未知工具: \(call.name)",
+                "⚠️ Unknown tool: \(call.name)"
+            )))
             isProcessing = false
             return
         }
@@ -592,7 +597,10 @@ extension AgentEngine {
         let enabledIds = Set(skillEntries.filter(\.isEnabled).map(\.id))
         guard enabledIds.contains(ownerSkillId!) else {
             messages[cardIndex].update(role: .system, content: "done", skillName: displayName)
-            messages.append(ChatMessage(role: .assistant, content: "⚠️ Skill \(displayName) 未启用"))
+            messages.append(ChatMessage(role: .assistant, content: tr(
+                "⚠️ Skill \(displayName) 未启用",
+                "⚠️ Skill \(displayName) is not enabled"
+            )))
             isProcessing = false
             return
         }
@@ -661,7 +669,10 @@ extension AgentEngine {
             }
         } catch {
             messages[cardIndex].update(role: .system, content: "done", skillName: displayName)
-            messages.append(ChatMessage(role: .system, content: "❌ Tool 执行失败: \(error)"))
+            messages.append(ChatMessage(role: .system, content: tr(
+                "❌ Tool 执行失败: \(error)",
+                "❌ Tool execution failed: \(error)"
+            )))
             isProcessing = false
         }
     }

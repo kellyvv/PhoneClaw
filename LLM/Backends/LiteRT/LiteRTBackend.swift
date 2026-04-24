@@ -297,7 +297,7 @@ final class LiteRTBackend: InferenceService {
         loadedModelID = nil
         isLoaded = false
         isGenerating = false
-        statusMessage = "等待加载模型..."
+        statusMessage = tr("等待加载模型...", "Waiting to load model...")
         onModelUnloaded?()
         PCLog.modelUnloaded()
     }
