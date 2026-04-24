@@ -8,8 +8,8 @@ enum ClipboardTools {
         // ── clipboard-read ──
         let readTool = RegisteredTool(
             name: "clipboard-read",
-            description: "读取剪贴板当前内容",
-            parameters: "无",
+            description: tr("读取剪贴板当前内容", "Read the current clipboard contents"),
+            parameters: tr("无", "None"),
             isParameterless: true,
             skipFollowUp: true,
             execute: { _ in
@@ -102,13 +102,13 @@ enum ClipboardTools {
         // ── clipboard-write ──
         let writeTool = RegisteredTool(
             name: "clipboard-write",
-            description: "将文本写入剪贴板",
-            parameters: "text: 要复制的文本内容",
+            description: tr("将文本写入剪贴板", "Write text to the clipboard"),
+            parameters: tr("text: 要复制的文本内容", "text: The text content to copy"),
             requiredParameters: ["text"],
             skipFollowUp: true,
             execute: { args in
                 guard let text = args["text"] as? String else {
-                    return failurePayload(error: "缺少 text 参数")
+                    return failurePayload(error: tr("缺少 text 参数", "Missing text parameter"))
                 }
                 await MainActor.run { UIPasteboard.general.string = text }
                 return canonicalWriteResult(text: text).detail
@@ -117,7 +117,7 @@ enum ClipboardTools {
                 guard let text = args["text"] as? String else {
                     return canonicalToolResult(
                         toolName: "clipboard-write",
-                        toolResult: failurePayload(error: "缺少 text 参数")
+                        toolResult: failurePayload(error: tr("缺少 text 参数", "Missing text parameter"))
                     )
                 }
                 await MainActor.run { UIPasteboard.general.string = text }
@@ -153,8 +153,13 @@ enum ClipboardTools {
         case "text":
             let preview = snapshot["content"] as? String ?? ""
             let truncated = snapshot["truncated"] as? Bool ?? false
-            let suffix = truncated ? "（内容较长，已截断显示）" : ""
-            let summary = "剪贴板当前文本内容是：\(preview)\(suffix)"
+            let suffix = truncated
+                ? tr("（内容较长，已截断显示）", " (content is long; truncated)")
+                : ""
+            let summary = tr(
+                "剪贴板当前文本内容是：\(preview)\(suffix)",
+                "The clipboard currently contains text: \(preview)\(suffix)"
+            )
             let detail = successPayload(
                 result: summary,
                 extras: [
@@ -168,8 +173,13 @@ enum ClipboardTools {
         case "url":
             let preview = snapshot["content"] as? String ?? ""
             let truncated = snapshot["truncated"] as? Bool ?? false
-            let suffix = truncated ? "（内容较长，已截断显示）" : ""
-            let summary = "剪贴板当前是链接：\(preview)\(suffix)"
+            let suffix = truncated
+                ? tr("（内容较长，已截断显示）", " (content is long; truncated)")
+                : ""
+            let summary = tr(
+                "剪贴板当前是链接：\(preview)\(suffix)",
+                "The clipboard currently contains a URL: \(preview)\(suffix)"
+            )
             let detail = successPayload(
                 result: summary,
                 extras: [
@@ -182,7 +192,10 @@ enum ClipboardTools {
 
         case "image":
             let itemCount = snapshot["item_count"] as? Int ?? 1
-            let summary = "剪贴板当前是图片内容。为避免额外内存占用，暂不直接解码图片。"
+            let summary = tr(
+                "剪贴板当前是图片内容。为避免额外内存占用，暂不直接解码图片。",
+                "The clipboard currently contains image content. To avoid extra memory usage, images are not decoded directly."
+            )
             let detail = successPayload(
                 result: summary,
                 extras: [
@@ -194,7 +207,10 @@ enum ClipboardTools {
 
         case "unsupported":
             let itemCount = snapshot["item_count"] as? Int ?? 1
-            let summary = "剪贴板当前包含 \(itemCount) 项非文本内容，暂不直接读取。"
+            let summary = tr(
+                "剪贴板当前包含 \(itemCount) 项非文本内容，暂不直接读取。",
+                "The clipboard currently contains \(itemCount) non-text item(s); not reading directly."
+            )
             let detail = successPayload(
                 result: summary,
                 extras: [
@@ -205,7 +221,7 @@ enum ClipboardTools {
             return CanonicalToolResult(success: true, summary: summary, detail: detail)
 
         default:
-            let summary = "剪贴板当前为空。"
+            let summary = tr("剪贴板当前为空。", "The clipboard is currently empty.")
             let detail = successPayload(
                 result: summary,
                 extras: ["type": "empty"]
@@ -215,7 +231,10 @@ enum ClipboardTools {
     }
 
     private static func canonicalWriteResult(text: String) -> CanonicalToolResult {
-        let summary = "已写入剪贴板，共 \(text.count) 个字符。"
+        let summary = tr(
+            "已写入剪贴板，共 \(text.count) 个字符。",
+            "Wrote \(text.count) character(s) to the clipboard."
+        )
         let detail = successPayload(
             result: summary,
             extras: ["copied_length": text.count]
@@ -237,8 +256,8 @@ enum ClipboardTools {
         // ── clipboard-read ──
         let readTool = RegisteredTool(
             name: "clipboard-read",
-            description: "读取剪贴板当前内容",
-            parameters: "无",
+            description: tr("读取剪贴板当前内容", "Read the current clipboard contents"),
+            parameters: tr("无", "None"),
             isParameterless: true,
             skipFollowUp: true,
             execute: { _ in
@@ -319,13 +338,13 @@ enum ClipboardTools {
         // ── clipboard-write ──
         let writeTool = RegisteredTool(
             name: "clipboard-write",
-            description: "将文本写入剪贴板",
-            parameters: "text: 要复制的文本内容",
+            description: tr("将文本写入剪贴板", "Write text to the clipboard"),
+            parameters: tr("text: 要复制的文本内容", "text: The text content to copy"),
             requiredParameters: ["text"],
             skipFollowUp: true,
             execute: { args in
                 guard let text = args["text"] as? String else {
-                    return failurePayload(error: "缺少 text 参数")
+                    return failurePayload(error: tr("缺少 text 参数", "Missing text parameter"))
                 }
                 await MainActor.run {
                     let pb = NSPasteboard.general
@@ -338,7 +357,7 @@ enum ClipboardTools {
                 guard let text = args["text"] as? String else {
                     return canonicalToolResult(
                         toolName: "clipboard-write",
-                        toolResult: failurePayload(error: "缺少 text 参数")
+                        toolResult: failurePayload(error: tr("缺少 text 参数", "Missing text parameter"))
                     )
                 }
                 await MainActor.run {
@@ -369,8 +388,13 @@ enum ClipboardTools {
         case "text":
             let preview = snapshot["content"] as? String ?? ""
             let truncated = snapshot["truncated"] as? Bool ?? false
-            let suffix = truncated ? "（内容较长，已截断显示）" : ""
-            let summary = "剪贴板当前文本内容是：\(preview)\(suffix)"
+            let suffix = truncated
+                ? tr("（内容较长，已截断显示）", " (content is long; truncated)")
+                : ""
+            let summary = tr(
+                "剪贴板当前文本内容是：\(preview)\(suffix)",
+                "The clipboard currently contains text: \(preview)\(suffix)"
+            )
             let detail = successPayload(
                 result: summary,
                 extras: ["type": "text", "content": preview, "truncated": truncated]
@@ -380,8 +404,13 @@ enum ClipboardTools {
         case "url":
             let preview = snapshot["content"] as? String ?? ""
             let truncated = snapshot["truncated"] as? Bool ?? false
-            let suffix = truncated ? "（内容较长，已截断显示）" : ""
-            let summary = "剪贴板当前是链接：\(preview)\(suffix)"
+            let suffix = truncated
+                ? tr("（内容较长，已截断显示）", " (content is long; truncated)")
+                : ""
+            let summary = tr(
+                "剪贴板当前是链接：\(preview)\(suffix)",
+                "The clipboard currently contains a URL: \(preview)\(suffix)"
+            )
             let detail = successPayload(
                 result: summary,
                 extras: ["type": "url", "content": preview, "truncated": truncated]
@@ -390,7 +419,10 @@ enum ClipboardTools {
 
         case "image":
             let itemCount = snapshot["item_count"] as? Int ?? 1
-            let summary = "剪贴板当前是图片内容。为避免额外内存占用，暂不直接解码图片。"
+            let summary = tr(
+                "剪贴板当前是图片内容。为避免额外内存占用，暂不直接解码图片。",
+                "The clipboard currently contains image content. To avoid extra memory usage, images are not decoded directly."
+            )
             let detail = successPayload(
                 result: summary,
                 extras: ["type": "image", "item_count": itemCount]
@@ -399,7 +431,10 @@ enum ClipboardTools {
 
         case "unsupported":
             let itemCount = snapshot["item_count"] as? Int ?? 1
-            let summary = "剪贴板当前包含 \(itemCount) 项非文本内容，暂不直接读取。"
+            let summary = tr(
+                "剪贴板当前包含 \(itemCount) 项非文本内容，暂不直接读取。",
+                "The clipboard currently contains \(itemCount) non-text item(s); not reading directly."
+            )
             let detail = successPayload(
                 result: summary,
                 extras: ["type": "unsupported", "item_count": itemCount]
@@ -407,7 +442,7 @@ enum ClipboardTools {
             return CanonicalToolResult(success: true, summary: summary, detail: detail)
 
         default:
-            let summary = "剪贴板当前为空。"
+            let summary = tr("剪贴板当前为空。", "The clipboard is currently empty.")
             let detail = successPayload(
                 result: summary,
                 extras: ["type": "empty"]
@@ -417,7 +452,10 @@ enum ClipboardTools {
     }
 
     private static func canonicalWriteResult(text: String) -> CanonicalToolResult {
-        let summary = "已写入剪贴板，共 \(text.count) 个字符。"
+        let summary = tr(
+            "已写入剪贴板，共 \(text.count) 个字符。",
+            "Wrote \(text.count) character(s) to the clipboard."
+        )
         let detail = successPayload(
             result: summary,
             extras: ["copied_length": text.count]
