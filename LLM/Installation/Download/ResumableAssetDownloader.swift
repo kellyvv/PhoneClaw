@@ -243,7 +243,7 @@ actor ResumableAssetDownloader {
         metadata: DownloadFileMetadata?
     ) {
         var request = URLRequest(url: source.url)
-        var offset = initialOffset
+        let offset = initialOffset
         if offset > 0 {
             request.setValue("bytes=\(offset)-", forHTTPHeaderField: "Range")
             if let ifRange = metadata?.etag ?? metadata?.lastModified {
@@ -276,12 +276,15 @@ actor ResumableAssetDownloader {
             throw DownloadFailure.httpStatus(httpResponse.statusCode)
         }
 
-        let appending = offset > 0 && httpResponse.statusCode == 206
-        if offset > 0, !appending {
-            try? fileManager.removeItem(at: partialURL)
-            offset = 0
+        if offset > 0, httpResponse.statusCode != 206 {
+            throw DownloadFailure.validatorMismatch(
+                expected: "206 Partial Content",
+                actual: "HTTP \(httpResponse.statusCode)",
+                field: "Range"
+            )
         }
 
+        let appending = offset > 0
         let responseMetadata = makeMetadata(from: httpResponse, source: source, offset: offset, fallbackExpectedSize: file.expectedSize)
         let expectedBytes = responseMetadata.contentLength ?? file.expectedSize
 
@@ -420,12 +423,31 @@ actor ResumableAssetDownloader {
         let existingBytes = fileSize(partialURL)
         guard existingBytes > 0 else { return (0, nil, false) }
 
-        guard let entry = manifest.files.first(where: { $0.relativePath == file.relativePath }),
-              let storedMetadata = entry.metadata else {
+        guard let entry = manifest.files.first(where: { $0.relativePath == file.relativePath }) else {
             return (0, nil, true)
         }
 
         let headMetadata = try? await fetchHeadMetadata(for: source)
+
+        guard let storedMetadata = entry.metadata else {
+            guard entry.selectedSourceLabel == source.label else {
+                return (0, headMetadata, true)
+            }
+
+            if let headMetadata {
+                let expectedBytes = entry.expectedBytes ?? file.expectedSize
+                if let expectedBytes, let currentLength = headMetadata.contentLength, currentLength != expectedBytes {
+                    return (0, headMetadata, true)
+                }
+                if let currentLength = headMetadata.contentLength, currentLength < existingBytes {
+                    return (0, headMetadata, true)
+                }
+                return (existingBytes, headMetadata, false)
+            }
+
+            return (existingBytes, nil, false)
+        }
+
         if let headMetadata, validatorsMatch(stored: storedMetadata, current: headMetadata) {
             return (existingBytes, headMetadata, false)
         }
