@@ -78,20 +78,26 @@ final class AudioCaptureService: NSObject, @preconcurrency AVAudioRecorderDelega
         if permissionStatus == .notDetermined {
             let granted = await requestPermission()
             guard granted else {
-                lastErrorMessage = "麦克风权限未授予，无法开始录音。"
+                lastErrorMessage = tr(
+                    "麦克风权限未授予，无法开始录音。",
+                    "Microphone permission was not granted; cannot start recording."
+                )
                 return false
             }
         }
 
         guard permissionStatus.isGranted else {
-            lastErrorMessage = "麦克风权限不可用，请到系统设置中开启。"
+            lastErrorMessage = tr(
+                "麦克风权限不可用，请到系统设置中开启。",
+                "Microphone permission is unavailable. Please enable it in System Settings."
+            )
             return false
         }
 
         guard !isCapturing else { return true }
 
         lastErrorMessage = nil
-        statusText = "准备录音..."
+        statusText = tr("准备录音...", "Preparing to record...")
         decodedSnapshot = nil
 
         // 录音文件路径
@@ -132,7 +138,10 @@ final class AudioCaptureService: NSObject, @preconcurrency AVAudioRecorderDelega
             return true
         } catch {
             stopCapture(deactivateSession: false)
-            lastErrorMessage = "启动录音失败：\(error.localizedDescription)"
+            lastErrorMessage = tr(
+                "启动录音失败：\(error.localizedDescription)",
+                "Failed to start recording: \(error.localizedDescription)"
+            )
             statusText = lastErrorMessage ?? ""
             return false
         }
@@ -167,11 +176,17 @@ final class AudioCaptureService: NSObject, @preconcurrency AVAudioRecorderDelega
                 print("[AudioCapture] 🔊 Debug WAV saved: \(debugFile.path)")
 
                 statusText = String(
-                    format: "已录制 %.1f 秒音频，可以直接发送给模型。",
+                    format: tr(
+                        "已录制 %.1f 秒音频，可以直接发送给模型。",
+                        "Recorded %.1f seconds of audio, ready to send to the model."
+                    ),
                     snapshot.duration
                 )
             } catch {
-                lastErrorMessage = "读取录音文件失败: \(error.localizedDescription)"
+                lastErrorMessage = tr(
+                    "读取录音文件失败: \(error.localizedDescription)",
+                    "Failed to read recording file: \(error.localizedDescription)"
+                )
                 statusText = lastErrorMessage ?? ""
                 print("[AudioCapture] Failed to read recording: \(error)")
             }
@@ -295,7 +310,7 @@ final class AudioCaptureService: NSObject, @preconcurrency AVAudioRecorderDelega
     private func updateStatusText() {
         guard isCapturing else { return }
         statusText = String(
-            format: "录音中 %.1f 秒",
+            format: tr("录音中 %.1f 秒", "Recording %.1f s"),
             duration
         )
     }
@@ -305,14 +320,18 @@ final class AudioCaptureService: NSObject, @preconcurrency AVAudioRecorderDelega
     nonisolated func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
         if !flag {
             Task { @MainActor in
-                self.lastErrorMessage = "录音意外终止"
+                self.lastErrorMessage = tr("录音意外终止", "Recording ended unexpectedly")
             }
         }
     }
 
     nonisolated func audioRecorderEncodeErrorDidOccur(_ recorder: AVAudioRecorder, error: Error?) {
         Task { @MainActor in
-            self.lastErrorMessage = "录音编码错误: \(error?.localizedDescription ?? "未知")"
+            let reason = error?.localizedDescription ?? tr("未知", "unknown")
+            self.lastErrorMessage = tr(
+                "录音编码错误: \(reason)",
+                "Recording encoding error: \(reason)"
+            )
         }
     }
 }

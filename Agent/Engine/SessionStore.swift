@@ -127,39 +127,39 @@ extension AgentEngine {
     }
 
     private func sessionTitle(from message: ChatMessage?) -> String {
-        guard let message else { return "新会话" }
+        guard let message else { return tr("新会话", "New Chat") }
         let trimmed = message.content.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty {
             return String(trimmed.prefix(24))
         }
         if !message.images.isEmpty && !message.audios.isEmpty {
-            return "图片与语音会话"
+            return tr("图片与语音会话", "Image & Voice Chat")
         }
         if !message.images.isEmpty {
-            return "图片会话"
+            return tr("图片会话", "Image Chat")
         }
         if !message.audios.isEmpty {
-            return "语音会话"
+            return tr("语音会话", "Voice Chat")
         }
-        return "新会话"
+        return tr("新会话", "New Chat")
     }
 
     private func sessionPreview(from message: ChatMessage?) -> String {
-        guard let message else { return "暂无内容" }
+        guard let message else { return tr("暂无内容", "No content") }
         let trimmed = message.content.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty {
             return String(trimmed.prefix(80))
         }
         if !message.images.isEmpty && !message.audios.isEmpty {
-            return "包含图片与语音"
+            return tr("包含图片与语音", "Contains images and voice")
         }
         if !message.images.isEmpty {
-            return "包含图片"
+            return tr("包含图片", "Contains images")
         }
         if !message.audios.isEmpty {
-            return "包含语音"
+            return tr("包含语音", "Contains voice")
         }
-        return "暂无内容"
+        return tr("暂无内容", "No content")
     }
 
     func updateSessionSummary(_ summary: ChatSessionSummary) {
