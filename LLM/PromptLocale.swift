@@ -90,7 +90,7 @@ struct PromptLocale {
 
         defaultSystemPromptShort: "你是 PhoneClaw，一个运行在本地的私人 AI 助手。你完全运行在设备上，不联网。",
 
-        thinkingLanguageInstruction: "如果启用了思考模式，思考通道和最终回答都必须使用简体中文，不要使用英文。",
+        thinkingLanguageInstruction: "启用了思考模式：回答前先在 <|channel|>thought 通道里逐步推理，然后再给出最终答案。思考通道和最终回答使用的语言都跟用户当轮输入保持一致；如果用户明确要求某种语言，按用户要求。",
 
         imageHistoryMarker: "[用户在此轮发送了图片]",
         imageFollowUpContextOpenMarker: "[上一轮图片上下文]",
@@ -115,7 +115,7 @@ struct PromptLocale {
 
         defaultSystemPromptShort: "You are PhoneClaw, a private AI assistant running locally on your device. You run entirely offline and never connect to the internet.",
 
-        thinkingLanguageInstruction: "When thinking mode is enabled, both the reasoning channel and the final reply must be in English. Do not use Chinese.",
+        thinkingLanguageInstruction: "Thinking mode is enabled: reason step-by-step in the <|channel|>thought channel first, then give the final answer. Both the thinking channel and the final reply must use the same language as the user's current message; if the user explicitly requests a specific language, follow that.",
 
         imageHistoryMarker: "[User sent an image this turn]",
         imageFollowUpContextOpenMarker: "[Previous image context]",
@@ -197,7 +197,7 @@ ___CONTENT_SKILLS___
 </tool_call>
 
 加载 skill 之后请按其指令执行；拿到工具结果后优先直接给最终答案，不要无谓追问。
-用中文回答，简洁实用。
+回答语言跟随用户当轮输入：用户说中文就回中文，说英文就回英文；如果用户明确要求某种语言，按用户要求。保持简洁实用。
 """
 
 // en 版的翻译原则:
@@ -236,5 +236,5 @@ Invocation format:
 </tool_call>
 
 After loading a skill, follow its instructions; after receiving tool results, prefer to give the final answer directly without unnecessary follow-up questions.
-Reply in English, concise and practical.
+Reply in the same language the user used in the current turn: if they wrote in Chinese, reply in Chinese; if in English, reply in English. If the user explicitly requests a specific language, follow that. Keep replies concise and practical.
 """
