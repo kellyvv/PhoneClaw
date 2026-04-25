@@ -16,6 +16,7 @@
 		0C5EBE615C219F104D6D9C8D /* (null) in Sources */ = {isa = PBXBuildFile; };
 		0D58F93BFFFFE778CD8A34D1 /* LiveModeEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83C5B0E5FD420CCB6BD8D1A4 /* LiveModeEngine.swift */; };
 		0F13CB63EFD6EB20B60C013B /* ASRService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C500DE8A47482D5DA7DA6D3 /* ASRService.swift */; };
+		41A4AE7307B1AEB76793BDC9 /* ASRBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A5F58AC37EA816ED739551D /* ASRBackend.swift */; };
 		10405212EEF000AA04B72748 /* (null) in Sources */ = {isa = PBXBuildFile; };
 		1D6B9BBA44F194BB9B33BD65 /* (null) in Sources */ = {isa = PBXBuildFile; };
 		20B8C55E032BA07B3E640E80 /* Skills.swift in Sources */ = {isa = PBXBuildFile; fileRef = 571908036E6DCED1D58C1E9E /* Skills.swift */; };
@@ -205,6 +206,7 @@
 		52F30C6348B834E5D157205F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		571908036E6DCED1D58C1E9E /* Skills.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Skills.swift; sourceTree = "<group>"; };
 		7C500DE8A47482D5DA7DA6D3 /* ASRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ASRService.swift; path = Shared/Audio/ASRService.swift; sourceTree = SOURCE_ROOT; };
+		8A5F58AC37EA816ED739551D /* ASRBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ASRBackend.swift; path = Shared/Audio/ASRBackend.swift; sourceTree = SOURCE_ROOT; };
 		83C5B0E5FD420CCB6BD8D1A4 /* LiveModeEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveModeEngine.swift; path = Live/Core/LiveModeEngine.swift; sourceTree = SOURCE_ROOT; };
 		83C97FEEC133F40BDEFBD9AE /* LiveSkillCall.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveSkillCall.swift; path = Live/Turn/Types/LiveSkillCall.swift; sourceTree = SOURCE_ROOT; };
 		840B21562E52B6B93D4410D0 /* LiveModeUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveModeUI.swift; path = Live/UI/LiveModeUI.swift; sourceTree = SOURCE_ROOT; };
@@ -548,6 +550,7 @@
 				C6B2CA800EABEF23C3821C51 /* LiveVoiceConstants.swift */,
 				F3E547AAB840AEB6F57C71A4 /* PromptBuilder+LiveVoice.swift */,
 				7C500DE8A47482D5DA7DA6D3 /* ASRService.swift */,
+				8A5F58AC37EA816ED739551D /* ASRBackend.swift */,
 				357644EE0B2A47696762E171 /* LiveCameraService.swift */,
 				9C503EC6B19AD0CF5515B98E /* LiveComponentTest.swift */,
 				094A760C8A6DFD5E317AF5B8 /* LiveMetrics.swift */,
@@ -802,6 +805,7 @@
 				F3B736266E38252D03E6C354 /* LiveVoiceConstants.swift in Sources */,
 				FEFA2136332FF2B38F71C999 /* PromptBuilder+LiveVoice.swift in Sources */,
 				0F13CB63EFD6EB20B60C013B /* ASRService.swift in Sources */,
+				41A4AE7307B1AEB76793BDC9 /* ASRBackend.swift in Sources */,
 				7BB3AC9437469CCB6929F015 /* LiveCameraService.swift in Sources */,
 				839929FB52DF6A121DCEE82C /* LiveComponentTest.swift in Sources */,
 				A340D947F4D1C7DE26F7F978 /* LiveMetrics.swift in Sources */,
