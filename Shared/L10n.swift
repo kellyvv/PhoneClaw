@@ -33,9 +33,11 @@ enum L10n {
 
         static var language:          String { tr("语言", "Language") }
         static var languageFooter:    String {
+            // 短语刻意控长度跟中文版接近 — 之前的英文版换行成 2 行,
+            // 中英切换时整个 layout 跳一截 (Configurations sheet 高度变化).
             tr(
                 "默认跟随系统。切换语言只影响新对话。",
-                "Defaults to system language. Changes apply to new conversations."
+                "Defaults to system. Applies to new chats."
             )
         }
     }

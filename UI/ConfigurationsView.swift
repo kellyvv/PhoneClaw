@@ -19,6 +19,7 @@ struct ConfigurationsView: View {
     @State private var permissionStatuses: [AppPermissionKind: AppPermissionStatus] = [:]
     @State private var requestingPermission: AppPermissionKind?
     @State private var liveDownloader = LiveModelStore()
+    @State private var didLoadCurrentSettings = false
 
     var body: some View {
         NavigationStack {
@@ -78,7 +79,11 @@ struct ConfigurationsView: View {
             .background(Theme.bgElevated)
         }
         .preferredColorScheme(.dark)
-        .onAppear { loadCurrentSettings() }
+        .onAppear {
+            guard !didLoadCurrentSettings else { return }
+            didLoadCurrentSettings = true
+            loadCurrentSettings()
+        }
         .sheet(isPresented: $showSkillsManager) {
             SkillsManagerView(engine: engine)
         }
@@ -137,6 +142,7 @@ struct ConfigurationsView: View {
                 .overlay(
                     RoundedRectangle(cornerRadius: 8)
                         .strokeBorder(Theme.border, lineWidth: 1)
+                        .allowsHitTesting(false)
                 )
 
             Button(tr("恢复默认", "Restore Default")) {
@@ -190,7 +196,7 @@ struct ConfigurationsView: View {
                                 if model.id.contains("e2b") {
                                     Text(tr(
                                         "轻量款 · 聊天 / 翻译 / 单轮查询。多轮工具对话能力有限。",
-                                        "Lightweight · chat / translate / single-turn queries. Limited multi-turn tool use."
+                                        "Lightweight · chat / translate / single-turn. Limited multi-turn tool use."
                                     ))
                                         .font(.caption2)
                                         .foregroundStyle(Theme.textTertiary)
@@ -256,6 +262,7 @@ struct ConfigurationsView: View {
                                 selectedModelID == model.id ? Theme.accent : Theme.border,
                                 lineWidth: 1
                             )
+                            .allowsHitTesting(false)
                     )
                     .contentShape(RoundedRectangle(cornerRadius: 12))
                     .onTapGesture {
@@ -273,6 +280,7 @@ struct ConfigurationsView: View {
         .overlay(
             RoundedRectangle(cornerRadius: 16)
                 .strokeBorder(Theme.border, lineWidth: 1)
+                .allowsHitTesting(false)
         )
     }
 
@@ -354,11 +362,17 @@ struct ConfigurationsView: View {
                 .font(.headline)
                 .foregroundStyle(Theme.textPrimary)
 
-            Picker(tr("推理后端", "Inference Backend"), selection: $preferredBackend) {
-                Text("GPU (Metal)").tag("gpu")
-                Text("CPU").tag("cpu")
-            }
-            .pickerStyle(.segmented)
+            // 自己拼的 segmented control. 替代之前的 Picker(.segmented),
+            // 因为后者在当前 iOS / SwiftUI 版本组合下死活不响应点击。
+            // 用纯 Button 拼: 每个按钮自己 onTap 写 @State, 没有 SwiftUI Picker
+            // 的 hit-test 黑魔法干扰. 视觉跟系统 segmented 接近但是显式控制。
+            CustomSegmentedPicker(
+                selection: $preferredBackend,
+                options: [
+                    (value: "gpu", label: "GPU (Metal)"),
+                    (value: "cpu", label: "CPU"),
+                ]
+            )
 
             // 当前 model + backend 组合下的速度 (随 model/backend 选择动态变化)
             Text(estimatedSpeedText)
@@ -369,7 +383,7 @@ struct ConfigurationsView: View {
             Label(
                 tr(
                     "低内存手机建议选 CPU — GPU 占内存较高。",
-                    "Low-memory devices: prefer CPU — GPU uses significantly more memory."
+                    "Low-memory devices: prefer CPU — GPU is memory-heavy."
                 ),
                 systemImage: "exclamationmark.triangle.fill"
             )
@@ -379,10 +393,18 @@ struct ConfigurationsView: View {
             .fixedSize(horizontal: false, vertical: true)
         }
         .padding(16)
-        .background(Theme.bg, in: RoundedRectangle(cornerRadius: 16))
+        // iOS 17/18: .background(_:in:) 让 Shape 注册成 hit-test 目标会吃掉
+        // 内部 Picker 的点击. 改成 ZStack 把背景放底层 + clipShape 切角,
+        // 背景不参与 hit testing, Picker 拿到完整触控.
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Theme.bg)
+                .allowsHitTesting(false)
+        )
         .overlay(
             RoundedRectangle(cornerRadius: 16)
                 .strokeBorder(Theme.border, lineWidth: 1)
+                .allowsHitTesting(false)
         )
     }
 
@@ -398,41 +420,45 @@ struct ConfigurationsView: View {
                 .font(.headline)
                 .foregroundStyle(Theme.textPrimary)
 
-            Picker(
-                L10n.Config.language,
+            // 同 backendSection: 用自定义 segmented control 替代 SwiftUI Picker.
+            // setter 里只快速 set LanguageService 让 UI 立即重渲染拿到新文案;
+            // 重活 (reload skill / 改 SYSPROMPT / 重置 statusMessage) 推到下个
+            // runloop tick 异步跑, 防止按钮 tap 后阻塞主线程造成"按下不响应"的卡顿感。
+            CustomSegmentedPicker(
                 selection: Binding(
                     get: { LanguageService.shared.selected },
                     set: { newValue in
+                        guard newValue != LanguageService.shared.selected else { return }
+                        // 立即生效的部分: LanguageService 写 UserDefaults + 触发 @Observable
+                        // tr() 视图的重渲染. 这一步必须同步, 否则 segmented 按钮的视觉
+                        // selected 状态会跟 LanguageService.current 短时间不一致。
                         LanguageService.shared.selected = newValue
-                        // Locale 切换的 runtime cascade. @Observable 让视图里 `tr()` 自动重算,
-                        // 但下面这些是 runtime 已经固化过的 resolved 内容, 不会自动重建:
-                        //   1. Registry bundle 层: reloadAll 重读 SKILL.en.md vs SKILL.md
+
+                        // 重活异步跑. Locale 切换的 runtime cascade:
+                        //   1. Registry bundle 层: reloadAll 重读 SKILL.en.md vs SKILL.md (磁盘 + YAML 解析, ~50-150ms)
                         //   2. Engine cache 层: reloadSkills 把 registry 的新 metadata 同步进
-                        //      engine.skillEntries (UI chips 读的是这个数组, 不是 registry)
-                        //   3. SYSPROMPT.md 物理文件: 跑 locale-mismatch 迁移, 重写默认
-                        //   4. 本地 @State systemPrompt: TextEditor 绑的是这个, 不会自动
-                        //      从 engine.config.systemPrompt 同步, 必须手动重拉
+                        //      engine.skillEntries (UI chips 读的是这个数组)
+                        //   3. SYSPROMPT.md 物理文件: 跑 locale-mismatch 迁移 (~10-30ms 磁盘 IO)
+                        //   4. 本地 @State systemPrompt: TextEditor 绑的是这个, 必须手动重拉
                         //   5. inference.statusMessage: 存的是 tr() 当时的快照 string, 重写
-                        _ = engine.skillRegistry.reloadAll()
-                        engine.reloadSkills()
-                        engine.loadSystemPrompt()
-                        systemPrompt = engine.config.systemPrompt
-                        if !engine.inference.isLoaded {
-                            if let selectedModel = engine.availableModels.first(where: { $0.id == selectedModelID }),
-                               engine.installer.artifactPath(for: selectedModel) == nil {
-                                engine.inference.statusMessage = tr("请先下载模型", "Download a model first")
-                            } else {
-                                engine.inference.statusMessage = tr("等待加载模型...", "Waiting to load model...")
+                        Task { @MainActor in
+                            _ = engine.skillRegistry.reloadAll()
+                            engine.reloadSkills()
+                            engine.loadSystemPrompt()
+                            systemPrompt = engine.config.systemPrompt
+                            if !engine.inference.isLoaded {
+                                if let selectedModel = engine.availableModels.first(where: { $0.id == selectedModelID }),
+                                   engine.installer.artifactPath(for: selectedModel) == nil {
+                                    engine.inference.statusMessage = tr("请先下载模型", "Download a model first")
+                                } else {
+                                    engine.inference.statusMessage = tr("等待加载模型...", "Waiting to load model...")
+                                }
                             }
                         }
                     }
-                )
-            ) {
-                ForEach(AppLanguage.allCases, id: \.self) { lang in
-                    Text(lang.displayName).tag(lang)
-                }
-            }
-            .pickerStyle(.segmented)
+                ),
+                options: AppLanguage.allCases.map { (value: $0, label: $0.displayName) }
+            )
 
             Text(L10n.Config.languageFooter)
                 .font(.caption)
@@ -440,10 +466,16 @@ struct ConfigurationsView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(16)
-        .background(Theme.bg, in: RoundedRectangle(cornerRadius: 16))
+        // 同 backendSection: 避开 .background(_:in:) 吃 Picker 点击的 SwiftUI 行为
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Theme.bg)
+                .allowsHitTesting(false)
+        )
         .overlay(
             RoundedRectangle(cornerRadius: 16)
                 .strokeBorder(Theme.border, lineWidth: 1)
+                .allowsHitTesting(false)
         )
     }
 
@@ -501,6 +533,7 @@ struct ConfigurationsView: View {
         .overlay(
             RoundedRectangle(cornerRadius: 12)
                 .strokeBorder(Theme.border, lineWidth: 1)
+                .allowsHitTesting(false)
         )
     }
 
@@ -669,6 +702,7 @@ struct ConfigurationsView: View {
         .overlay(
             RoundedRectangle(cornerRadius: 16)
                 .strokeBorder(Theme.border, lineWidth: 1)
+                .allowsHitTesting(false)
         )
     }
 
@@ -1042,5 +1076,64 @@ private extension ModelInstallState {
             return true
         }
         return false
+    }
+}
+
+// MARK: - CustomSegmentedPicker
+//
+// SwiftUI 的 `Picker(.segmented)` 在当前 iOS / Theme 配色下死活不响应点击,
+// 复现稳定 (推理后端 + 语言两个都不行). 怀疑是 ScrollView 内 .background +
+// .pickerStyle(.segmented) 组合的 hit-test 黑魔法, 改 background 写法 / 加
+// allowsHitTesting 都没效果. 直接用纯 Button 拼一个看着像 segmented 的控件,
+// 每个 button 自己 onTap 写 selection, 完全显式, 没有任何 SwiftUI 内部行为
+// 干扰. 视觉上跟 iOS 原生 segmented control 接近 (圆角胶囊背景 + 选中态 thumb).
+//
+// thumb 滑动动画: 用 matchedGeometryEffect 把 "selected 背景" 在不同 segment
+// 之间做连贯过渡, 避免单纯切换 background 颜色那种生硬感。
+
+struct CustomSegmentedPicker<Value: Hashable>: View {
+    @Binding var selection: Value
+    let options: [(value: Value, label: String)]
+    @Namespace private var thumbNamespace
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(options.indices, id: \.self) { index in
+                let option = options[index]
+                let isSelected = option.value == selection
+                Button {
+                    if option.value != selection {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
+                            selection = option.value
+                        }
+                    }
+                } label: {
+                    Text(option.label)
+                        .font(.subheadline.weight(isSelected ? .semibold : .regular))
+                        .foregroundStyle(isSelected ? Theme.textPrimary : Theme.textSecondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background(
+                            // 只有选中段渲染 thumb 背景, 用 matchedGeometryEffect
+                            // 让它在不同 segment 之间连贯滑动.
+                            ZStack {
+                                if isSelected {
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .fill(Theme.bgHover)
+                                        .matchedGeometryEffect(id: "thumb", in: thumbNamespace)
+                                }
+                            }
+                        )
+                        .contentShape(RoundedRectangle(cornerRadius: 8))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(3)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Theme.bgElevated.opacity(0.6))
+                .allowsHitTesting(false)
+        )
     }
 }

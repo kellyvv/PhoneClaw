@@ -48,21 +48,34 @@ enum LiveDownloadPlanner {
 
         for host in hosts {
             do {
-                let repositoryFiles = try await fetchTree(host: host, repo: asset.repositoryID)
-                    .filter { LiveModelDefinition.shouldDownload($0.path, for: asset) }
-                    .sorted { $0.path < $1.path }
+                // 1. 拉 repo tree (full repo paths, 包含可能的 prefix)
+                // 2. 用 LiveModelDefinition.localPath(...) 把每个 entry 映射成 (remote, local) tuple,
+                //    不在 prefix 范围内的返回 nil 被过滤掉
+                // 3. 应用 excludePatterns (按 remote path 判断 — patterns 是 repo 相对的)
+                // 4. validateRequiredFiles 用 local path 校验 (asset.requiredFiles 是 local 相对)
+                let scoped: [(remote: String, local: String, size: Int64?)] = try await fetchTree(host: host, repo: asset.repositoryID)
+                    .compactMap { repoFile -> (remote: String, local: String, size: Int64?)? in
+                        guard let local = LiveModelDefinition.localPath(forRepository: repoFile.path, in: asset) else {
+                            return nil
+                        }
+                        guard LiveModelDefinition.shouldDownload(repoFile.path, for: asset) else {
+                            return nil
+                        }
+                        return (remote: repoFile.path, local: local, size: repoFile.size)
+                    }
+                    .sorted { $0.local < $1.local }
 
-                try validateRequiredFiles(asset, repositoryFiles: repositoryFiles)
+                try validateRequiredLocalFiles(asset, scoped: scoped)
 
-                guard !repositoryFiles.isEmpty else {
+                guard !scoped.isEmpty else {
                     throw DownloadFailure.invalidResponse("\(asset.id) has no downloadable files")
                 }
 
-                let downloadFiles = repositoryFiles.map { repositoryFile in
+                let downloadFiles = scoped.map { entry in
                     DownloadFile(
-                        relativePath: repositoryFile.path,
-                        expectedSize: normalizedExpectedSize(repositoryFile.size),
-                        sources: downloadSources(for: asset, file: repositoryFile.path)
+                        relativePath: entry.local,
+                        expectedSize: normalizedExpectedSize(entry.size),
+                        sources: downloadSources(for: asset, remoteFile: entry.remote)
                     )
                 }
 
@@ -79,6 +92,31 @@ enum LiveDownloadPlanner {
         }
 
         throw lastError ?? DownloadFailure.invalidResponse("Unable to list \(asset.id)")
+    }
+
+    /// 用 local 相对路径校验 requiredFiles (asset.requiredFiles 写的是 local 路径,
+    /// 即 prefix 已剥掉的版本)。
+    private static func validateRequiredLocalFiles(
+        _ asset: LiveModelAsset,
+        scoped: [(remote: String, local: String, size: Int64?)]
+    ) throws {
+        let localPaths = scoped.map(\.local)
+        let missing = asset.requiredFiles.filter { required in
+            !localPathsContain(required, in: localPaths)
+        }
+        guard missing.isEmpty else {
+            throw DownloadFailure.invalidResponse(
+                "\(asset.id) repository schema changed; missing required files: \(missing.joined(separator: ", "))"
+            )
+        }
+    }
+
+    private static func localPathsContain(_ requiredPath: String, in paths: [String]) -> Bool {
+        if paths.contains(where: { $0 == requiredPath }) {
+            return true
+        }
+        let directoryPrefix = requiredPath.hasSuffix("/") ? requiredPath : "\(requiredPath)/"
+        return paths.contains { $0.hasPrefix(directoryPrefix) }
     }
 
     private static func fetchTree(host: String, repo: String) async throws -> [RepositoryFile] {
@@ -163,13 +201,14 @@ enum LiveDownloadPlanner {
         return files.contains { $0.path.hasPrefix(directoryPrefix) }
     }
 
+    /// 拼下载 URL 用 **repository 相对路径** (含 prefix), 跟 HF 上文件实际位置对应。
     private static func downloadSources(
         for asset: LiveModelAsset,
-        file: String,
+        remoteFile: String,
         sourceOrder: [String] = hosts
     ) -> [DownloadFile.Source] {
         sourceOrder.enumerated().compactMap { index, host in
-            let encodedFile = encodedPath(file)
+            let encodedFile = encodedPath(remoteFile)
             guard let url = URL(string: "https://\(host)/\(asset.repositoryID)/resolve/main/\(encodedFile)") else {
                 return nil
             }

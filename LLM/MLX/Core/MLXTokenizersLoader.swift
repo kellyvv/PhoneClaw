@@ -41,14 +41,19 @@ struct MLXTokenizerBridge: MLXLMCommon.Tokenizer {
                 tools: tools,
                 additionalContext: additionalContext
             )
-        } catch let error as Tokenizers.TokenizerError where error == .missingChatTemplate {
-            throw MLXLMCommon.TokenizerError.missingChatTemplate
+        } catch let error as Tokenizers.TokenizerError {
+            if case .missingChatTemplate = error {
+                throw MLXLMCommon.TokenizerError.missingChatTemplate
+            }
+            throw error
         }
     }
 }
 
 struct MLXTokenizersLoader: TokenizerLoader {
     func load(from directory: URL) async throws -> any MLXLMCommon.Tokenizer {
+        // swift-tokenizers 0.2.x 把 from(modelFolder:) 重命名成 from(directory:);
+        // Package.resolved bump 之后必须用新名 (iOS 之前缓存里是旧 API 所以编译过)。
         let upstream = try await AutoTokenizer.from(directory: directory)
         return MLXTokenizerBridge(upstream)
     }

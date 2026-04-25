@@ -29,6 +29,9 @@ PhoneClaw 是一个运行在 iPhone 上的本地 AI Agent。它使用 Gemma 4 Li
 
 ## 2026-04-25 更新
 
+- 发布 v1.3.1 — [下载地址](https://github.com/kellyvv/PhoneClaw/releases/tag/v1.3.1)
+- 增加英文的 LIVE 模式
+- 修复了一些已知的 BUG
 - 发布 v1.3.0 — [下载地址](https://github.com/kellyvv/PhoneClaw/releases/tag/v1.3.0)
 - 增加了英文版本，可以根据系统语言自动切换。
 - 下载模块做了重构，支持断点续传，后台下载，系统会根据当前网络环境自动选择速度最快的节点。

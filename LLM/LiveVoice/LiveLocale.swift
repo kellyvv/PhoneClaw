@@ -2,27 +2,32 @@ import Foundation
 
 // MARK: - Live 语音模式 i18n 配置
 //
-// 设计目标: 加新语言只在本文件加 `case` + `LiveLocaleConfig` 实例, 其它代码不变.
+// 设计目标: LIVE flow 代码全部用 `LiveLocale.zhCN.config` 这个固定入口。
+// 真正的语言切换发生在 `.config` getter 内部 — 它读 LanguageService,
+// 系统语言中文返回 .zhCN 数据, 英文返回 .enUS 数据。这样保持 LIVE flow
+// 文件 (LiveModeEngine / LiveModeUI / LiveTurnProcessor) 一行不动,
+// 同时让 zh / en 走各自的 prompt + persona + 状态文案。
 //
 // 关键设计点:
-//   1. Live 是一套独立 prompt 体系. 为保证 TTS 朗读自然, zh-CN 场景的 prompt
-//      资产必须是纯中文, 不再继承 Chat 的通用 system prompt.
-//   2. PersonaName 是核心. TTS 不能混读 (中英混读卡顿不自然), 所以中文场景必须用
-//      "手机龙虾", 英文场景必须用 "PhoneClaw", 各自单语.
-//   3. 各 prompt 模板 (voiceConstraints) 用 `{name}` 占位, 渲染时替换为 personaName,
-//      避免 personaName 字面和模板正文漂移.
+//   1. 中英两套 prompt 资产完全独立, 不混读 (TTS 中英混读不自然)。
+//   2. PersonaName 各 locale 单语: 中文 "手机龙虾", 英文 "PhoneClaw"。
+//   3. PromptBuilder.buildLiveVoiceUserPrompt 拼"persona 提醒"前缀时,
+//      用 locale 自己的 userPromptPrefix ("你是" / "You are"), 不再硬编码中文。
 
-/// Live 模式支持的 locale. 加新语言:
-///   1. 加一个 case
-///   2. 在 `LiveLocaleConfig` extension 里加对应静态实例
-///   3. 在 `config` switch 里加 case 映射
 enum LiveLocale: String, Sendable {
     case zhCN = "zh-CN"
-    // case enUS = "en-US"   // ★ 未来扩展示意
 
+    /// LIVE flow 调用 `LiveLocale.zhCN.config` 的地方都走这个 getter。
+    /// 实际返回哪份数据看 `LanguageService.shared.current` — 中文系统拿 .zhCN,
+    /// 英文系统拿 .enUS。case 维持一个 `.zhCN` 是因为 LIVE flow 大量代码
+    /// 已经写死了 `LiveLocale.zhCN` / `locale: .zhCN`, 改 enum 形状就要碰
+    /// LIVE flow 文件 (跟"流程不改"边界冲突)。让 case 退化成"locale 入口",
+    /// 用一个 dynamic getter 换 call site 全部不动。
     var config: LiveLocaleConfig {
-        switch self {
-        case .zhCN: return .zhCN
+        switch LanguageService.shared.current.resolved {
+        case .zhHans: return .zhCNData
+        case .en:     return .enUSData
+        case .auto:   return .zhCNData  // 不可能, .auto 在 LanguageService 里已经被 resolve 掉
         }
     }
 }
@@ -55,39 +60,34 @@ struct LiveLocaleConfig: Sendable {
         let interruptHint: String
     }
 
-    // MARK: Persona
-
     /// LLM 在 Live 自我介绍用的名字. TTS 友好 — 单语, 无英文混读.
     let personaName: String
 
-    // MARK: Prompt 模板
-
-    /// Live 唯一的 system prompt. 进入 Live 时一次性注入，后续轮次只发用户文本，
-    /// 不再做多段拼装、不再做禁词 / persona 替换 / 占位渲染。
-    /// 收敛历史：试过 base + voiceConstraints + modeSection + skillSection + 禁词 +
-    /// vision guard 的多段方案，禁词在 Gemma 4 4bit 上触发"白熊效应"反而引爆漂移
-    /// (实测越禁 Gemma/Google 模型越自报)。结论是只留一段最小 prompt，剩下的事交给模型。
+    /// Live 唯一的 system prompt. 进入 Live 时一次性注入。
     let systemPrompt: String
 
     /// Live 启动后用于预热 conversation 的首条 user turn.
     let greetingPrompt: String
 
-    // MARK: Engine fallback
-
     /// LiveModeEngine 收到 unexpected tool_call 时, TTS 朗读的口语兜底.
-    /// 用 locale 自己的语言, 用户听到自然语言提示, 不会听到一片寂静.
     let fallbackUtterance: String
 
-    /// Live 状态/提示相关文案. Phase 1 把会被用户看到或听到的自然语言字符串
-    /// 收回 locale 配置，避免继续散在 engine / UI 里。
+    /// PromptBuilder 在每轮 user prompt 前面加的"persona 提醒"前缀。
+    /// **包含 locale 需要的尾部空格**（英文需要 "You are " 后空格, 中文不需要）,
+    /// 这样模板可以写成 `(\(prefix)\(persona))` 不再做语言判断:
+    ///   - 中文 "你是"     → 拼出 "(你是手机龙虾) 用户的话"
+    ///   - 英文 "You are " → 拼出 "(You are PhoneClaw) what user said"
+    let userPromptPrefix: String
+
+    /// Live 状态/提示相关文案。
     let statusStrings: StatusStrings
 }
 
-// MARK: - 默认: 中文 (zh-CN)
+// MARK: - 中文 (zh-CN) 数据
 
 extension LiveLocaleConfig {
 
-    static let zhCN = LiveLocaleConfig(
+    static let zhCNData = LiveLocaleConfig(
         personaName: "手机龙虾",
         systemPrompt: """
         你叫"手机龙虾"，是用户手机上的本地语音助手。
@@ -99,6 +99,7 @@ extension LiveLocaleConfig {
         """,
         greetingPrompt: "我们开始吧，用一句简短的中文口语和我打个招呼，再邀请我直接说需求。一句话，不超过 20 个字，不要用任何符号、表情或英文。",
         fallbackUtterance: "抱歉，我刚才没听清，麻烦再说一次。",
+        userPromptPrefix: "你是",
         statusStrings: StatusStrings(
             preparingPrefix: "正在准备",
             preparingLive: "正在准备语音对话",
@@ -122,14 +123,54 @@ extension LiveLocaleConfig {
         )
     )
 
-    // MARK: 未来扩展示意 (英文 locale)
-    //
-    // static let enUS = LiveLocaleConfig(
-    //     personaName: "PhoneClaw",
-    //     baseSystemPrompt: "...",
-    //     voiceConstraintsTemplate: """
-    //     You are in a real-time voice conversation. ... Your name is "{name}". ...
-    //     """,
-    //     ...
-    // )
+    /// Backward-compat alias. LiveVoiceConstants 还引用 `.zhCN`, 保留指针。
+    static var zhCN: LiveLocaleConfig { zhCNData }
+
+    // MARK: - 英文 (en-US) 数据
+
+    static let enUSData = LiveLocaleConfig(
+        personaName: "PhoneClaw",
+        systemPrompt: """
+        You are an on-device voice assistant called PhoneClaw, running locally on the user's phone.
+        You are having a real-time voice conversation with the user.
+
+        Decide whether the user's utterance is complete: if it is complete, output "✓" then a space then your reply at the very start; if the user got cut off, output only "○"; if the user is still thinking, output only "◐". After "○" or "◐" output no further characters.
+
+        Reply in natural conversational English, smooth and casual. Give substance and detail — at least two or three sentences.
+
+        IMPORTANT — sentence openers: never begin a reply with the bare word "PhoneClaw". Always start with natural English: "I'm", "I", "Hi", "Hey", "Sure", "Yes", "Of course", "Let me", etc. When introducing yourself, say "I'm PhoneClaw, ..." or "Hi, I'm PhoneClaw — ..." but do NOT start with "PhoneClaw" alone.
+
+        For introductory questions like "what can you do", give specific concrete examples.
+
+        You have camera capability, but the camera is off by default and you cannot see anything. The system will notify you when the camera state changes. Until you receive an "on" notification, do not claim to see anything.
+        """,
+        greetingPrompt: "Let's begin. Greet me in one short casual English sentence and invite me to say what I need. **Start your reply with \"Hi\" or \"Hey\"**, never start with the word \"PhoneClaw\". One sentence only, under 20 words, no symbols, no emoji, no Chinese.",
+        fallbackUtterance: "Sorry, I didn't catch that. Could you say it again?",
+        // 英文留空 — 不再加 (You are PhoneClaw) 这个 per-turn 提醒。
+        // 中文里 (你是手机龙虾) 是自然语序模型不会当 label, 但英文 "(You are PhoneClaw)"
+        // 在 Gemma E2B 英文模式下被当成 stage direction, 强化了"以 PhoneClaw 开头答复"的鹦鹉模式。
+        // 系统 prompt 已经在 conversation 开场注入并保留在 KV cache 里, 不需要每轮再提醒。
+        userPromptPrefix: "",
+        statusStrings: StatusStrings(
+            preparingPrefix: "Preparing",
+            preparingLive: "Preparing voice mode",
+            preparing: "Preparing",
+            liveModelMissing: "Please download voice models in Settings first",
+            audioEngineFailed: "Audio engine failed to start",
+            vadUnavailable: "Voice detection unavailable",
+            recording: "Listening",
+            processing: "Thinking",
+            listeningPrompt: "I'm listening, go ahead",
+            loadModelFirst: "Please load the model first",
+            initializationFailed: "Voice mode init failed",
+            ended: "Voice mode ended",
+            speaking: "Replying",
+            loadingHeadline: "Loading",
+            listeningHeadline: "I'm listening",
+            recordingHeadline: "Listening",
+            processingHeadline: "Thinking",
+            speakingHeadline: "Replying",
+            interruptHint: "You can interrupt me"
+        )
+    )
 }

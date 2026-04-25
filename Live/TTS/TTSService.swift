@@ -3,7 +3,12 @@ import AVFoundation
 
 // MARK: - TTS Service
 //
-// sherpa-onnx + vits-zh-hf-keqing (中文音色, 116MB)
+// sherpa-onnx 多语言 TTS:
+//   - 中文系统: vits-zh-hf-keqing (lexicon-based, ~136MB, sid=200, 单女声)
+//   - 英文系统: vits-piper-en_US-libritts_r-medium (espeak-based, ~76MB, 904 speakers, 默认 sid=0)
+// 切换发生在 initialize() 阶段, 根据 LanguageService 选择加载哪份配置。
+// 加载之后 synthesize / playWAV / 播放队列 三套接口对调用方完全透明。
+//
 // 播放通过 LiveAudioIO 的 AVAudioPlayerNode, 与 VAD 共享同一个 AVAudioEngine,
 // 使 iOS AEC 能消除 TTS 输出对麦克风的回声。
 // 降级: 如果模型不可用, 用系统 AVSpeechSynthesizer。
@@ -27,7 +32,11 @@ class TTSService {
 
     private var tts: SherpaOnnxOfflineTtsWrapper?
     private var sampleRate: Int = 16000
-    private let defaultSid: Int = 200  // keqing speaker 200
+
+    /// 当前激活的 TTS 模型对应的 speaker id。
+    /// keqing 的训练数据按 speaker 切了多个 sid, 200 是默认女声;
+    /// Piper libritts_r-medium 是 904 说话人模型, sid=0 是用户挑过的默认音色 (本地试听确认)。
+    private var defaultSid: Int = 200
 
     // System TTS fallback (no LiveAudioIO needed)
     @MainActor private var systemSpeechController: SystemSpeechController?
@@ -52,66 +61,137 @@ class TTSService {
         #endif
 
         state = .loading
-        print("[TTS] Initializing sherpa-onnx + keqing...")
 
-        // 双路径查找: Bundle 优先 (向后兼容打包方式), 其次 Documents (手机端下载)
-        let modelDir: String?
-        if let bundled = Bundle.main.path(forResource: "vits-zh-hf-keqing", ofType: nil) {
-            modelDir = bundled
-        } else if let downloaded = LiveModelDefinition.resolve(for: LiveModelDefinition.tts) {
-            modelDir = downloaded.path
-        } else {
-            modelDir = nil
-        }
+        // 按系统语言加载不同 TTS — 中文 keqing / 英文 Piper libritts_r-medium。
+        // 两个模型的 sherpa-onnx config 完全不同 (keqing 用 lexicon+dictDir+ruleFsts,
+        // Piper 用 dataDir 指向 espeak-ng-data), 必须分支处理。
+        let initialized = LanguageService.shared.current.isChinese
+            ? initializeKeqing()
+            : initializePiperEN()
 
-        if let modelDir {
-            let modelPath = modelDir + "/keqing.onnx"
-            let lexiconPath = modelDir + "/lexicon.txt"
-            let tokensPath = modelDir + "/tokens.txt"
-            let dictDir = modelDir + "/dict"
-            let ruleFsts = [
-                modelDir + "/date.fst",
-                modelDir + "/number.fst",
-                modelDir + "/phone.fst",
-                modelDir + "/new_heteronym.fst",
-            ].joined(separator: ",")
-
-            // numThreads: 4 — iPhone 17 Pro Max 有 6 个 P-core, VITS 合成是 CPU 瓶颈,
-            //   从 2 → 4 稳定提速 30-50%, 不占额外内存 (只是多出几个线程栈).
-            // lengthScale: 0.9 — keqing 原生语速偏慢 (接近朗读味), 0.9 倍语速更接近
-            //   日常口语, 同时输出音频更短 → 总合成时间也缩短.
-            var config = sherpaOnnxOfflineTtsConfig(
-                model: sherpaOnnxOfflineTtsModelConfig(
-                    vits: sherpaOnnxOfflineTtsVitsModelConfig(
-                        model: modelPath,
-                        lexicon: lexiconPath,
-                        tokens: tokensPath,
-                        dataDir: "",
-                        noiseScale: 0.667,
-                        noiseScaleW: 0.8,
-                        lengthScale: 0.9,
-                        dictDir: dictDir
-                    ),
-                    numThreads: 4,
-                    debug: 0
-                ),
-                ruleFsts: ruleFsts
-            )
-
-            let wrapper = SherpaOnnxOfflineTtsWrapper(config: &config)
-            tts = wrapper
+        if initialized {
             backend = "sherpa-onnx"
             isAvailable = true
             state = .ready
-            print("[TTS] ✅ sherpa-onnx ready (keqing sid=200)")
             return
         }
 
         // Fallback to system TTS
-        print("[TTS] ⚠️ keqing model not found in bundle, using system TTS")
+        print("[TTS] ⚠️ TTS model not found, using system TTS")
         backend = "system"
         isAvailable = true
         state = .ready
+    }
+
+    /// 中文 keqing TTS 初始化。
+    /// keqing 用 lexicon-based phonemization (中文 → 拼音 → 音素),
+    /// 配套需要 lexicon.txt + tokens.txt + dict/ + 4 个 ruleFsts (date/number/phone/heteronym)。
+    private func initializeKeqing() -> Bool {
+        print("[TTS] Initializing sherpa-onnx + keqing (zh)...")
+
+        let asset = LiveModelDefinition.tts
+        let modelDir: String
+        if let bundled = Bundle.main.path(forResource: asset.directoryName, ofType: nil) {
+            modelDir = bundled
+        } else if let downloaded = LiveModelDefinition.resolve(for: asset) {
+            modelDir = downloaded.path
+        } else {
+            return false
+        }
+
+        let modelPath = modelDir + "/keqing.onnx"
+        let lexiconPath = modelDir + "/lexicon.txt"
+        let tokensPath = modelDir + "/tokens.txt"
+        let dictDir = modelDir + "/dict"
+        let ruleFsts = [
+            modelDir + "/date.fst",
+            modelDir + "/number.fst",
+            modelDir + "/phone.fst",
+            modelDir + "/new_heteronym.fst",
+        ].joined(separator: ",")
+
+        // numThreads: 4 — iPhone 17 Pro Max 有 6 个 P-core, VITS 合成是 CPU 瓶颈,
+        //   从 2 → 4 稳定提速 30-50%, 不占额外内存 (只是多出几个线程栈).
+        // lengthScale: 0.9 — keqing 原生语速偏慢 (接近朗读味), 0.9 倍语速更接近
+        //   日常口语, 同时输出音频更短 → 总合成时间也缩短.
+        var config = sherpaOnnxOfflineTtsConfig(
+            model: sherpaOnnxOfflineTtsModelConfig(
+                vits: sherpaOnnxOfflineTtsVitsModelConfig(
+                    model: modelPath,
+                    lexicon: lexiconPath,
+                    tokens: tokensPath,
+                    dataDir: "",
+                    noiseScale: 0.667,
+                    noiseScaleW: 0.8,
+                    lengthScale: 0.9,
+                    dictDir: dictDir
+                ),
+                numThreads: 4,
+                debug: 0
+            ),
+            ruleFsts: ruleFsts
+        )
+
+        tts = SherpaOnnxOfflineTtsWrapper(config: &config)
+        defaultSid = 200  // keqing speaker 200
+        print("[TTS] ✅ sherpa-onnx ready (keqing zh, sid=200)")
+        return true
+    }
+
+    /// 英文 Piper libritts_r-medium TTS 初始化。
+    /// Piper 用 espeak-ng-based phonemization (英文 → IPA 音素),
+    /// 配套需要 espeak-ng-data/ 目录 (en_dict + 共享 phondata 等)。
+    /// 不需要 lexicon / dict / ruleFsts — 这些是中文管线特有。
+    /// tokens 必须传: sherpa-onnx 的 OfflineTtsVitsModelConfig.Validate() 要求非空。
+    private func initializePiperEN() -> Bool {
+        print("[TTS] Initializing sherpa-onnx + Piper libritts_r-medium (en)...")
+
+        let asset = LiveModelDefinition.ttsEN
+        let modelDir: String
+        if let bundled = Bundle.main.path(forResource: asset.directoryName, ofType: nil) {
+            modelDir = bundled
+        } else if let downloaded = LiveModelDefinition.resolve(for: asset) {
+            modelDir = downloaded.path
+        } else {
+            return false
+        }
+
+        let modelPath = modelDir + "/en_US-libritts_r-medium.onnx"
+        let tokensPath = modelDir + "/tokens.txt"
+        let dataDir = modelDir + "/espeak-ng-data"
+
+        // Piper VITS 跟 keqing 用同一个 sherpa-onnx OfflineTts 管线, 但配置项不同:
+        //   - lexicon = "" (Piper 不用 lexicon, espeak 直接出音素)
+        //   - tokens = tokens.txt (sherpa 项目针对 Piper 模型生成的词表 — 必须传, 否则
+        //     OfflineTtsVitsModelConfig.Validate 报 "Please provide --vits-tokens" 拒绝创建)
+        //   - dataDir = espeak-ng-data 路径 (告诉 espeak 字典在哪)
+        //   - dictDir = "" (中文 keqing 专用)
+        //   - ruleFsts = "" (Piper 没有 number/date FST 规则)
+        // lengthScale: 1.0 — libritts_r 原生语速即日常口语, 不需调整。
+        var config = sherpaOnnxOfflineTtsConfig(
+            model: sherpaOnnxOfflineTtsModelConfig(
+                vits: sherpaOnnxOfflineTtsVitsModelConfig(
+                    model: modelPath,
+                    lexicon: "",
+                    tokens: tokensPath,
+                    dataDir: dataDir,
+                    noiseScale: 0.667,
+                    noiseScaleW: 0.8,
+                    lengthScale: 1.0,
+                    dictDir: ""
+                ),
+                numThreads: 4,
+                debug: 0
+            ),
+            ruleFsts: ""
+        )
+
+        tts = SherpaOnnxOfflineTtsWrapper(config: &config)
+        // libritts_r-medium 是 904 speaker 多说话人模型, sid=0 是 Mac 本地试听确认的默认音色。
+        // 改换音色: 修改这一行的数字 (0..903), 不需要重新下载模型。
+        defaultSid = 0
+        print("[TTS] ✅ sherpa-onnx ready (Piper libritts_r-medium en, sid=0)")
+        return true
     }
 
     // MARK: - Synthesize (CPU-heavy, NOT main thread)

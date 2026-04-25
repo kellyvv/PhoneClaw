@@ -51,12 +51,25 @@ struct ContentView: View {
     @State private var isVoiceInputMode = false
     @State private var isHoldRecording = false
     @State private var holdStartTask: Task<Bool, Never>?
+    @State private var holdASRWarmupTask: Task<Void, Never>?
     @State private var captureOrigin: CaptureOrigin = .menu
     @State private var showPhotoPicker = false
     @State private var showFilePicker = false
     @State private var importedAudioSnapshot: AudioCaptureSnapshot?
     @State private var importedAudioFilename: String?
     @State private var holdToTalkASR = ASRService()
+    /// ASR 模型 (Whisper) 没下载时弹的提示, 引导用户去配置页 LIVE 语音模型下载.
+    @State private var showASRMissingAlert = false
+    /// ASR warmup 任务进行中. 用来在 mic 按钮 / 按住说话按钮上显示 loading 反馈,
+    /// 因为 WhisperKit 首次冷启动 ~15s (Core ML 编译 + tokenizer 自动下载),
+    /// 没视觉提示用户会以为没在加载。
+    @State private var asrIsWarming = false
+    /// 触觉反馈 generator. 用 @State 持久持有, 不能用局部变量 — 局部变量在
+    /// impactOccurred() 还没真正派发到 haptic engine 之前就 deinit, 震动不触发。
+    /// .medium 比 .light 明显, 微信"按住说话"那个力度接近 .medium。
+    #if canImport(UIKit)
+    @State private var holdHaptic = UIImpactFeedbackGenerator(style: .medium)
+    #endif
 
     private var displayItems: [DisplayItem] {
         buildDisplayItems(from: engine.messages, isProcessing: engine.isProcessing)
@@ -99,7 +112,7 @@ struct ContentView: View {
             guard !ProcessInfo.processInfo.isRunningXCTest else { return }
             engine.setup()
             // 不在这里 initialize hold-to-talk ASR. 改为用户第一次按住说话时
-            // 通过 ASRService.ensureInitialized 懒加载, 避免 cold start 就占 ~160MB.
+            // 通过 ASRService.ensureInitialized 懒加载, 避免 cold start 就占用 ASR 内存 (zh ~160MB / en ~180MB).
         }
         .task(id: selectedPhotoItem) {
             await loadSelectedPhoto()
@@ -114,10 +127,13 @@ struct ContentView: View {
             _ = audioCapture.stopCapture()
         }
         .onChange(of: engine.messages.isEmpty) { wasEmpty, isEmpty in
-            // 新会话: 卸载 hold-to-talk ASR 以释放 ~160MB. 下次按住说话会 lazy 重新加载.
+            // 新会话: 卸载 hold-to-talk ASR 以释放内存 (zh ~160MB / en ~180MB). 下次按住说话会 lazy 重新加载.
             // 注意 onChange 只在**变化**时 fire, 初次 render 不会触发. wasEmpty 参数
             // 保证我们只响应 "有消息 -> 清空" 这个方向, 忽略新开一条消息的方向.
             if isEmpty && !wasEmpty {
+                print("[UI] New session detected → unloading ASR")
+                holdASRWarmupTask?.cancel()
+                holdASRWarmupTask = nil
                 holdToTalkASR.unload()
             }
         }
@@ -134,6 +150,23 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showConfigurations) {
             ConfigurationsView(engine: engine)
+        }
+        .alert(
+            tr("开启语音输入", "Set up voice input"),
+            isPresented: $showASRMissingAlert
+        ) {
+            Button(tr("下载", "Download")) {
+                showConfigurations = true
+            }
+            Button(tr("稍后", "Not now"), role: .cancel) {}
+        } message: {
+            Text({
+                let mb = LiveModelDefinition.estimatedSizeMB
+                return tr(
+                    "首次使用需要下载语音模型（约 \(mb) MB）。",
+                    "First use needs a one-time voice model download (~\(mb) MB)."
+                )
+            }())
         }
     }
 
@@ -504,11 +537,47 @@ struct ContentView: View {
 
                 // 右侧：mic/keyboard 切换 + send/stop
                 Button {
+                    // 切到语音模式前先检查 Whisper 模型有没有下载. 没有就弹提示让用户去
+                    // 配置页 LIVE 语音模型下载, 不要切到语音模式让用户白按住一下才发现没用。
+                    let isEnteringVoice = !isVoiceInputMode
+                    if isEnteringVoice,
+                       LiveModelDefinition.resolve(for: LiveModelDefinition.activeASR) == nil {
+                        showASRMissingAlert = true
+                        return
+                    }
                     withAnimation(.easeInOut(duration: 0.2)) {
                         isVoiceInputMode.toggle()
                     }
-                    if !isVoiceInputMode {
+                    if isVoiceInputMode {
+                        // 进入语音模式立即预热 ASR. 加载期间 asrIsWarming = true 让按住说话
+                        // 按钮灰显 + 禁用点击, 加载完恢复正常. WhisperKit 首次冷启动 ~6-15s
+                        // (Core ML 编译 + tokenizer 拉取), 没这反馈用户会以为按钮坏了。
+                        let alreadyLoaded = holdToTalkASR.isAvailable
+                        print("[UI] Mic button tapped → enter voice mode (ASR \(alreadyLoaded ? "already loaded" : "starting warmup"))")
+                        holdASRWarmupTask?.cancel()
+                        if !alreadyLoaded {
+                            asrIsWarming = true
+                        }
+                        // 顺便 prepare haptic engine, 第一次按住时不会有冷启动延迟.
+                        #if canImport(UIKit)
+                        holdHaptic.prepare()
+                        #endif
+                        let asr = holdToTalkASR
+                        holdASRWarmupTask = Task.detached {
+                            await asr.initialize()
+                            await MainActor.run { asrIsWarming = false }
+                        }
+                    } else {
+                        // 切回键盘模式: 立即卸载 ASR 释放内存 (zh ~160MB / en ~180MB)。
+                        // 之前的策略是"保留, 用户可能秒切回来" — 但用户反馈期望
+                        // 显式 cancel 行为, 不要默默占内存。需要再用语音时点 mic
+                        // 重新加载 (Core ML 系统层 cache 命中, 0.5s 即可恢复)。
+                        print("[UI] Exit voice mode → unloading ASR")
                         isInputFocused = true
+                        holdASRWarmupTask?.cancel()
+                        holdASRWarmupTask = nil
+                        asrIsWarming = false
+                        holdToTalkASR.unload()
                     }
                 } label: {
                     Image(systemName: isVoiceInputMode ? "keyboard" : "mic.fill")
@@ -561,7 +630,13 @@ struct ContentView: View {
     // MARK: - 按住说话
 
     private var holdToTalkButton: some View {
-        Text(isHoldRecording ? tr("松开 结束", "Release to Stop") : tr("按住 说话", "Hold to Talk"))
+        // 加载中 (asrIsWarming) 灰显 + 禁用点击, 加载完毕恢复正常颜色。
+        // 灰显: 整体 .opacity(0.4) 一刀切, 比之前局部改 fg/bg 颜色对比明显得多。
+        let isDisabled = asrIsWarming
+        let label = isDisabled
+            ? tr("正在准备...", "Preparing...")
+            : (isHoldRecording ? tr("松开 结束", "Release to Stop") : tr("按住 说话", "Hold to Talk"))
+        return Text(label)
             .font(.system(size: 15, weight: .medium))
             .foregroundStyle(isHoldRecording ? Theme.bg : Theme.textSecondary)
             .frame(maxWidth: .infinity)
@@ -574,15 +649,29 @@ struct ContentView: View {
                 RoundedRectangle(cornerRadius: 22)
                     .strokeBorder(isHoldRecording ? Theme.accent : Theme.border, lineWidth: 1)
             )
+            .opacity(isDisabled ? 0.4 : 1.0)
+            .allowsHitTesting(!isDisabled)
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { _ in
                         guard !isHoldRecording else { return }
+                        guard !asrIsWarming else { return }
                         isHoldRecording = true
                         captureOrigin = .holdToTalk
+                        // 微信式触觉反馈: 按下瞬间一次震, 让用户确认录音开始。
+                        // .medium = 微信级力度. impactOccurred 后立即 prepare,
+                        // 下次按住能秒响应不需要冷启动 haptic engine。
+                        #if canImport(UIKit)
+                        holdHaptic.impactOccurred()
+                        holdHaptic.prepare()
+                        #endif
                         holdStartTask = Task {
                             await audioCapture.startCapture()
                         }
+                        // ASR warmup 已经在 mic 按钮切到语音模式时启动, 这里不需要再发一次.
+                        // 万一 warmup task 没被启动 (e.g. 直接进入 hold-to-talk 路径而没经过
+                        // mic toggle, 当前 UI 走不到但作为防御), ensureInitialized 会在
+                        // 真正 transcribe 时兜底加载。
                     }
                     .onEnded { _ in
                         guard isHoldRecording else { return }
@@ -593,19 +682,37 @@ struct ContentView: View {
                             holdStartTask = nil
                             guard let snapshot = audioCapture.stopCapture() else { return }
                             _ = audioCapture.consumeLatestSnapshot()
-
-                            // ASR 转文字 → 填入输入框 → 自动发送
-                            let transcript = holdToTalkASR.transcribe(
-                                samples: snapshot.pcm,
-                                sampleRate: Int(snapshot.sampleRate)
-                            )
-                            guard !transcript.isEmpty else {
-                                print("[UI] Hold-to-talk: empty ASR result, ignoring")
+                            guard snapshot.duration >= 0.45 else {
+                                print("[UI] Hold-to-talk: recording too short (\(String(format: "%.2f", snapshot.duration))s), skipping ASR")
                                 return
                             }
-                            print("[UI] Hold-to-talk ASR transcript: \"\(transcript)\"")
-                            inputText = transcript
-                            await send()
+                            _ = await holdASRWarmupTask?.value
+                            holdASRWarmupTask = nil
+
+                            // ASR 转文字 → 填入输入框 → 自动发送
+                            let transcript = await Task.detached {
+                                await holdToTalkASR.transcribe(
+                                    samples: snapshot.pcm,
+                                    sampleRate: Int(snapshot.sampleRate)
+                                )
+                            }.value
+                            // Whisper 在静音/噪声段会输出特殊 token. 同时过滤几种已知的
+                            // "no speech" 标记 + 空字符串. 不发出去, 不让模型为空响应。
+                            let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+                            let blankMarkers: Set<String> = [
+                                "", "[BLANK_AUDIO]", "(silence)", "(no speech)",
+                                "[音乐]", "[Music]", "[ Music ]", "(Music)"
+                            ]
+                            guard !blankMarkers.contains(trimmed) else {
+                                print("[UI] Hold-to-talk: silent / no-speech audio (\"\(trimmed)\"), ignoring")
+                                return
+                            }
+                            print("[UI] Hold-to-talk ASR transcript: \"\(trimmed)\"")
+                            inputText = trimmed
+                            // Hold-to-talk 是"用语音口述文字"的语义, 录的音频只是 ASR 的输入,
+                            // 不是给模型的附件. send() 默认会把 audioCapture 里的 snapshot
+                            // 当附件带过去, 这里显式禁用, 让发出去的就是纯文本消息。
+                            await send(includeAudio: false)
                         }
                     }
             )
@@ -760,14 +867,20 @@ struct ContentView: View {
         engine.isProcessing || engine.inference.isGenerating
     }
 
-    private func send() async {
+    /// `includeAudio = false`: hold-to-talk 这种"用语音口述文字"的入口用,
+    /// 录音只作 ASR 输入, 不当附件发给模型. 内部还是会显式 consume / 清理
+    /// audioCapture 里的 snapshot, 防止下一轮误带。
+    private func send(includeAudio: Bool = true) async {
         let text = inputText
         let images = selectedImages
         if audioCapture.isCapturing {
             _ = audioCapture.stopCapture()
         }
         // 优先用导入的音频文件, 其次用麦克风录音
-        let audioSnapshot = importedAudioSnapshot ?? audioCapture.consumeLatestSnapshot()
+        let pendingMicSnapshot = audioCapture.consumeLatestSnapshot()
+        let audioSnapshot: AudioCaptureSnapshot? = includeAudio
+            ? (importedAudioSnapshot ?? pendingMicSnapshot)
+            : nil
         inputText = ""
         selectedImages = []
         selectedPhotoItem = nil

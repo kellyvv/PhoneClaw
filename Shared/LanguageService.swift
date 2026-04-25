@@ -65,6 +65,7 @@ final class LanguageService {
     var selected: AppLanguage {
         get { current.raw }
         set {
+            guard newValue != current.raw else { return }
             UserDefaults.standard.set(newValue.rawValue, forKey: Self.defaultsKey)
             current = Self.resolve(raw: newValue)
         }

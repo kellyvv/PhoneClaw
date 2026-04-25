@@ -98,6 +98,7 @@
 		AA1000000000000000000022 /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = AA5000000000000000000008 /* FluidAudio */; };
 		AA1000000000000000000023 /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = AA5000000000000000000009 /* MarkdownUI */; };
 		AA1000000000000000000030 /* PhoneClawEngine in Frameworks */ = {isa = PBXBuildFile; productRef = AA5000000000000000000010 /* PhoneClawEngine */; };
+		AA1000000000000000000031 /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = AA5000000000000000000011 /* WhisperKit */; };
 		AA1000000000000000000100 /* BundledModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2000000000000000000100 /* BundledModel.swift */; };
 		AA1000000000000000000101 /* RuntimeBudgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2000000000000000000101 /* RuntimeBudgets.swift */; };
 		AA1000000000000000000103 /* ModelInstallState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2000000000000000000103 /* ModelInstallState.swift */; };
@@ -138,6 +139,7 @@
 		BB2000000000000000000102 /* PromptLocale.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000102 /* PromptLocale.swift */; };
 		BD75E7E5620A8FF0A868E9F0 /* libPods-PhoneClaw.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 4F4ACB3F4531FF61E0AADA07 /* libPods-PhoneClaw.a */; };
 		BE6E6C928537BCC4DBC975E9 /* (null) in Sources */ = {isa = PBXBuildFile; };
+		BUNDLEMODEL0000000000001 /* gemma-4-E2B-it.litertlm in Resources */ = {isa = PBXBuildFile; fileRef = BUNDLEMODEL0000000000101 /* gemma-4-E2B-it.litertlm */; };
 		C05906F882C28E546FC97B26 /* (null) in Sources */ = {isa = PBXBuildFile; };
 		C1A2B3D4E5F607182930A1B2 /* SkillLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A2B3D4E5F607182930A1B3 /* SkillLoader.swift */; };
 		C1A2B3D4E5F607182930A1C2 /* SkillRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A2B3D4E5F607182930A1C3 /* SkillRegistry.swift */; };
@@ -266,6 +268,7 @@
 		BB1000000000000000000100 /* LanguageService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LanguageService.swift; path = Shared/LanguageService.swift; sourceTree = SOURCE_ROOT; };
 		BB1000000000000000000101 /* L10n.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = L10n.swift; path = Shared/L10n.swift; sourceTree = SOURCE_ROOT; };
 		BB1000000000000000000102 /* PromptLocale.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PromptLocale.swift; path = LLM/PromptLocale.swift; sourceTree = SOURCE_ROOT; };
+		BUNDLEMODEL0000000000101 /* gemma-4-E2B-it.litertlm */ = {isa = PBXFileReference; lastKnownFileType = file; name = "gemma-4-E2B-it.litertlm"; path = "Models/gemma-4-E2B-it.litertlm"; sourceTree = SOURCE_ROOT; };
 		C1A2B3D4E5F607182930A1B3 /* SkillLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillLoader.swift; sourceTree = "<group>"; };
 		C1A2B3D4E5F607182930A1C3 /* SkillRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillRegistry.swift; sourceTree = "<group>"; };
 		C3C4D5E6F7081A2B3C52D3E5 /* ChatModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatModels.swift; sourceTree = "<group>"; };
@@ -320,6 +323,7 @@
 				AA1000000000000000000022 /* FluidAudio in Frameworks */,
 				AA1000000000000000000023 /* MarkdownUI in Frameworks */,
 				AA1000000000000000000030 /* PhoneClawEngine in Frameworks */,
+				AA1000000000000000000031 /* WhisperKit in Frameworks */,
 				BD75E7E5620A8FF0A868E9F0 /* libPods-PhoneClaw.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -345,6 +349,7 @@
 				AC5E0AA2711EA01E891DE3A7 /* Products */,
 				03C67BBB35FEB376174D7420 /* Pods */,
 				E1D6A9BAE368B2FB909A7774 /* Frameworks */,
+				A34ECDFC2F9C76C1007D0FB8 /* Recovered References */,
 			);
 			sourceTree = "<group>";
 		};
@@ -380,6 +385,14 @@
 				A31476E92F856FD700318978 /* ChatMessage.swift */,
 			);
 			path = Engine;
+			sourceTree = "<group>";
+		};
+		A34ECDFC2F9C76C1007D0FB8 /* Bundled Models */ = {
+			isa = PBXGroup;
+			children = (
+				BUNDLEMODEL0000000000101 /* gemma-4-E2B-it.litertlm */,
+			);
+			name = "Bundled Models";
 			sourceTree = "<group>";
 		};
 		AA3000000000000000000001 /* MLX */ = {
@@ -656,6 +669,7 @@
 				AA5000000000000000000008 /* FluidAudio */,
 				AA5000000000000000000009 /* MarkdownUI */,
 				AA5000000000000000000010 /* PhoneClawEngine */,
+				AA5000000000000000000011 /* WhisperKit */,
 			);
 			productName = PhoneClaw;
 			productReference = 408F2AE98EA54717A74FA4B1 /* PhoneClaw.app */;
@@ -683,10 +697,11 @@
 			packageReferences = (
 				AA4000000000000000000001 /* XCLocalSwiftPackageReference "Packages/InferenceKit" */,
 				AA4000000000000000000002 /* XCRemoteSwiftPackageReference "mlx-swift" */,
-				AA4000000000000000000003 /* XCRemoteSwiftPackageReference "swift-tokenizers" */,
+				AA4000000000000000000003 /* XCRemoteSwiftPackageReference "swift-transformers" */,
 				AA4000000000000000000004 /* XCLocalSwiftPackageReference "Packages/FluidAudio" */,
 				AA4000000000000000000005 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */,
 				AA4000000000000000000006 /* XCLocalSwiftPackageReference "LocalPackages/PhoneClawEngine" */,
+				AA4000000000000000000007 /* XCRemoteSwiftPackageReference "argmax-oss-swift" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = AC5E0AA2711EA01E891DE3A7 /* Products */;
@@ -708,6 +723,7 @@
 				B1A2C3D4E5F607182930B107 /* piz_compressed.exr in Resources */,
 				B1A2C3D4E5F607182930B108 /* studio_env.hdr in Resources */,
 				B1A2C3D4E5F607182930C002 /* InfoPlist.strings in Resources */,
+				BUNDLEMODEL0000000000001 /* gemma-4-E2B-it.litertlm in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1068,7 +1084,8 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = PhoneClaw.entitlements;
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = YES;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
+				DEVELOPMENT_TEAM = ZP4QNJ35TH;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
@@ -1084,7 +1101,7 @@
 					"$(SRCROOT)/Frameworks/onnxruntime.xcframework/ios-arm64",
 					"$(SRCROOT)/Frameworks/sherpa-onnx.xcframework/ios-arm64",
 				);
-				MARKETING_VERSION = 1.3.0;
+				MARKETING_VERSION = 1.3.1;
 				"OTHER_LDFLAGS[sdk=iphoneos*]" = (
 					"$(inherited)",
 					"-lonnxruntime",
@@ -1105,7 +1122,8 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = PhoneClaw.entitlements;
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = YES;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
+				DEVELOPMENT_TEAM = ZP4QNJ35TH;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
@@ -1121,7 +1139,7 @@
 					"$(SRCROOT)/Frameworks/onnxruntime.xcframework/ios-arm64",
 					"$(SRCROOT)/Frameworks/sherpa-onnx.xcframework/ios-arm64",
 				);
-				MARKETING_VERSION = 1.3.0;
+				MARKETING_VERSION = 1.3.1;
 				"OTHER_LDFLAGS[sdk=iphoneos*]" = (
 					"$(inherited)",
 					"-lonnxruntime",
@@ -1182,12 +1200,12 @@
 				minimumVersion = 0.31.3;
 			};
 		};
-		AA4000000000000000000003 /* XCRemoteSwiftPackageReference "swift-tokenizers" */ = {
+		AA4000000000000000000003 /* XCRemoteSwiftPackageReference "swift-transformers" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/DePasqualeOrg/swift-tokenizers";
+			repositoryURL = "https://github.com/huggingface/swift-transformers";
 			requirement = {
 				kind = upToNextMinorVersion;
-				minimumVersion = 0.2.0;
+				minimumVersion = 1.1.9;
 			};
 		};
 		AA4000000000000000000005 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */ = {
@@ -1196,6 +1214,14 @@
 			requirement = {
 				kind = upToNextMinorVersion;
 				minimumVersion = 2.4.1;
+			};
+		};
+		AA4000000000000000000007 /* XCRemoteSwiftPackageReference "argmax-oss-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/argmaxinc/argmax-oss-swift";
+			requirement = {
+				kind = upToNextMinorVersion;
+				minimumVersion = 0.18.0;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
@@ -1228,7 +1254,7 @@
 		};
 		AA5000000000000000000006 /* Tokenizers */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = AA4000000000000000000003 /* XCRemoteSwiftPackageReference "swift-tokenizers" */;
+			package = AA4000000000000000000003 /* XCRemoteSwiftPackageReference "swift-transformers" */;
 			productName = Tokenizers;
 		};
 		AA5000000000000000000007 /* MLXLLM */ = {
@@ -1250,6 +1276,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = AA4000000000000000000006 /* XCLocalSwiftPackageReference "LocalPackages/PhoneClawEngine" */;
 			productName = PhoneClawEngine;
+		};
+		AA5000000000000000000011 /* WhisperKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AA4000000000000000000007 /* XCRemoteSwiftPackageReference "argmax-oss-swift" */;
+			productName = WhisperKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

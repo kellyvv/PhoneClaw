@@ -35,15 +35,27 @@ extension PromptBuilder {
     }
 
     /// 当前 Live turn 的纯文本 user message.
-    /// 每轮带一句极短的 persona 提醒, 防止 E4B 模型自我认同漂移 (Gemma 4 → 手机龙虾).
-    /// 摄像头状态由 notifyCameraStateChanged() 事件驱动注入, 不在每条消息里重复.
+    /// 历史: 中文场景每轮带一句极短 persona 提醒 `(你是手机龙虾)` 防止 E4B 模型自我认同漂移。
+    /// 英文场景实测下来这个 wrapping 反而有害 — Gemma E2B 把 `(You are PhoneClaw)` 当 stage
+    /// direction 强化成"以 PhoneClaw 开头答复"鹦鹉模式 (中文不会, 是 E2B 中英行为差异 +
+    /// 单词级 persona name 容易当 sentence opener)。
+    ///
+    /// 现在按 locale.config.userPromptPrefix 是否为空决定是否加 wrapping:
+    ///   - 中文: prefix="你是" → "(你是手机龙虾) 用户的话"      (保留原有抗漂移 wrap)
+    ///   - 英文: prefix=""    → "用户的话"                      (不 wrap, 系统 prompt 已经够)
+    /// 摄像头状态由 notifyCameraStateChanged() 事件驱动注入, 不在每条消息里重复。
     static func buildLiveVoiceUserPrompt(
         userTranscript: String,
         locale: LiveLocale = .zhCN,
         hasVision: Bool
     ) -> String {
         _ = hasVision
-        let persona = locale.config.personaName
-        return "(你是\(persona)) \(userTranscript)"
+        let cfg = locale.config
+        guard !cfg.userPromptPrefix.isEmpty else {
+            // locale 选择不带 per-turn persona 提醒 (e.g. 英文)
+            return userTranscript
+        }
+        // userPromptPrefix 已包含 locale 需要的尾部空格 (中文 "你是" 不带空格连接)。
+        return "(\(cfg.userPromptPrefix)\(cfg.personaName)) \(userTranscript)"
     }
 }

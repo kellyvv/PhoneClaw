@@ -6,6 +6,8 @@ import Foundation
 // 解析和 bundle 读取由无状态的 SkillLoader (SkillLoader.swift) 提供。
 
 class SkillRegistry {
+    private static var didLogSuccessfulValidation = false
+
     private static let skillAliases: [String: String] = [
         "contacts_delete": "contacts",
         "contacts-delete": "contacts"
@@ -154,7 +156,8 @@ class SkillRegistry {
                 }
             }
         }
-        if !hadError {
+        if !hadError && !Self.didLogSuccessfulValidation {
+            Self.didLogSuccessfulValidation = true
             print("[SkillRegistry] ✓ 所有 \(skills.count) 个 skill 的 allowed-tools 校验通过")
         }
     }

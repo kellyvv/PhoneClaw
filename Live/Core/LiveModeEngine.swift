@@ -283,7 +283,7 @@ class LiveModeEngine {
         await vad.initialize()
         guard turnPhase == .starting else { return }
 
-        asr.initialize()
+        await asr.initialize()
         await tts.initialize()
         guard turnPhase == .starting else { return }
 
@@ -866,7 +866,7 @@ class LiveModeEngine {
 
         // Step 1: ASR
         metrics.asrStartedAt = CFAbsoluteTimeGetCurrent()
-        let transcript = asr.transcribe(samples: samples)
+        let transcript = await asr.transcribe(samples: samples)
         metrics.asrCompletedAt = CFAbsoluteTimeGetCurrent()
         let asrMs = metrics.asrLatency * 1000
         print("[Live] 📝 ASR (\(String(format: "%.0f", asrMs))ms): \"\(transcript)\"")
