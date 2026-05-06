@@ -15,6 +15,7 @@ struct ConfigurationsView: View {
     // 本地编辑状态（确认后才应用）
     @State private var selectedModelID = ModelDescriptor.defaultModel.id
     @State private var preferredBackend: String = "cpu"   // "gpu" / "cpu"
+    @State private var enableSpeculativeDecoding: Bool = false
     @State private var systemPrompt: String = ""
     @State private var permissionStatuses: [AppPermissionKind: AppPermissionStatus] = [:]
     @State private var requestingPermission: AppPermissionKind?
@@ -391,6 +392,25 @@ struct ConfigurationsView: View {
             .foregroundStyle(Theme.textSecondary)
             .labelStyle(.titleAndIcon)
             .fixedSize(horizontal: false, vertical: true)
+
+            Divider().background(Theme.border).padding(.vertical, 2)
+
+            // Gemma 4 MTP speculative decoding (实验). 当前 V1 sampler 在 multi-position
+            // verifier 路径会跑诊断 dump 帮助定位 layout, 输出本身可能不正确。
+            Toggle(isOn: $enableSpeculativeDecoding) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(tr("MTP 推测解码 (实验)", "MTP speculative decoding (experimental)"))
+                        .font(.subheadline)
+                        .foregroundStyle(Theme.textPrimary)
+                    Text(tr(
+                        "Gemma 4 only · 当前 V2 sampler 调试中, 输出可能乱码",
+                        "Gemma 4 only · V2 sampler under development, output may be garbled"
+                    ))
+                    .font(.caption2)
+                    .foregroundStyle(Theme.textTertiary)
+                }
+            }
+            .tint(Theme.accent)
         }
         .padding(16)
         // iOS 17/18: .background(_:in:) 让 Shape 注册成 hit-test 目标会吃掉
@@ -1018,6 +1038,7 @@ struct ConfigurationsView: View {
         liveDownloader.refreshState()
         selectedModelID = engine.catalog.loadedModel?.id ?? engine.config.selectedModelID
         preferredBackend = engine.config.preferredBackend
+        enableSpeculativeDecoding = engine.config.enableSpeculativeDecoding
         systemPrompt = engine.config.systemPrompt
         refreshPermissionStatuses()
     }
@@ -1025,9 +1046,11 @@ struct ConfigurationsView: View {
     private func applySettings() -> Bool {
         let modelChanged = engine.config.selectedModelID != selectedModelID
         let backendChanged = engine.config.preferredBackend != preferredBackend
+        let mtpChanged = engine.config.enableSpeculativeDecoding != enableSpeculativeDecoding
 
         engine.config.systemPrompt = systemPrompt
         engine.config.preferredBackend = preferredBackend
+        engine.config.enableSpeculativeDecoding = enableSpeculativeDecoding
 
         // 同步采样参数到 LLM (沿用 ModelConfig 默认值; 下次生成立即生效)
         engine.applySamplingConfig()
@@ -1040,8 +1063,9 @@ struct ConfigurationsView: View {
 
         engine.config.selectedModelID = selectedModelID
         let needsLoad = !engine.inference.isLoaded || engine.catalog.loadedModel?.id != selectedModelID
-        // backend 变更也要 reload — LiteRTLMEngine 在 load 时构造, backend 参数不可热切换。
-        if modelChanged || backendChanged || needsLoad {
+        // backend / MTP 变更也要 reload — LiteRTLMEngine 在 load 时构造,
+        // 这两个参数都不可热切换。
+        if modelChanged || backendChanged || mtpChanged || needsLoad {
             engine.reloadModel()
         }
         return true
