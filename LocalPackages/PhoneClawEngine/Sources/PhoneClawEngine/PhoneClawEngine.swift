@@ -883,23 +883,23 @@ public final class LiteRTLMEngine: @unchecked Sendable {
                         Self.buildConversationTextMessageJSON(role: "system", text: $0)
                     }
 
-                    guard let convConfig = Self.withOptionalCString(systemMessageJSON, { systemPtr in
-                        Self.withOptionalCString(toolsJSON, { toolsPtr in
-                            Self.withOptionalCString(messagesJSON, { messagesPtr in
-                                litert_lm_conversation_config_create(
-                                    eng,
-                                    sessionConfig,
-                                    systemPtr,
-                                    toolsPtr,
-                                    messagesPtr,
-                                    enableConstrainedDecoding
-                                )
-                            })
-                        })
-                    }) else {
+                    // Builder-style conversation config (LiteRT-LM v0.11+):
+                    // create empty, then set each field.
+                    guard let convConfig = litert_lm_conversation_config_create() else {
                         litert_lm_session_config_delete(sessionConfig)
                         throw LiteRTLMError.inferenceFailure("Failed to create conversation config")
                     }
+                    litert_lm_conversation_config_set_session_config(convConfig, sessionConfig)
+                    if let s = systemMessageJSON {
+                        s.withCString { litert_lm_conversation_config_set_system_message(convConfig, $0) }
+                    }
+                    if let t = toolsJSON {
+                        t.withCString { litert_lm_conversation_config_set_tools(convConfig, $0) }
+                    }
+                    if let m = messagesJSON {
+                        m.withCString { litert_lm_conversation_config_set_messages(convConfig, $0) }
+                    }
+                    litert_lm_conversation_config_set_enable_constrained_decoding(convConfig, enableConstrainedDecoding)
 
                     guard let conversation = litert_lm_conversation_create(eng, convConfig) else {
                         litert_lm_conversation_config_delete(convConfig)
@@ -1535,12 +1535,12 @@ public final class LiteRTLMEngine: @unchecked Sendable {
                     )
                     litert_lm_session_config_set_sampler_params(sessionConfig, &samplerParams)
 
-                    guard let convConfig = litert_lm_conversation_config_create(
-                        eng, sessionConfig, nil, nil, nil, false
-                    ) else {
+                    // Builder-style conversation config (LiteRT-LM v0.11+).
+                    guard let convConfig = litert_lm_conversation_config_create() else {
                         litert_lm_session_config_delete(sessionConfig)
                         throw LiteRTLMError.inferenceFailure("Failed to create conversation config")
                     }
+                    litert_lm_conversation_config_set_session_config(convConfig, sessionConfig)
 
                     guard let conversation = litert_lm_conversation_create(eng, convConfig) else {
                         litert_lm_conversation_config_delete(convConfig)
@@ -1602,14 +1602,14 @@ public final class LiteRTLMEngine: @unchecked Sendable {
                     )
                     litert_lm_session_config_set_sampler_params(sessionConfig, &samplerParams)
 
-                    guard let convConfig = litert_lm_conversation_config_create(
-                        eng, sessionConfig, nil, nil, nil, false
-                    ) else {
+                    // Builder-style conversation config (LiteRT-LM v0.11+).
+                    guard let convConfig = litert_lm_conversation_config_create() else {
                         litert_lm_session_config_delete(sessionConfig)
                         Self.cleanupTempFiles(urlsToCleanup)
                         continuation.finish(throwing: LiteRTLMError.inferenceFailure("Failed to create conversation config"))
                         return
                     }
+                    litert_lm_conversation_config_set_session_config(convConfig, sessionConfig)
 
                     guard let conversation = litert_lm_conversation_create(eng, convConfig) else {
                         litert_lm_conversation_config_delete(convConfig)
