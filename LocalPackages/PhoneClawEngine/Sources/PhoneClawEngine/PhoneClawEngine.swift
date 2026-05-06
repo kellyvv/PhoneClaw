@@ -874,7 +874,7 @@ public final class LiteRTLMEngine: @unchecked Sendable {
                     }
                     litert_lm_session_config_set_max_output_tokens(sessionConfig, Int32(maxTokens))
                     var samplerParams = LiteRtLmSamplerParams(
-                        type: kTopP, top_k: 40, top_p: 0.95,
+                        type: kLiteRtLmSamplerTypeTopP, top_k: 40, top_p: 0.95,
                         temperature: temperature, seed: 0
                     )
                     litert_lm_session_config_set_sampler_params(sessionConfig, &samplerParams)
@@ -1240,8 +1240,8 @@ public final class LiteRTLMEngine: @unchecked Sendable {
                 utf8Bytes.append(0) // null-terminate
 
                 let result = utf8Bytes.withUnsafeBufferPointer { buf -> Int32 in
-                    var inputData = InputData(
-                        type: kInputText,
+                    var inputData = LiteRtLmInputData(
+                        type: kLiteRtLmInputDataTypeText,
                         data: UnsafeRawPointer(buf.baseAddress!),
                         size: utf8Bytes.count - 1 // exclude null terminator
                     )
@@ -1311,8 +1311,8 @@ public final class LiteRTLMEngine: @unchecked Sendable {
                     }
 
                     let output = prompt.withCString { textPtr -> String? in
-                        var input = InputData(
-                            type: kInputText,
+                        var input = LiteRtLmInputData(
+                            type: kLiteRtLmInputDataTypeText,
                             data: UnsafeRawPointer(textPtr),
                             size: strlen(textPtr)
                         )
@@ -1364,8 +1364,8 @@ public final class LiteRTLMEngine: @unchecked Sendable {
                     utf8Bytes.append(0)
 
                     let result = utf8Bytes.withUnsafeBufferPointer { buf -> Int32 in
-                        var input = InputData(
-                            type: kInputText,
+                        var input = LiteRtLmInputData(
+                            type: kLiteRtLmInputDataTypeText,
                             data: UnsafeRawPointer(buf.baseAddress!),
                             size: utf8Bytes.count - 1
                         )
@@ -1442,7 +1442,7 @@ public final class LiteRTLMEngine: @unchecked Sendable {
         // CPU uses TopP. Gallery app uses top_k=40 for GPU.
         let isGpu = backend.contains("gpu")
         var samplerParams = LiteRtLmSamplerParams(
-            type: isGpu ? kTopK : kTopP,
+            type: isGpu ? kLiteRtLmSamplerTypeTopK : kLiteRtLmSamplerTypeTopP,
             top_k: 40,
             top_p: 0.95,
             temperature: temperature,
@@ -1530,7 +1530,7 @@ public final class LiteRTLMEngine: @unchecked Sendable {
                     }
                     litert_lm_session_config_set_max_output_tokens(sessionConfig, Int32(maxTokens))
                     var samplerParams = LiteRtLmSamplerParams(
-                        type: kTopP, top_k: 40, top_p: 0.95,
+                        type: kLiteRtLmSamplerTypeTopP, top_k: 40, top_p: 0.95,
                         temperature: temperature, seed: 0
                     )
                     litert_lm_session_config_set_sampler_params(sessionConfig, &samplerParams)
@@ -1597,7 +1597,7 @@ public final class LiteRTLMEngine: @unchecked Sendable {
                     }
                     litert_lm_session_config_set_max_output_tokens(sessionConfig, Int32(maxTokens))
                     var samplerParams = LiteRtLmSamplerParams(
-                        type: kTopP, top_k: 40, top_p: 0.95,
+                        type: kLiteRtLmSamplerTypeTopP, top_k: 40, top_p: 0.95,
                         temperature: temperature, seed: 0
                     )
                     litert_lm_session_config_set_sampler_params(sessionConfig, &samplerParams)
