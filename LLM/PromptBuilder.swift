@@ -317,8 +317,21 @@ struct PromptBuilder {
             if list.isEmpty { return tr("（无）\n", "(none)\n") }
             return list.map { "- **\($0.name)**: \($0.description)" }.joined(separator: "\n") + "\n"
         }
-        let deviceListText = renderList(deviceSkills)
-        let contentListText = renderList(contentSkills)
+        // Router 已锁定时, system prompt 的全 skill 列表是冗余的——locked ability
+        // section 已经给了具体 tool 和 compactSchema, 模型不需要再看一遍其他 skill 的
+        // 一句话描述. 用短标记替代, 给 E4B 1300 input budget 节省 ~200 token (~800 chars).
+        // 不影响 quality: model 决策依赖 locked section 的精准信息, 不依赖列表的广播.
+        let isPreloaded = !preloadedSkills.isEmpty
+        let deviceListText: String
+        let contentListText: String
+        if isPreloaded {
+            let markerText = tr("（已锁定能力见下方 — Locked ability shown below）\n", "(locked ability shown below)\n")
+            deviceListText = markerText
+            contentListText = markerText
+        } else {
+            deviceListText = renderList(deviceSkills)
+            contentListText = renderList(contentSkills)
+        }
         // 兼容旧版 SYSPROMPT.md (仅 ___SKILLS___) 的扁平列表
         let flatListText: String = {
             var s = ""

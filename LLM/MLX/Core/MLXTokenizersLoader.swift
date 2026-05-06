@@ -15,11 +15,15 @@ struct MLXTokenizerBridge: MLXLMCommon.Tokenizer {
     }
 
     func decode(tokenIds: [Int], skipSpecialTokens: Bool) -> String {
-        // iOS target depends on swift-transformers (huggingface) which uses
-        // `decode(tokens:)` — CLI target uses swift-tokenizers (DePasqualeOrg)
-        // which uses `decode(tokenIds:)`. PhoneClawCLI/.../MLXTokenizersLoader.swift
-        // 是 CLI 自己那一份, 跟这个文件是两份独立 copy.
+        // CLI build (SwiftPM, swift-tokenizers DePasqualeOrg 0.2.x) → decode(tokenIds:)
+        // iOS Xcode build (swift-transformers huggingface 1.1.9)     → decode(tokens:)
+        // 两个包都 export `Tokenizers` 模块名但 API 不兼容. 这个文件是 symlink, 两个 target
+        // 编译同一份, 必须用 #if 切. SWIFT_PACKAGE 是 SwiftPM 自动设的 define, Xcode 没有.
+        #if SWIFT_PACKAGE
+        upstream.decode(tokenIds: tokenIds, skipSpecialTokens: skipSpecialTokens)
+        #else
         upstream.decode(tokens: tokenIds, skipSpecialTokens: skipSpecialTokens)
+        #endif
     }
 
     func convertTokenToId(_ token: String) -> Int? {
@@ -56,11 +60,13 @@ struct MLXTokenizerBridge: MLXLMCommon.Tokenizer {
 
 struct MLXTokenizersLoader: TokenizerLoader {
     func load(from directory: URL) async throws -> any MLXLMCommon.Tokenizer {
-        // iOS Xcode 用 swift-transformers (huggingface) 1.1.9, API 是
-        // from(modelFolder:); CLI 那份 (PhoneClawCLI/.../MLXTokenizersLoader.swift)
-        // 用 swift-tokenizers (DePasqualeOrg) 0.2.x, API 是 from(directory:).
-        // 两份文件独立, 不要试图共用.
+        // CLI: AutoTokenizer.from(directory:); iOS: AutoTokenizer.from(modelFolder:).
+        // 同上 SWIFT_PACKAGE 切.
+        #if SWIFT_PACKAGE
+        let upstream = try await AutoTokenizer.from(directory: directory)
+        #else
         let upstream = try await AutoTokenizer.from(modelFolder: directory)
+        #endif
         return MLXTokenizerBridge(upstream)
     }
 }

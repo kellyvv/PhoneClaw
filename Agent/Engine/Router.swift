@@ -8,6 +8,40 @@ extension AgentEngine {
         Array(NSOrderedSet(array: values)) as? [String] ?? values
     }
 
+    /// trigger 词级匹配。
+    ///
+    /// 历史 bug: 之前用 `String.contains` 子串匹配, 导致 "prevents" 命中
+    /// trigger "event" → Bitcoin 等知识问题误进 calendar agent 路径,
+    /// 模型勉强 fire 一个 invalid load_skill 然后空回复.
+    ///
+    /// 修法分支:
+    ///   - 纯 ASCII trigger (calendar 的 "event" / contacts 的 "phone" 等):
+    ///     用 `\b…\b` Unicode 词边界正则. "prevents" 不会匹配 \bevent\b
+    ///     因为 't' 'e' 都是 word char 之间没有 word boundary.
+    ///   - 含 CJK trigger ("联系人"/"提醒"等): CJK 无词边界概念,
+    ///     `\b` 在 CJK 之间不触发, 直接 substring 匹配.
+    ///
+    /// 这只动 Router 行为, 不改 SKILL.md trigger 内容, zh / en 都受益.
+    func containsAsWord(_ trigger: String, in text: String) -> Bool {
+        let isAsciiWord = !trigger.isEmpty && trigger.unicodeScalars.allSatisfy { scalar in
+            // ASCII 字母数字 + 词内常见连接符 (-, _) 算 word char
+            (scalar.value < 128) && (
+                CharacterSet.alphanumerics.contains(scalar) ||
+                scalar == "-" || scalar == "_"
+            )
+        }
+        guard isAsciiWord else {
+            // CJK / 混合 / 含空格的 trigger: 直接 substring
+            return text.contains(trigger)
+        }
+        let pattern = "\\b\(NSRegularExpression.escapedPattern(for: trigger))\\b"
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
+            return text.contains(trigger)
+        }
+        let range = NSRange(text.startIndex..., in: text)
+        return regex.firstMatch(in: text, options: [], range: range) != nil
+    }
+
     // MARK: - Skill 触发匹配
 
     /// 仅依赖 SKILL.md 的 triggers / allowedTools 字段, 零硬编关键词。
@@ -29,14 +63,14 @@ extension AgentEngine {
                 entry.name.lowercased()
             ]
 
-            var isMatch = lowercasedNames.contains { normalizedQuestion.contains($0) }
+            var isMatch = lowercasedNames.contains { containsAsWord($0, in: normalizedQuestion) }
             if !isMatch,
                let definition = skillRegistry.getDefinition(skillId) {
                 isMatch = definition.metadata.triggers.contains { trigger in
                     let normalizedTrigger = trigger.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-                    return !normalizedTrigger.isEmpty && normalizedQuestion.contains(normalizedTrigger)
+                    return !normalizedTrigger.isEmpty && containsAsWord(normalizedTrigger, in: normalizedQuestion)
                 } || definition.metadata.allowedTools.contains { toolName in
-                    normalizedQuestion.contains(toolName.lowercased())
+                    containsAsWord(toolName.lowercased(), in: normalizedQuestion)
                 }
             }
 

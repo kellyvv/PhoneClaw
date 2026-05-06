@@ -184,16 +184,18 @@ final class LiteRTBackend: InferenceService {
             //                (匹配 Gallery Android 的 EngineConfig,
             //                 Gemma 3n / Gemma 4 audio 都只能 CPU, vision 走 GPU)
             //
-            // maxTokens 按模型分: E2B 用 4096 (权重 2.4 GB, 有内存余量装
-            // 更大 KV cache), E4B 用 2048 (权重 3.4 GB, 再加 4096 KV 在
-            // Sideloadly 免费签名 app 的 jetsam 阈值下会炸 — 首次 invoke
-            // TFLite 分配 tensor 时报 "Failed to invoke the compiled model").
-            // E2B 4096 让 skill-inlined 对话有足够输入 budget; E4B 2048 沿用
-            // v1.1.0 的保守预算, 代价是多 skill 首轮会紧。
-            let maxKVTokens: Int = {
-                if modelID == "gemma-4-e4b-it-litert" { return 2048 }
-                return 4096
-            }()
+            // maxTokens KV cache 按模型分:
+            //   E2B: 4096 (权重 2.4 GB, 有内存余量装更大 KV)
+            //   E4B: 4096 (权重 3.4 GB, 加 4096 KV ~1 GB → 总 4.4 GB)
+            //
+            // 2026-04-25: E4B 从 2048 提到 4096. 之前 2048 是为了卡 Sideloadly
+            // 免费签名 jetsam 阈值 (~3-4 GB), 但代价是英文 SKILL 触发首轮
+            // hard-reject ("Context is too long"), 因为英文 system prompt
+            // 比中文长 ~300 token + contacts 等厚 schema 工具就把 1300 总
+            // 预算推爆. Sideloadly 用户 E4B 本来内存就紧 (推荐用 E2B), 这
+            // 次接受 Sideloadly E4B 不能用换 Xcode 直装 / 正式签用户的英
+            // 文 skill 体验. Sideloadly 用户改用 E2B (4096 KV 一直能用).
+            let maxKVTokens: Int = 4096
             let (visionBackend, audioBackend): (String?, String?) = {
                 switch mode {
                 case .textOnly:
