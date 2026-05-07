@@ -27,6 +27,10 @@
 
 PhoneClaw 是一个运行在 iPhone 上的本地 AI Agent。它使用 Gemma 4 LiteRT-LM 在设备端完成推理，不依赖云端，不上传聊天内容。
 
+## 2026-05-07 更新
+
+- 新增 MTP 推测解码开关（实验性，Gemma 4 E4B 短回复场景可加速）。
+
 ## 2026-04-25 更新
 
 - 发布 v1.3.1 — [下载地址](https://github.com/kellyvv/PhoneClaw/releases/tag/v1.3.1)

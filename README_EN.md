@@ -27,6 +27,10 @@ A local AI Agent for iPhone. Offline. Private. Native.
 
 PhoneClaw is a local AI Agent that runs entirely on your iPhone. No internet connection. No data uploads. No cloud dependency.
 
+## 2026-05-07 Update
+
+- Added MTP speculative decoding toggle (experimental — only speeds up Gemma 4 E4B with short replies).
+
 ## 2026-04-25 Update
 
 - Released v1.3.1 — [Download](https://github.com/kellyvv/PhoneClaw/releases/tag/v1.3.1)
