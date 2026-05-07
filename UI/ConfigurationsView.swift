@@ -395,16 +395,30 @@ struct ConfigurationsView: View {
 
             Divider().background(Theme.border).padding(.vertical, 2)
 
-            // Gemma 4 MTP speculative decoding (实验). 当前 V1 sampler 在 multi-position
-            // verifier 路径会跑诊断 dump 帮助定位 layout, 输出本身可能不正确。
+            // Gemma 4 MTP speculative decoding. drafter 预测 K=3 个候选,
+            // verifier 一次接受/拒绝。
+            //
+            // 实测 (iPhone GPU + Metal, 2026-05): MTP 是不是净赢由两个独立闸门决定 —
+            //   (1) drafter accept rate ≥ ~30% (E2B 中文 19% / 英文 29% 都不够,
+            //       E4B 36% 才稳过算法层闸门);
+            //   (2) 全程 headroom > ~1500 MB (长输出会让 KV cache 把 headroom 压垮,
+            //       系统逼近 jetsam 阈值后 Metal 调度被限速, MTP 反而变慢)。
+            //
+            // 实测矩阵:
+            //   E2B 中/英长输出 : -27% / -43% (卡闸门 1, 接受率不足)
+            //   E4B 英文短输出  : +37%        (两个闸门都过)
+            //   E4B 中文长输出  : -25%        (卡闸门 2, 内存压力)
+            //
+            // 仅 Gemma 4 .litertlm (含 mtp_drafter section) 有效, 其它模型开关不生效。
+            // 默认关闭, 用户自行 opt-in。
             Toggle(isOn: $enableSpeculativeDecoding) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(tr("MTP 推测解码 (实验)", "MTP speculative decoding (experimental)"))
+                    Text(tr("MTP 推测解码", "MTP speculative decoding"))
                         .font(.subheadline)
                         .foregroundStyle(Theme.textPrimary)
                     Text(tr(
-                        "Gemma 4 only · 当前 V2 sampler 调试中, 输出可能乱码",
-                        "Gemma 4 only · V2 sampler under development, output may be garbled"
+                        "Gemma 4 E4B 短回复可能加速；E2B 或长回复反而变慢",
+                        "Gemma 4 E4B + short replies may speed up; E2B or long replies slow down"
                     ))
                     .font(.caption2)
                     .foregroundStyle(Theme.textTertiary)
