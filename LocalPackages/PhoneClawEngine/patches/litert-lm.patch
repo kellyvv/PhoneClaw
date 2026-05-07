@@ -1,0 +1,257 @@
+diff --git a/c/BUILD b/c/BUILD
+index 4e157c2..af4ef8f 100644
+--- a/c/BUILD
++++ b/c/BUILD
+@@ -113,3 +113,21 @@ cc_test(
+         "//runtime/executor:llm_executor_settings",
+     ],
+ )
++
++cc_binary(
++    name = "libLiteRTLMEngine.dylib",
++    srcs = [
++        "engine.cc",
++        "engine.h",
++    ],
++    linkopts = [
++        "-Wl,-exported_symbol,_litert_lm_*",
++        "-Wl,-exported_symbol,_LiteRt*",
++    ],
++    linkshared = True,
++    linkstatic = True,
++    visibility = ["//visibility:public"],
++    deps = ENGINE_COMMON_DEPS + [
++        "//runtime/core:engine_impl",
++    ],
++)
+diff --git a/runtime/components/sampler_factory.cc b/runtime/components/sampler_factory.cc
+index 716ee18..d818809 100644
+--- a/runtime/components/sampler_factory.cc
++++ b/runtime/components/sampler_factory.cc
+@@ -20,6 +20,15 @@
+ #include <random>
+ #include <utility>
+ 
++#if defined(__APPLE__)
++#include <dlfcn.h>
++#include <mach-o/dyld.h>
++#include <mach-o/loader.h>
++#include <mach-o/nlist.h>
++#include <cstdint>
++#include <cstring>
++#endif
++
+ #include "absl/base/attributes.h"  // from @com_google_absl
+ #include "absl/base/nullability.h"  // from @com_google_absl
+ #include "absl/cleanup/cleanup.h"  // from @com_google_absl
+@@ -142,6 +151,145 @@ extern "C" int (*LiteRtTopKMetalSampler_SetInputTensorsAndInferenceFunc_Static)(
+     int (*run_inference_func)(void* arg), void* arg,
+     char** error_msg) = nullptr;
+ 
++// PhoneClaw: runtime Mach-O symbol table walker for iOS.
++//
++// Google's prebuilt iOS libLiteRtTopKMetalSampler.dylib only externally
++// exports 3 of the 7 sampler C ABI functions (Create / Destroy /
++// SampleToIdAndScoreBuffer). The other 4 (UpdateConfig + CanHandleInput +
++// HandlesInput + SetInputTensorsAndInferenceFunc) are present as
++// "private extern" / hidden-visibility symbols (some C-mangled, some
++// C++-mangled). Both `dlsym` and the static linker miss them, so without
++// help the engine's GetSamplerCApi() lookup fails for those four → engine
++// falls back to plain (non-`sampler_handles_input`) decode path → MTP
++// becomes net negative because the drafter+verifier overhead can't be
++// pipelined.
++//
++// We work around this by parsing the dylib's Mach-O symbol table at
++// runtime (which contains *all* symbols, exported or not), looking up
++// the 7 entry points by exact stab name, and populating the `_Static`
++// globals above. After resolution, the static fallback path inside
++// TopKMetalCApiSampler::Create finds all 7 function pointers and the
++// engine can use the optimized decode path that Edge Gallery uses.
++//
++// This is the same technique Facebook's `fishhook` uses for symbol
++// rebinding on iOS — pure public Mach-O ABI, no private API.
++#if defined(__APPLE__)
++
++// Walk loaded Mach-O images for one whose path contains `image_substr`,
++// then scan its full symbol table for `sym_name` (the stab name including
++// the leading underscore) and return the runtime function address, or
++// nullptr if not found.
++void* FindMachOSymbolInImage(const char* image_substr, const char* sym_name) {
++  uint32_t count = _dyld_image_count();
++  for (uint32_t i = 0; i < count; i++) {
++    const char* path = _dyld_get_image_name(i);
++    if (!path || !strstr(path, image_substr)) continue;
++
++    const auto* mh =
++        reinterpret_cast<const struct mach_header_64*>(_dyld_get_image_header(i));
++    if (!mh || mh->magic != MH_MAGIC_64) continue;
++    intptr_t slide = _dyld_get_image_vmaddr_slide(i);
++
++    const struct symtab_command* symtab = nullptr;
++    const struct segment_command_64* linkedit = nullptr;
++    const auto* cmd_ptr =
++        reinterpret_cast<const uint8_t*>(mh) + sizeof(struct mach_header_64);
++    for (uint32_t j = 0; j < mh->ncmds; j++) {
++      const auto* cmd =
++          reinterpret_cast<const struct load_command*>(cmd_ptr);
++      if (cmd->cmd == LC_SYMTAB) {
++        symtab = reinterpret_cast<const struct symtab_command*>(cmd);
++      } else if (cmd->cmd == LC_SEGMENT_64) {
++        const auto* seg =
++            reinterpret_cast<const struct segment_command_64*>(cmd);
++        if (strcmp(seg->segname, "__LINKEDIT") == 0) {
++          linkedit = seg;
++        }
++      }
++      cmd_ptr += cmd->cmdsize;
++    }
++    if (!symtab || !linkedit) continue;
++
++    uintptr_t le_base = static_cast<uintptr_t>(slide) + linkedit->vmaddr -
++                        linkedit->fileoff;
++    const auto* syms =
++        reinterpret_cast<const struct nlist_64*>(le_base + symtab->symoff);
++    const char* strs = reinterpret_cast<const char*>(le_base + symtab->stroff);
++
++    for (uint32_t k = 0; k < symtab->nsyms; k++) {
++      uint32_t strx = syms[k].n_un.n_strx;
++      if (strx == 0) continue;
++      const char* name = strs + strx;
++      if (strcmp(name, sym_name) == 0) {
++        return reinterpret_cast<void*>(syms[k].n_value + slide);
++      }
++    }
++  }
++  return nullptr;
++}
++
++// One-shot resolver. Loads the sampler dylib (if not already loaded), then
++// walks its Mach-O symbol table to populate the 7 `_Static` globals.
++// Idempotent and thread-safe via the local static guard.
++void ResolveTopKMetalSamplerStaticsOnce() {
++  static bool ran = false;
++  if (ran) return;
++  ran = true;
++
++  // Make sure dyld has the image mapped. If already loaded by an
++  // LC_LOAD_DYLIB on the engine binary, this is a cheap refcount bump.
++  if (!dlopen("libLiteRtTopKMetalSampler.dylib", RTLD_NOW | RTLD_GLOBAL)) {
++    return;
++  }
++
++  const char* img = "libLiteRtTopKMetalSampler";
++
++  // Three functions are externally exported with C linkage. dlsym would
++  // also find these, but going through the symbol-table walk keeps a
++  // single code path.
++  auto* p_create = FindMachOSymbolInImage(img, "_LiteRtTopKMetalSampler_Create");
++  auto* p_destroy = FindMachOSymbolInImage(img, "_LiteRtTopKMetalSampler_Destroy");
++  auto* p_sample = FindMachOSymbolInImage(
++      img, "_LiteRtTopKMetalSampler_SampleToIdAndScoreBuffer");
++
++  // UpdateConfig has C name but private-extern (lowercase 't' in nm
++  // output), not in the dylib's exports trie.
++  auto* p_update = FindMachOSymbolInImage(
++      img, "_LiteRtTopKMetalSampler_UpdateConfig");
++
++  // The remaining three are C++-mangled (Itanium ABI). Names taken
++  // directly from `nm prebuilt/ios_arm64/libLiteRtTopKMetalSampler.dylib`.
++  auto* p_canhandle = FindMachOSymbolInImage(
++      img, "__Z37LiteRtTopKMetalSampler_CanHandleInputPv");
++  auto* p_handles = FindMachOSymbolInImage(
++      img, "__Z35LiteRtTopKMetalSampler_HandlesInputPv");
++  auto* p_setinput = FindMachOSymbolInImage(
++      img,
++      "__Z54LiteRtTopKMetalSampler_SetInputTensorsAndInferenceFuncPvP19"
++      "LiteRtTensorBufferTS1_S1_S1_S1_PFiS_ES_PPc");
++
++  using CreateFn = decltype(LiteRtTopKMetalSampler_Create_Static);
++  using DestroyFn = decltype(LiteRtTopKMetalSampler_Destroy_Static);
++  using SampleFn = decltype(LiteRtTopKMetalSampler_SampleToIdAndScoreBuffer_Static);
++  using UpdateFn = decltype(LiteRtTopKMetalSampler_UpdateConfig_Static);
++  using CanHandleFn = decltype(LiteRtTopKMetalSampler_CanHandleInput_Static);
++  using HandlesFn = decltype(LiteRtTopKMetalSampler_HandlesInput_Static);
++  using SetInputFn =
++      decltype(LiteRtTopKMetalSampler_SetInputTensorsAndInferenceFunc_Static);
++
++  if (p_create) LiteRtTopKMetalSampler_Create_Static = reinterpret_cast<CreateFn>(p_create);
++  if (p_destroy) LiteRtTopKMetalSampler_Destroy_Static = reinterpret_cast<DestroyFn>(p_destroy);
++  if (p_sample) LiteRtTopKMetalSampler_SampleToIdAndScoreBuffer_Static = reinterpret_cast<SampleFn>(p_sample);
++  if (p_update) LiteRtTopKMetalSampler_UpdateConfig_Static = reinterpret_cast<UpdateFn>(p_update);
++  if (p_canhandle) LiteRtTopKMetalSampler_CanHandleInput_Static = reinterpret_cast<CanHandleFn>(p_canhandle);
++  if (p_handles) LiteRtTopKMetalSampler_HandlesInput_Static = reinterpret_cast<HandlesFn>(p_handles);
++  if (p_setinput) LiteRtTopKMetalSampler_SetInputTensorsAndInferenceFunc_Static = reinterpret_cast<SetInputFn>(p_setinput);
++}
++
++#else
++inline void ResolveTopKMetalSamplerStaticsOnce() {}
++#endif  // __APPLE__
++
+ absl::Status CreateStatus(int error_code, const char* error_msg) {
+   absl::StatusCode code = static_cast<absl::StatusCode>(error_code);
+   return absl::Status(code, error_msg);
+@@ -506,33 +654,40 @@ class TopKMetalCApiSampler : public TopKCApiSampler {
+       std::optional<ActivationDataType> activation_data_type,
+       proto::SamplerParameters sampler_params) {
+     std::unique_ptr<TopKSamplerCApi> capi;
+-    // Metal is only supported on Apple platforms (macOS/iOS/tvOS/watchOS).
+-    // The shared library validation will handle platform checks implicitly,
+-    // but typically we expect .dylib on Apple.
+-    auto capi_or = GetSamplerCApi(
+-        "libLiteRtTopKMetalSampler.dylib", "LiteRtTopKMetalSampler_Create",
+-        "LiteRtTopKMetalSampler_Destroy",
+-        "LiteRtTopKMetalSampler_SampleToIdAndScoreBuffer",
+-        "LiteRtTopKMetalSampler_UpdateConfig",
+-        "LiteRtTopKMetalSampler_CanHandleInput",
+-        "LiteRtTopKMetalSampler_HandlesInput",
+-        "LiteRtTopKMetalSampler_SetInputTensorsAndInferenceFunc");
+-    if (capi_or.ok()) {
+-      capi = std::move(capi_or.value());
+-      ABSL_LOG(INFO) << "Dynamically loaded LiteRtTopKMetalSampler C API.";
++    // PhoneClaw: try the static path FIRST. On Apple,
++    // ResolveTopKMetalSamplerStaticsOnce() walks the dylib's Mach-O symbol
++    // table to populate the 7 _Static globals (including the 4 hidden
++    // symbols that dlsym can't reach). This gives the engine all 7
++    // function pointers, so CanHandleInput() reports true and the
++    // optimized `sampler_handles_input` decode path is taken — which is
++    // what makes MTP actually faster (Edge Gallery uses the same path).
++    //
++    // The dlopen path (3 symbols only) is kept as a fallback for the
++    // case where Mach-O walking fails (e.g. on a future iOS where the
++    // dylib layout changes).
++    ResolveTopKMetalSamplerStaticsOnce();
++    auto static_capi_or = GetStaticTopKMetalSamplerCApi();
++    if (static_capi_or.ok()) {
++      capi = std::move(static_capi_or.value());
++      ABSL_LOG(INFO) << "Resolved LiteRtTopKMetalSampler C API via Mach-O "
++                        "symbol walk (all 7 entry points).";
+     } else {
+-      if (capi_or.status().code() != absl::StatusCode::kUnavailable) {
+-        return capi_or.status();
+-      }
+-      ABSL_LOG(WARNING) << "Metal sampler not available, falling back to "
+-                           "statically linked C API: "
+-                        << capi_or.status();
+-      auto static_capi_or = GetStaticTopKMetalSamplerCApi();
+-      if (!static_capi_or.ok()) {
++      auto capi_or = GetSamplerCApi(
++          "libLiteRtTopKMetalSampler.dylib", "LiteRtTopKMetalSampler_Create",
++          "LiteRtTopKMetalSampler_Destroy",
++          "LiteRtTopKMetalSampler_SampleToIdAndScoreBuffer",
++          "LiteRtTopKMetalSampler_UpdateConfig",
++          "LiteRtTopKMetalSampler_CanHandleInput",
++          "LiteRtTopKMetalSampler_HandlesInput",
++          "LiteRtTopKMetalSampler_SetInputTensorsAndInferenceFunc");
++      if (capi_or.ok()) {
++        capi = std::move(capi_or.value());
++        ABSL_LOG(INFO) << "Dynamically loaded LiteRtTopKMetalSampler C API "
++                          "via dlsym (3 entry points; hidden-symbol "
++                          "fallback path).";
++      } else {
+         return capi_or.status();
+       }
+-      capi = std::move(static_capi_or.value());
+-      ABSL_LOG(INFO) << "Statically linked LiteRtTopKMetalSampler C API.";
+     }
+ 
+     LiteRtTopKSampler_Sampler* sampler = nullptr;
