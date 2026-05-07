@@ -64,6 +64,14 @@ final class LiteRTBackend: InferenceService {
     /// 默认 CPU: Sideloadly 免费签名 App 内存上限较低, GPU + E4B 会 OOM.
     private(set) var preferredBackend: String = "cpu"
 
+    /// Gemma 4 MTP speculative decoding 开关. 默认 false.
+    /// 通过 `setEnableSpeculativeDecoding(_:)` 更新, load() 时透传给
+    /// LiteRTLMEngine。开启后 drafter 占 ~300-400 MB pinned RAM。
+    /// 当前 V1 sampler 仅 sequence_size=1 路径正确, sequence_size>1 时会
+    /// 跑诊断 dump (一次性) 帮助定位 layout, 然后回退到单 position argmax
+    /// (verifier 输出会乱)。等 V2 sampler 修。
+    private(set) var enableSpeculativeDecoding: Bool = false
+
     // MARK: - Internal
 
     private var engine: LiteRTLMEngine?
@@ -121,6 +129,12 @@ final class LiteRTBackend: InferenceService {
         self.preferredBackend = backend
         self.stats.backend = "litert-\(backend)"
         print("[LiteRT] Preferred backend set to \(backend) (takes effect on next load)")
+    }
+
+    func setEnableSpeculativeDecoding(_ enabled: Bool) {
+        guard self.enableSpeculativeDecoding != enabled else { return }
+        self.enableSpeculativeDecoding = enabled
+        print("[LiteRT] MTP speculative decoding \(enabled ? "enabled" : "disabled") (takes effect on next load)")
     }
 
     /// 便捷 init: 使用默认路径 (Documents/models/<fileName>)
@@ -211,20 +225,22 @@ final class LiteRTBackend: InferenceService {
             // 不影响 KV cache 本身的复用逻辑 (只是 [Engine] prefill=... log
             // 在控制台里不再出现).
             //
-            // Speculative decoding (MTP drafter) 不开. 2026-04-23 在 iPhone 17 Pro Max
-            // + E2B 上真机 A/B 得到两条负面结论, 故从 Swift 层彻底移除 wiring:
-            //   • CPU backend + spec: output 正确, 但 decode 慢 ~50% (drafter 抢 4 CPU 线程).
-            //   • GPU backend + spec: output **乱码** (LiteRT 1.5 已知: main GPU /
-            //     drafter CPU 组合 token ID 不对齐, 产出阿拉伯语/日语/UTF-8 噪音).
-            // LiteRTLMEngine `enableSpeculativeDecoding` 默认 false; 未来 LiteRT
-            // 修复了组合问题或 accept rate 提升再考虑重接. 详见 git log.
+            // MTP speculative decoding: 仅在 textOnly engine + 用户在
+            // ConfigurationsView 显式开启时启用。multimodal engine 路径继续保持
+            // false。当前 V1 sampler dylib 含一次性诊断 dump (sequence_size>1
+            // 时打印 verifier logits 候选 layout 测试结果到 stderr), 帮助
+            // 定位 V2 shader 该用什么 stride / 索引公式。
+            let useSpeculativeDecoding = enableSpeculativeDecoding && mode == .textOnly
+            let backendLabel = "litert-\(preferredBackend)\(useSpeculativeDecoding ? "+mtp" : "")"
+            print("[LiteRT] Loading model=\(modelID) backend=\(preferredBackend) mode=\(mode) mtp=\(useSpeculativeDecoding ? "on" : "off")")
             let newEngine = LiteRTLMEngine(
                 modelPath: modelPath,
                 backend: preferredBackend,    // "gpu" 或 "cpu", 从 ConfigurationsView 选择驱动
                 visionBackend: visionBackend,
                 audioBackend: audioBackend,
                 maxTokens: maxKVTokens,
-                enableBenchmark: false
+                enableBenchmark: false,
+                enableSpeculativeDecoding: useSpeculativeDecoding
             )
             try await newEngine.load()
 
@@ -248,13 +264,14 @@ final class LiteRTBackend: InferenceService {
 
             let elapsed = (CFAbsoluteTimeGetCurrent() - loadStart) * 1000
             self.stats.loadTimeMs = elapsed
+            self.stats.backend = backendLabel
 
             let descriptor = ModelDescriptor.allModels.first { $0.id == modelID }
             statusMessage = tr(
                 "已加载 \(descriptor?.displayName ?? modelID)",
                 "Loaded \(descriptor?.displayName ?? modelID)"
             )
-            PCLog.modelLoaded(modelID: modelID, backend: "litert-\(preferredBackend)", loadMs: elapsed)
+            PCLog.modelLoaded(modelID: modelID, backend: backendLabel, loadMs: elapsed)
             onModelLoaded?(modelID)
         } catch {
             isLoading = false

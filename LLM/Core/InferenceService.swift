@@ -149,6 +149,11 @@ public protocol InferenceService: AnyObject {
     /// MLX 等后端 no-op。**不会**自动 reload engine, 调用方需要随后 unload + load。
     func setPreferredBackend(_ backend: String)
 
+    /// 通知后端是否启用 Gemma 4 MTP speculative decoding。仅 LiteRT 后端 +
+    /// Gemma 4 (.litertlm 含 mtp_drafter section) 有效, 其他后端 no-op。
+    /// **不会**自动 reload engine, 调用方需要随后 unload + load。
+    func setEnableSpeculativeDecoding(_ enabled: Bool)
+
     /// Prompt/session group 切换前的后端准备钩子。
     /// 用于像 LiteRT 这类“同一时刻只能有一种 session 形态”的后端在
     /// text <-> multimodal 切换时做显式收敛。
@@ -167,6 +172,7 @@ public extension InferenceService {
     func resetKVSession() async { /* no-op */ }
     func revertToTextOnly() async { /* no-op */ }
     func setPreferredBackend(_ backend: String) { /* no-op */ }
+    func setEnableSpeculativeDecoding(_ enabled: Bool) { /* no-op */ }
     func prepareForSessionGroupTransition(
         from previousGroup: SessionGroup?,
         to nextGroup: SessionGroup

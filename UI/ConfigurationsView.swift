@@ -15,6 +15,7 @@ struct ConfigurationsView: View {
     // 本地编辑状态（确认后才应用）
     @State private var selectedModelID = ModelDescriptor.defaultModel.id
     @State private var preferredBackend: String = "cpu"   // "gpu" / "cpu"
+    @State private var enableSpeculativeDecoding: Bool = false
     @State private var systemPrompt: String = ""
     @State private var permissionStatuses: [AppPermissionKind: AppPermissionStatus] = [:]
     @State private var requestingPermission: AppPermissionKind?
@@ -391,6 +392,39 @@ struct ConfigurationsView: View {
             .foregroundStyle(Theme.textSecondary)
             .labelStyle(.titleAndIcon)
             .fixedSize(horizontal: false, vertical: true)
+
+            Divider().background(Theme.border).padding(.vertical, 2)
+
+            // Gemma 4 MTP speculative decoding. drafter 预测 K=3 个候选,
+            // verifier 一次接受/拒绝。
+            //
+            // 实测 (iPhone GPU + Metal, 2026-05): MTP 是不是净赢由两个独立闸门决定 —
+            //   (1) drafter accept rate ≥ ~30% (E2B 中文 19% / 英文 29% 都不够,
+            //       E4B 36% 才稳过算法层闸门);
+            //   (2) 全程 headroom > ~1500 MB (长输出会让 KV cache 把 headroom 压垮,
+            //       系统逼近 jetsam 阈值后 Metal 调度被限速, MTP 反而变慢)。
+            //
+            // 实测矩阵:
+            //   E2B 中/英长输出 : -27% / -43% (卡闸门 1, 接受率不足)
+            //   E4B 英文短输出  : +37%        (两个闸门都过)
+            //   E4B 中文长输出  : -25%        (卡闸门 2, 内存压力)
+            //
+            // 仅 Gemma 4 .litertlm (含 mtp_drafter section) 有效, 其它模型开关不生效。
+            // 默认关闭, 用户自行 opt-in。
+            Toggle(isOn: $enableSpeculativeDecoding) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(tr("MTP 推测解码", "MTP speculative decoding"))
+                        .font(.subheadline)
+                        .foregroundStyle(Theme.textPrimary)
+                    Text(tr(
+                        "Gemma 4 E4B 短回复可能加速；E2B 或长回复反而变慢",
+                        "Gemma 4 E4B + short replies may speed up; E2B or long replies slow down"
+                    ))
+                    .font(.caption2)
+                    .foregroundStyle(Theme.textTertiary)
+                }
+            }
+            .tint(Theme.accent)
         }
         .padding(16)
         // iOS 17/18: .background(_:in:) 让 Shape 注册成 hit-test 目标会吃掉
@@ -1018,6 +1052,7 @@ struct ConfigurationsView: View {
         liveDownloader.refreshState()
         selectedModelID = engine.catalog.loadedModel?.id ?? engine.config.selectedModelID
         preferredBackend = engine.config.preferredBackend
+        enableSpeculativeDecoding = engine.config.enableSpeculativeDecoding
         systemPrompt = engine.config.systemPrompt
         refreshPermissionStatuses()
     }
@@ -1025,9 +1060,11 @@ struct ConfigurationsView: View {
     private func applySettings() -> Bool {
         let modelChanged = engine.config.selectedModelID != selectedModelID
         let backendChanged = engine.config.preferredBackend != preferredBackend
+        let mtpChanged = engine.config.enableSpeculativeDecoding != enableSpeculativeDecoding
 
         engine.config.systemPrompt = systemPrompt
         engine.config.preferredBackend = preferredBackend
+        engine.config.enableSpeculativeDecoding = enableSpeculativeDecoding
 
         // 同步采样参数到 LLM (沿用 ModelConfig 默认值; 下次生成立即生效)
         engine.applySamplingConfig()
@@ -1040,8 +1077,9 @@ struct ConfigurationsView: View {
 
         engine.config.selectedModelID = selectedModelID
         let needsLoad = !engine.inference.isLoaded || engine.catalog.loadedModel?.id != selectedModelID
-        // backend 变更也要 reload — LiteRTLMEngine 在 load 时构造, backend 参数不可热切换。
-        if modelChanged || backendChanged || needsLoad {
+        // backend / MTP 变更也要 reload — LiteRTLMEngine 在 load 时构造,
+        // 这两个参数都不可热切换。
+        if modelChanged || backendChanged || mtpChanged || needsLoad {
             engine.reloadModel()
         }
         return true

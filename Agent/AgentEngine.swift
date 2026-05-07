@@ -22,6 +22,7 @@ class ModelConfig {
     static let selectedModelDefaultsKey = "PhoneClaw.selectedModelID"
     static let enableThinkingDefaultsKey = "PhoneClaw.enableThinking"
     static let preferredBackendDefaultsKey = "PhoneClaw.preferredBackend"
+    static let enableSpeculativeDecodingDefaultsKey = "PhoneClaw.enableSpeculativeDecoding"
 
     // 采样参数不再暴露给用户调节 — 跟 KV cache = 2048 的现实对齐:
     //   maxTokens 1500 留 ~500 给输入; topK/topP/temperature 用 Gemma 4 推荐默认。
@@ -38,6 +39,11 @@ class ModelConfig {
     /// 会 OOM; CPU 更稳妥, 用户可按需切到 GPU。
     var preferredBackend: String = UserDefaults.standard.string(forKey: preferredBackendDefaultsKey)
         ?? "cpu"
+    /// Gemma 4 MTP speculative decoding 开关。仅 LiteRT + Gemma 4 (.litertlm 含
+    /// mtp_drafter section) 上有效。开启后 drafter 占 ~300-400 MB pinned RAM。
+    /// 当前 V1 sampler 仅在 sequence_size=1 路径正确，sequence_size>1 时会跑诊断
+    /// dump (一次性，stderr) 帮助定位 verifier logits 实际 layout。默认关闭。
+    var enableSpeculativeDecoding: Bool = UserDefaults.standard.bool(forKey: enableSpeculativeDecodingDefaultsKey)
     /// System prompt — 由 AgentEngine.loadSystemPrompt() 从 SYSPROMPT.md 注入，不在代码里硬编码。
     var systemPrompt = ""
 }
@@ -566,6 +572,7 @@ class AgentEngine {
         applySamplingConfig()
         // 同步用户选的推理 backend 偏好到 inference service, 首次 load 生效.
         inference.setPreferredBackend(config.preferredBackend)
+        inference.setEnableSpeculativeDecoding(config.enableSpeculativeDecoding)
         Task {
             try? await inference.load(modelID: config.selectedModelID)
         }
@@ -658,6 +665,7 @@ class AgentEngine {
     func reloadModel() {
         let selectedModelID = config.selectedModelID
         let backend = config.preferredBackend
+        let speculative = config.enableSpeculativeDecoding
         // 持久化用户选择 — 单一入口, 任何 caller (ConfigurationsView.applySettings,
         // 未来其它切模型路径) 调 reloadModel 后, UserDefaults 自动同步,
         // 下次 app 启动 ModelConfig.selectedModelID 能恢复正确值.
@@ -669,13 +677,19 @@ class AgentEngine {
             backend,
             forKey: ModelConfig.preferredBackendDefaultsKey
         )
+        UserDefaults.standard.set(
+            speculative,
+            forKey: ModelConfig.enableSpeculativeDecodingDefaultsKey
+        )
         Task { [weak self] in
             guard let self else { return }
             self.isProcessing = false
             _ = self.catalog.select(modelID: selectedModelID)
             self.inference.unload()
-            // 在 load 前同步 backend 偏好, 这样 LiteRTBackend.load 会用新 backend 构造 engine.
+            // 在 load 前同步 backend / MTP 偏好, 这样 LiteRTBackend.load
+            // 会用新设置构造 LiteRTLMEngine.
             self.inference.setPreferredBackend(backend)
+            self.inference.setEnableSpeculativeDecoding(speculative)
             try? await self.inference.load(modelID: selectedModelID)
         }
     }

@@ -874,7 +874,7 @@ public final class LiteRTLMEngine: @unchecked Sendable {
                     }
                     litert_lm_session_config_set_max_output_tokens(sessionConfig, Int32(maxTokens))
                     var samplerParams = LiteRtLmSamplerParams(
-                        type: kTopP, top_k: 40, top_p: 0.95,
+                        type: kLiteRtLmSamplerTypeTopP, top_k: 40, top_p: 0.95,
                         temperature: temperature, seed: 0
                     )
                     litert_lm_session_config_set_sampler_params(sessionConfig, &samplerParams)
@@ -883,23 +883,23 @@ public final class LiteRTLMEngine: @unchecked Sendable {
                         Self.buildConversationTextMessageJSON(role: "system", text: $0)
                     }
 
-                    guard let convConfig = Self.withOptionalCString(systemMessageJSON, { systemPtr in
-                        Self.withOptionalCString(toolsJSON, { toolsPtr in
-                            Self.withOptionalCString(messagesJSON, { messagesPtr in
-                                litert_lm_conversation_config_create(
-                                    eng,
-                                    sessionConfig,
-                                    systemPtr,
-                                    toolsPtr,
-                                    messagesPtr,
-                                    enableConstrainedDecoding
-                                )
-                            })
-                        })
-                    }) else {
+                    // Builder-style conversation config (LiteRT-LM v0.11+):
+                    // create empty, then set each field.
+                    guard let convConfig = litert_lm_conversation_config_create() else {
                         litert_lm_session_config_delete(sessionConfig)
                         throw LiteRTLMError.inferenceFailure("Failed to create conversation config")
                     }
+                    litert_lm_conversation_config_set_session_config(convConfig, sessionConfig)
+                    if let s = systemMessageJSON {
+                        s.withCString { litert_lm_conversation_config_set_system_message(convConfig, $0) }
+                    }
+                    if let t = toolsJSON {
+                        t.withCString { litert_lm_conversation_config_set_tools(convConfig, $0) }
+                    }
+                    if let m = messagesJSON {
+                        m.withCString { litert_lm_conversation_config_set_messages(convConfig, $0) }
+                    }
+                    litert_lm_conversation_config_set_enable_constrained_decoding(convConfig, enableConstrainedDecoding)
 
                     guard let conversation = litert_lm_conversation_create(eng, convConfig) else {
                         litert_lm_conversation_config_delete(convConfig)
@@ -1240,8 +1240,8 @@ public final class LiteRTLMEngine: @unchecked Sendable {
                 utf8Bytes.append(0) // null-terminate
 
                 let result = utf8Bytes.withUnsafeBufferPointer { buf -> Int32 in
-                    var inputData = InputData(
-                        type: kInputText,
+                    var inputData = LiteRtLmInputData(
+                        type: kLiteRtLmInputDataTypeText,
                         data: UnsafeRawPointer(buf.baseAddress!),
                         size: utf8Bytes.count - 1 // exclude null terminator
                     )
@@ -1311,8 +1311,8 @@ public final class LiteRTLMEngine: @unchecked Sendable {
                     }
 
                     let output = prompt.withCString { textPtr -> String? in
-                        var input = InputData(
-                            type: kInputText,
+                        var input = LiteRtLmInputData(
+                            type: kLiteRtLmInputDataTypeText,
                             data: UnsafeRawPointer(textPtr),
                             size: strlen(textPtr)
                         )
@@ -1364,8 +1364,8 @@ public final class LiteRTLMEngine: @unchecked Sendable {
                     utf8Bytes.append(0)
 
                     let result = utf8Bytes.withUnsafeBufferPointer { buf -> Int32 in
-                        var input = InputData(
-                            type: kInputText,
+                        var input = LiteRtLmInputData(
+                            type: kLiteRtLmInputDataTypeText,
                             data: UnsafeRawPointer(buf.baseAddress!),
                             size: utf8Bytes.count - 1
                         )
@@ -1442,7 +1442,7 @@ public final class LiteRTLMEngine: @unchecked Sendable {
         // CPU uses TopP. Gallery app uses top_k=40 for GPU.
         let isGpu = backend.contains("gpu")
         var samplerParams = LiteRtLmSamplerParams(
-            type: isGpu ? kTopK : kTopP,
+            type: isGpu ? kLiteRtLmSamplerTypeTopK : kLiteRtLmSamplerTypeTopP,
             top_k: 40,
             top_p: 0.95,
             temperature: temperature,
@@ -1530,17 +1530,17 @@ public final class LiteRTLMEngine: @unchecked Sendable {
                     }
                     litert_lm_session_config_set_max_output_tokens(sessionConfig, Int32(maxTokens))
                     var samplerParams = LiteRtLmSamplerParams(
-                        type: kTopP, top_k: 40, top_p: 0.95,
+                        type: kLiteRtLmSamplerTypeTopP, top_k: 40, top_p: 0.95,
                         temperature: temperature, seed: 0
                     )
                     litert_lm_session_config_set_sampler_params(sessionConfig, &samplerParams)
 
-                    guard let convConfig = litert_lm_conversation_config_create(
-                        eng, sessionConfig, nil, nil, nil, false
-                    ) else {
+                    // Builder-style conversation config (LiteRT-LM v0.11+).
+                    guard let convConfig = litert_lm_conversation_config_create() else {
                         litert_lm_session_config_delete(sessionConfig)
                         throw LiteRTLMError.inferenceFailure("Failed to create conversation config")
                     }
+                    litert_lm_conversation_config_set_session_config(convConfig, sessionConfig)
 
                     guard let conversation = litert_lm_conversation_create(eng, convConfig) else {
                         litert_lm_conversation_config_delete(convConfig)
@@ -1597,19 +1597,19 @@ public final class LiteRTLMEngine: @unchecked Sendable {
                     }
                     litert_lm_session_config_set_max_output_tokens(sessionConfig, Int32(maxTokens))
                     var samplerParams = LiteRtLmSamplerParams(
-                        type: kTopP, top_k: 40, top_p: 0.95,
+                        type: kLiteRtLmSamplerTypeTopP, top_k: 40, top_p: 0.95,
                         temperature: temperature, seed: 0
                     )
                     litert_lm_session_config_set_sampler_params(sessionConfig, &samplerParams)
 
-                    guard let convConfig = litert_lm_conversation_config_create(
-                        eng, sessionConfig, nil, nil, nil, false
-                    ) else {
+                    // Builder-style conversation config (LiteRT-LM v0.11+).
+                    guard let convConfig = litert_lm_conversation_config_create() else {
                         litert_lm_session_config_delete(sessionConfig)
                         Self.cleanupTempFiles(urlsToCleanup)
                         continuation.finish(throwing: LiteRTLMError.inferenceFailure("Failed to create conversation config"))
                         return
                     }
+                    litert_lm_conversation_config_set_session_config(convConfig, sessionConfig)
 
                     guard let conversation = litert_lm_conversation_create(eng, convConfig) else {
                         litert_lm_conversation_config_delete(convConfig)
