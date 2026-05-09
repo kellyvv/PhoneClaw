@@ -24,7 +24,11 @@ public extension ModelDescriptor {
             URL(string: "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm")!,
         ],
         fileName: "gemma-4-E2B-it.litertlm",
-        expectedFileSize: 2_600_000_000,
+        // expectedFileSize 仅供 UI 进度估算 / 磁盘空间预检,
+        // 不参与下载完成的硬校验 (ResumableAssetDownloader v1.3.2+ 只信任
+        // HTTP 服务器返回的 Content-Length, 不再用常量做 fallback 校验)。
+        // 数值取自 HF 当前实际大小, 上游若重传可能略变, 不影响功能。
+        expectedFileSize: 2_588_147_712,
         capabilities: ModelCapabilities(
             supportsVision: true,
             supportsAudio: true,
@@ -67,7 +71,9 @@ public extension ModelDescriptor {
             URL(string: "https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm/resolve/main/gemma-4-E4B-it.litertlm")!,
         ],
         fileName: "gemma-4-E4B-it.litertlm",
-        expectedFileSize: 3_700_000_000,
+        // expectedFileSize 仅供 UI 进度估算 / 磁盘空间预检, 不参与硬校验。
+        // 见 E2B 同字段注释。
+        expectedFileSize: 3_659_530_240,
         capabilities: ModelCapabilities(
             supportsVision: true,
             supportsAudio: true,
