@@ -22,15 +22,25 @@ MiniCPM-V 用 GGUF 格式 + llama.cpp 推理 + 自定义 mtmd (multimodal) C API
 | 内容 | 路径 |
 |---|---|
 | llama.xcframework (iOS-only slices, 29 MB) | `Frameworks/llama.xcframework` |
-| MTMDWrapper Swift 类 (4 个文件) | `Sources/PhoneClawEngine/MTMD/` |
-| Package.swift 接入 llama + 开 C++ interop | `Package.swift` |
+| MTMDWrapper Swift 类 (4 个文件) | `Sources/MTMDEngine/` |
+| Package.swift 拆出 MTMDEngine 独立 target | `Package.swift` |
 
 llama.xcframework 来自 OpenBMB demo, 含他们的 fork llama.cpp + 自定义
 mtmd-ios C API。Module 名 `llama`, Swift 直接 `import llama` 就能拿到所有 symbol。
 
-`MTMD/` 下 4 个 Swift 文件直接拷自 demo, **未做修改** — 后续如果上游 demo
-更新 API 我们能 diff 同步。MTMDWrapper 是个 @MainActor / ObservableObject,
-有 416 行, 封装了 init / decode / cancel / cleanup 完整生命周期。
+`Sources/MTMDEngine/` 下 4 个 Swift 文件直接拷自 demo, **未做修改** —
+后续如果上游 demo 更新 API 我们能 diff 同步。MTMDWrapper 是个
+@MainActor / ObservableObject, 有 416 行, 封装了 init / decode / cancel /
+cleanup 完整生命周期。
+
+**架构上 MTMDEngine 是个独立 target**, 跟现有的 `PhoneClawEngine` target
+(Gemma 4 / LiteRT-LM) 完全隔离 —— LiteRT 路径的编译参数、依赖图、Swift
+模块边界都没动。上层 app 端:
+- `import PhoneClawEngine`  → 拿 LiteRT API (跟集成前一样, 无变化)
+- `import MTMDEngine`       → 拿 MiniCPM-V API (新)
+
+C++ interop (`.interoperabilityMode(.Cxx)`) **只**作用于 MTMDEngine target,
+不会污染 LiteRT 路径。这条 isolation 是 risk #1 的根治方案。
 
 ---
 
@@ -188,9 +198,10 @@ UI 需要:
 
 ## 已知风险 / 待解决
 
-1. **C++ interop 兼容性**: 整个 PhoneClawEngine target 开 .Cxx 后, 现有
-   LiteRT-LM wrapper 代码是否还能编译? 可能要分两个 target —
-   `LiteRTEngine` (无 cxx) + `MTMDEngine` (有 cxx), 共用一个 product。
+1. ~~**C++ interop 兼容性**: 整个 PhoneClawEngine target 开 .Cxx 后, 现有
+   LiteRT-LM wrapper 代码是否还能编译?~~
+   **已根治**: MTMDEngine 拆成独立 target, .Cxx 仅作用于该 target,
+   PhoneClawEngine (LiteRT) target 编译参数一字不变。
 
 2. **ANE 模型大小**: mlmodelc.zip 几百 MB, 解压后更大。
    Documents 总占用要监控, 别超过用户存储。
