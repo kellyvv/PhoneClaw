@@ -191,6 +191,42 @@ public enum MLXModelProfiles {
         ]
     )
 
+    // MARK: MiniCPM-V 4.6 — 1.3B (Qwen3.5-0.8B + SigLIP2-400M), Q4_K_M
+    //
+    // 总磁盘 ~1.6 GB (LLM 0.5 GB + mmproj 1.1 GB + ANE 几百 MB)。
+    // 内存比 Gemma 4 E2B (2B) 还轻, 但 vision encoder 走 ANE 时活动内存几乎
+    // 不占 GPU/Metal; LLM 4096 ctx + Qwen3.5 26 层 KV cache ~ 200 MB 起步。
+    // 视频路径会让 nCtx 拉到 8192, KV +270 MB, 仍宽裕。
+    //
+    // 头屏推荐内存 ≥ 6 GB (iPhone 15 / 16 / 17 / iPad M 系列), iPhone 14 6 GB
+    // 也能跑但 sideloadly 签名下 jetsam 风险高, 长对话可能被杀。
+    public static let miniCPMV_4_6 = ModelRuntimeProfile(
+        thinkingMarker: nil,    // MiniCPM-V 4.6 没有 thinking 模式 (4.6-Thinking 才有)
+
+        // 文本输出预算: 比 Gemma 4 E2B 略松, 因为模型本身更小
+        textOutputBudget: LinearBudgetFormula(
+            safetyMarginMB: 120, tokensPerMB: 4.5, minTokens: 512, maxTokens: 4_096
+        ),
+        thinkingOutputBudget: LinearBudgetFormula(
+            safetyMarginMB: 120, tokensPerMB: 4.5, minTokens: 512, maxTokens: 4_096
+        ),
+
+        // 多模态: ANE 卸载 vision 后 Metal 主线只跑 LLM, image_max_slice_nums
+        // 是真正影响速度/精度的旋钮, soft cap 走宽松路径。
+        multimodalOutputTiers: [
+            MultimodalTier(headroomMaxMB: .max, imageSoftTokenCap: 192),
+        ],
+        multimodalCriticalHeadroomMB: 0,
+        headroomFloorMB: 120,
+
+        historyDepthTiers: [
+            BudgetTier(headroomMaxMB: 500,    tokens: 0),
+            BudgetTier(headroomMaxMB: 900,    tokens: 2),
+            BudgetTier(headroomMaxMB: 1_500,  tokens: 4),
+            BudgetTier(headroomMaxMB: .max,   tokens: 6),
+        ]
+    )
+
     // MARK: - Lookup
 
     /// 根据 model.id 查 profile
@@ -198,6 +234,7 @@ public enum MLXModelProfiles {
         switch modelID {
         case "gemma-4-e2b-it-4bit": return gemma4_e2b
         case "gemma-4-e4b-it-4bit": return gemma4_e4b
+        case "minicpm-v-4_6-q4_k_m": return miniCPMV_4_6
         default: return nil
         }
     }

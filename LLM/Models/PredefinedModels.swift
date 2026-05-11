@@ -106,10 +106,50 @@ public extension ModelDescriptor {
         runtimeProfile: MLXModelProfiles.gemma4_e4b
     )
 
+    // MARK: - MiniCPM-V 4.6 (llama.cpp + mtmd-ios + ANE)
+
+    /// MiniCPM-V 4.6 — 1.3B (Qwen3.5-0.8B + SigLIP2-400M), Q4_K_M GGUF。
+    /// 视觉多模态主力, 视频帧理解 v4.6 强项。
+    ///
+    /// 落盘三个文件 (`fileName` 指 LLM 主权重, 兄弟文件由 backend 派生):
+    ///   - MiniCPM-V-4_6-Q4_K_M.gguf      ~500 MB    LLM 主权重 (走 llama.cpp Metal/CPU)
+    ///   - MiniCPM-V-4_6-mmproj-f16.gguf  ~1.1 GB    multimodal projector
+    ///   - coreml_minicpmv46_vit_all_f32.mlmodelc/  几百 MB  ANE 加速 vision tower (可选)
+    /// 总磁盘 ~1.6 GB, 内存推荐 ≥ 6 GB。
+    static let miniCPMV4_6 = ModelDescriptor(
+        id: "minicpm-v-4_6-q4_k_m",
+        displayName: "MiniCPM-V 4.6",
+        family: .miniCPMV,
+        artifactKind: .ggufBundle,
+        downloadURLs: [
+            // OpenBMB demo 用的华为云中转 (国内速度优先, 跟 HF 内容同源)。
+            // HF / hf-mirror / modelscope 三镜像将来在 Phase 1.5 加。
+            URL(string: "https://data-transfer-huawei.obs.cn-north-4.myhuaweicloud.com/minicpmv46-instruct/MiniCPM-V-4_6-Q4_K_M.gguf")!,
+        ],
+        fileName: "MiniCPM-V-4_6-Q4_K_M.gguf",
+        // LLM 主文件大小 (粗略估, Phase 1.5 拿到精确字节数后更新)。
+        // 整模型 ~1.6 GB 但 expectedFileSize 只覆盖 LLM 主文件用于进度估算。
+        // mmproj / ANE 大小将来在 ArtifactKind 扩展里单独记。
+        expectedFileSize: 530_000_000,
+        capabilities: ModelCapabilities(
+            supportsVision: true,
+            supportsAudio: false,           // v4.6 无音频 (4.5/o 系列才有)
+            supportsLive: false,            // Phase 1.2.3 再开
+            supportsStructuredPlanning: false,
+            supportsThinking: false,        // 4.6 非 thinking, 要走 4.6-Thinking 变体
+            supportsPersistentSession: false, // MTMD 没有 LiteRT 那种 KV session 概念
+            supportsSessionSnapshot: false,
+            // 4096 KV / 总预算 3500, 跟 Gemma 4 E2B 同档。视频路径将来切 8192。
+            safeContextBudgetTokens: 3500,
+            defaultReservedOutputTokens: 700
+        ),
+        runtimeProfile: MLXModelProfiles.miniCPMV_4_6
+    )
+
     // MARK: - All Models
 
     /// 所有可用模型（按推荐顺序）
-    static let allModels: [ModelDescriptor] = [.gemma4E2B, .gemma4E4B]
+    static let allModels: [ModelDescriptor] = [.gemma4E2B, .gemma4E4B, .miniCPMV4_6]
 
     /// 默认模型
     static let defaultModel: ModelDescriptor = .gemma4E2B

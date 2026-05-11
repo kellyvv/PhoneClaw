@@ -211,7 +211,9 @@ public struct PromptPlan: Sendable, Equatable {
 /// 模型家族。同一家族共享 prompt 格式和能力特征。
 public enum ModelFamily: String, Sendable, Codable {
     case gemma4
-    // 未来: case qwen, miniCPM, ...
+    /// MiniCPM-V (OpenBMB), Qwen3.5 backbone + SigLIP2 vision tower。
+    case miniCPMV
+    // 未来: case qwen, ...
 }
 
 // MARK: - Artifact Kind
@@ -222,6 +224,10 @@ public enum ArtifactKind: String, Sendable {
     case litertlmFile
     /// 多文件目录 (MLX: config.json + safetensors + tokenizer + ...)
     case mlxDirectory
+    /// GGUF bundle (MiniCPM-V): LLM .gguf + mmproj .gguf + 可选 ANE .mlmodelc。
+    /// `ModelDescriptor.fileName` 指向 LLM 主权重, 其它兄弟文件由 backend
+    /// 的 bundleResolver 按命名约定派生 (见 AgentEngine 里实现)。
+    case ggufBundle
 }
 
 // MARK: - Model Capabilities

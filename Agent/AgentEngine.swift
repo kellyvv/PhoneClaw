@@ -470,7 +470,7 @@ class AgentEngine {
             #if canImport(PhoneClawEngine)
             // callbacks 闭包捕获 resolvedCatalog — 和 self.catalog 是同一个对象,
             // 无论调用方注入哪种 ModelCatalog 实现都能正确同步 loadedModel.
-            self.inference = LiteRTBackend(
+            let liteRT = LiteRTBackend(
                 modelPathResolver: { modelID in
                     guard let desc = resolvedCatalog.availableModels.first(where: { $0.id == modelID }) else { return nil }
                     return resolvedInstaller.artifactPath(for: desc)
@@ -483,6 +483,47 @@ class AgentEngine {
                 },
                 onModelUnloaded: { [weak resolvedCatalog] in
                     resolvedCatalog?.markUnloaded()
+                }
+            )
+
+            // MiniCPM-V backend: bundleResolver 从 LLM 主文件路径派生 mmproj
+            // 和 ANE 兄弟文件路径 (Phase 1.5 把 ggufBundle 文件列表显式建模之前
+            // 走命名约定)。
+            let miniCPMV = MiniCPMVBackend(bundleResolver: { modelID in
+                guard let desc = resolvedCatalog.availableModels.first(where: { $0.id == modelID }),
+                      desc.artifactKind == .ggufBundle,
+                      let llmPath = resolvedInstaller.artifactPath(for: desc) else {
+                    return nil
+                }
+                let baseDir = llmPath.deletingLastPathComponent()
+
+                // v4.6 命名约定 (跟 OpenBMB demo 一致):
+                //   <baseDir>/MiniCPM-V-4_6-Q4_K_M.gguf            ← llmPath (本身)
+                //   <baseDir>/MiniCPM-V-4_6-mmproj-f16.gguf        ← mmproj
+                //   <baseDir>/coreml_minicpmv46_vit_all_f32.mlmodelc/ ← ANE (可选)
+                let mmprojPath = baseDir.appendingPathComponent("MiniCPM-V-4_6-mmproj-f16.gguf")
+                let coremlPath = baseDir.appendingPathComponent("coreml_minicpmv46_vit_all_f32.mlmodelc")
+
+                // mmproj 必须存在; ANE 缺失会 fallback 到 llama.cpp GPU/CPU vision
+                // (慢但可用), 所以不强制。
+                guard FileManager.default.fileExists(atPath: mmprojPath.path) else {
+                    return nil
+                }
+                let resolvedCoreml: URL? = FileManager.default.fileExists(atPath: coremlPath.path)
+                    ? coremlPath : nil
+
+                return MTMDPathBundle(
+                    modelPath: llmPath,
+                    mmprojPath: mmprojPath,
+                    coremlPath: resolvedCoreml
+                )
+            })
+
+            self.inference = BackendDispatcher(
+                liteRT: liteRT,
+                miniCPMV: miniCPMV,
+                modelLookup: { modelID in
+                    resolvedCatalog.availableModels.first(where: { $0.id == modelID })
                 }
             )
             #else
