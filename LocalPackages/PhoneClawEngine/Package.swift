@@ -78,6 +78,19 @@ let package = Package(
                 // std::string 字段, 必须 .Cxx 模式才能编译。
                 // 这条设置只影响本 target, 不影响 PhoneClawEngine target。
                 .interoperabilityMode(.Cxx),
+                // 整个仓库 swift-tools-version 6.0, 默认 Swift 6 strict
+                // concurrency。但 MTMDWrapper.swift 是按 Swift 5 风格写的
+                // (OpenBMB demo 的代码), 直接编会撞:
+                //   - deinit 里访问 non-Sendable OpaquePointer
+                //   - 把 @MainActor closure 发到 DispatchQueue.global()
+                //   - mtmd_ios_token C 结构体跨 actor 边界传递
+                // 这些都是 Swift 5 写法下完全合法的代码。本 target 锁
+                // Swift 5 模式, 保持跟上游 demo 同步能力 — 将来上游升级
+                // 我们能 diff 同步, 不必重写并发模型。
+                //
+                // PhoneClawEngine target (LiteRT 路径) 不受此影响, 仍在
+                // Swift 6 strict 模式编译。
+                .swiftLanguageMode(.v5),
             ]
         ),
     ]
