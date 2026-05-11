@@ -6,7 +6,7 @@
 //
 
 import Foundation
-import llama
+internal import CMTMDBridge
 
 /// MTMD 流式输出 Token
 @frozen public struct MTMDToken: Sendable {
@@ -35,11 +35,10 @@ import llama
         self.timestamp = Date()
     }
     
-    /// 从 C 结构体创建
-    /// - Parameter cToken: C 结构体 token
-    /// - Returns: Swift Token 对象
-    internal static func from(_ cToken: mtmd_ios_token, index: Int? = nil) -> MTMDToken {
-        let content = cToken.token != nil ? String(cString: cToken.token) : ""
+    /// 从 C 桥接结构体创建。token 字段如果非空, **调用方负责释放** —
+    /// 这里只读取内容拷贝成 Swift String, 不接管所有权。
+    internal static func from(_ cToken: CMTMDToken, index: Int? = nil) -> MTMDToken {
+        let content = cToken.token != nil ? String(cString: cToken.token!) : ""
         return MTMDToken(content: content, isEnd: cToken.is_end, index: index)
     }
     

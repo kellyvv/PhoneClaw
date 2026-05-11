@@ -1,3 +1,19 @@
+// llama framework module map — modified by PhoneClaw integration.
+//
+// 跟上游 OpenBMB 默认 modulemap 的差异:
+//   `mtmd-ios.h` 被拆到 `llama.MTMDIOS` 子模块, 加 `requires cplusplus`。
+//
+// 原因: `mtmd-ios.h` 头里 `#include <string>` (C++ STL), 让纯 C/Swift 上下文
+// (PhoneClaw app target) Clang dependency scan 时直接挂掉。子模块 +
+// `requires cplusplus` 让 Clang 在非 C++ 上下文里自动跳过该子模块, 顶级
+// `llama` 模块的纯 C 头照常解析, app target 可以 transitively 链接 llama
+// framework 而无须开 C++ interop。
+//
+// 调用方:
+//   - MTMDEngine target (有 .interoperabilityMode(.Cxx)): `import llama`
+//     自动拿到顶级 + MTMDIOS 子模块, 可用 mtmd_ios_* 符号。
+//   - PhoneClaw app target (无 C++): 只通过 MTMDEngine 间接访问, 不直接 import llama;
+//     即使 Swift 内部 module graph 扫描到 llama, 也只能看到纯 C 头, 不会撞 <string>。
 framework module llama {
     header "llama.h"
     header "ggml.h"
@@ -7,7 +23,6 @@ framework module llama {
     header "ggml-cpu.h"
     header "ggml-blas.h"
     header "gguf.h"
-    header "mtmd-ios.h"
     header "mtmd.h"
     header "mtmd-helper.h"
 
@@ -17,4 +32,12 @@ framework module llama {
     link framework "Foundation"
 
     export *
+
+    // C++ 专用入口 — 包含 std::string 等 STL 类型,
+    // 只在 .Cxx 模式 / C++ 上下文里可见。
+    module MTMDIOS {
+        requires cplusplus
+        header "mtmd-ios.h"
+        export *
+    }
 }

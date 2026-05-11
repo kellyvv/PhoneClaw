@@ -131,6 +131,7 @@
 		BB2000000000000000000005 /* RuntimePolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000005 /* RuntimePolicy.swift */; };
 		BB2000000000000000000006 /* PredefinedModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000006 /* PredefinedModels.swift */; };
 		BB2000000000000000000007 /* LiteRTBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000007 /* LiteRTBackend.swift */; };
+		MINICPMV0000000000001 /* MiniCPMVBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = MINICPMV0000000000101 /* MiniCPMVBackend.swift */; };
 		BB2000000000000000000008 /* LiteRTCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000008 /* LiteRTCatalog.swift */; };
 		BB2000000000000000000009 /* LiteRTModelStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000009 /* LiteRTModelStore.swift */; };
 		BB2000000000000000000012 /* PCLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000012 /* PCLog.swift */; };
@@ -262,6 +263,7 @@
 		BB1000000000000000000005 /* RuntimePolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimePolicy.swift; sourceTree = "<group>"; };
 		BB1000000000000000000006 /* PredefinedModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PredefinedModels.swift; sourceTree = "<group>"; };
 		BB1000000000000000000007 /* LiteRTBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiteRTBackend.swift; sourceTree = "<group>"; };
+		MINICPMV0000000000101 /* MiniCPMVBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniCPMVBackend.swift; sourceTree = "<group>"; };
 		BB1000000000000000000008 /* LiteRTCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiteRTCatalog.swift; sourceTree = "<group>"; };
 		BB1000000000000000000009 /* LiteRTModelStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiteRTModelStore.swift; sourceTree = "<group>"; };
 		BB1000000000000000000012 /* PCLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PCLog.swift; path = Shared/PCLog.swift; sourceTree = SOURCE_ROOT; };
@@ -497,8 +499,17 @@
 			isa = PBXGroup;
 			children = (
 				BB3000000000000000000005 /* LiteRT */,
+				MINICPMV0000000000201 /* MiniCPMV */,
 			);
 			path = Backends;
+			sourceTree = "<group>";
+		};
+		MINICPMV0000000000201 /* MiniCPMV */ = {
+			isa = PBXGroup;
+			children = (
+				MINICPMV0000000000101 /* MiniCPMVBackend.swift */,
+			);
+			path = MiniCPMV;
 			sourceTree = "<group>";
 		};
 		BB3000000000000000000004 /* Installation */ = {
@@ -923,6 +934,7 @@
 				BB2000000000000000000005 /* RuntimePolicy.swift in Sources */,
 				BB2000000000000000000006 /* PredefinedModels.swift in Sources */,
 				BB2000000000000000000007 /* LiteRTBackend.swift in Sources */,
+				MINICPMV0000000000001 /* MiniCPMVBackend.swift in Sources */,
 				BB2000000000000000000099 /* AudioBypassTest.swift in Sources */,
 				BB2000000000000000000008 /* LiteRTCatalog.swift in Sources */,
 				BB2000000000000000000009 /* LiteRTModelStore.swift in Sources */,

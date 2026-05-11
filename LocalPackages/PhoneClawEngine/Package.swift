@@ -5,33 +5,35 @@ import PackageDescription
 //
 // Swift Package for running on-device LLMs on iOS GPU (Metal) or CPU.
 //
-// 两个独立的 inference engine, 完全隔离的 target, 用同一个 library product
-// 暴露给上层。这样新增 MTMD/MiniCPM-V 路径**不会**影响现有 LiteRT 路径的
-// 编译参数、依赖图或 ABI:
+// 三个 target, 都通过 library product `PhoneClawEngine` 暴露:
 //
-//   target: PhoneClawEngine
-//     ├─ deps: CLiteRTLM
-//     ├─ swiftSettings: (无 — 跟引入 MiniCPM-V 前完全一致)
-//     └─ sources: Sources/PhoneClawEngine/ (Gemma 4 wrapper, LiteRT-LM)
+//   PhoneClawEngine    Swift  Gemma 4 / LiteRT-LM (.litertlm)
+//                             deps: CLiteRTLM
+//                             swiftSettings: 无 — 一字不变维持 v1.3.2 行为
 //
-//   target: MTMDEngine (新增)
-//     ├─ deps: llama
-//     ├─ swiftSettings: .interoperabilityMode(.Cxx)
-//     │   (MTMDParams 用 std.string 桥接到 mtmd_ios_params 这个 C++ 结构体)
-//     └─ sources: Sources/MTMDEngine/ (MiniCPM-V wrapper, llama.cpp + mtmd-ios)
+//   CMTMDBridge        C++   纯 C 桥接层, 把 OpenBMB mtmd-ios 的 C++ API
+//                             (含 std::string) 包成 Swift 可直接调用的 C 接口。
+//                             deps: llama
+//                             headers: 对外只暴露 include/CMTMDBridge.h (纯 C)
 //
-//   product: PhoneClawEngine (library)
-//     └─ targets: [PhoneClawEngine, MTMDEngine]
+//   MTMDEngine         Swift  MiniCPM-V wrapper, MTMDWrapper / MTMDParams 等。
+//                             deps: CMTMDBridge — 不直接依赖 llama, 也不需要
+//                                  Swift/C++ interop, 因此 .swiftmodule 不带
+//                                  cxx-interop 标记, 消费者 (PhoneClaw app)
+//                                  可以普通 import 而不开 cxx flag。
 //
-// 上层 app 端:
-//   import PhoneClawEngine  — 拿 LiteRT API (跟集成前一样, 无任何变化)
-//   import MTMDEngine       — 拿 MiniCPM-V API (新)
+// 为什么搞 CMTMDBridge 中间层:
+//   Swift/C++ interop (.interoperabilityMode(.Cxx)) 在 Swift 6 是病毒性
+//   传染的 — MTMDEngine 一开 cxx, PhoneClaw app target 也必须开。app 一开
+//   cxx, Clang 处理所有依赖头 (CocoaPods Yams 等) 的方式变严格, 撞 `extern "C"`
+//   block 里 `#include <string.h>` 这种合法 C 写法直接挂。所以把 C++ 边界
+//   收敛到 CMTMDBridge.cpp 一个文件里, 外层全部走纯 C。
 //
 // Build pipeline source of truth:
 //   LiteRTLM:    /Users/<dev>/AITOOL/LiteRTLM-iOSNative (私有, bazel build)
 //                + LocalPackages/PhoneClawEngine/patches/ 上游补丁归档。
-//   llama:       https://github.com/OpenBMB/MiniCPM-V-Apps 的预编译版本,
-//                含他们自定义的 mtmd-ios C API (ANE 加速 vision tower)。
+//   llama:       https://github.com/OpenBMB/MiniCPM-V-Apps 预编译版本,
+//                含他们自定义 mtmd-ios C API (ANE 加速 vision tower)。
 //
 let package = Package(
     name: "PhoneClawEngine",
@@ -39,9 +41,6 @@ let package = Package(
         .iOS(.v17),
     ],
     products: [
-        // 一个 library product 同时暴露两个 target —— 上层 app 无需改
-        // Package dependency 声明, 只在需要 MiniCPM-V 的源文件里加
-        // `import MTMDEngine` 即可。
         .library(name: "PhoneClawEngine", targets: ["PhoneClawEngine", "MTMDEngine"]),
     ],
     targets: [
@@ -57,41 +56,49 @@ let package = Package(
             dependencies: ["CLiteRTLM"],
             path: "Sources/PhoneClawEngine"
             // 注意: 这里**没有** .interoperabilityMode(.Cxx),
-            // 保持跟 v1.3.2 时一字不差。MTMD 的 C++ interop 隔离在
-            // MTMDEngine target 里, 不影响 LiteRT 路径。
+            // 保持跟 v1.3.2 时一字不差。
         ),
 
         // ───────────────────────────────────────────────────────────
-        // MiniCPM-V (llama.cpp + OpenBMB mtmd-ios) — 新增, 独立 target
+        // llama.cpp 二进制 — 给 CMTMDBridge 提供 mtmd_ios_* 实现
         // ───────────────────────────────────────────────────────────
         .binaryTarget(
             name: "llama",
             path: "Frameworks/llama.xcframework"
         ),
+
+        // ───────────────────────────────────────────────────────────
+        // C++ → C 桥接层 — 隔离所有 cxx 复杂度
+        // ───────────────────────────────────────────────────────────
+        // CMTMDBridge.cpp 用 std::string 拼装 mtmd_ios_params, 调 mtmd_ios_*,
+        // 对外只暴露 CMTMDBridge.h 里的纯 C 接口。
+        // SPM 通过文件扩展名识别 C++ (.cpp), publicHeadersPath 暴露 include/。
+        .target(
+            name: "CMTMDBridge",
+            dependencies: ["llama"],
+            path: "Sources/CMTMDBridge",
+            publicHeadersPath: "include",
+            cxxSettings: [
+                .headerSearchPath("include"),
+            ]
+        ),
+
+        // ───────────────────────────────────────────────────────────
+        // MiniCPM-V Swift wrapper — 纯 Swift, 不带 cxx interop
+        // ───────────────────────────────────────────────────────────
         .target(
             name: "MTMDEngine",
-            dependencies: ["llama"],
+            dependencies: ["CMTMDBridge"],
             path: "Sources/MTMDEngine",
             swiftSettings: [
-                // MTMDParams.swift 用 `std.string(modelPath)` 这种
-                // Swift/C++ 互操作语法直接构造 mtmd_ios_params 里的
-                // std::string 字段, 必须 .Cxx 模式才能编译。
-                // 这条设置只影响本 target, 不影响 PhoneClawEngine target。
-                .interoperabilityMode(.Cxx),
-                // 整个仓库 swift-tools-version 6.0, 默认 Swift 6 strict
-                // concurrency。但 MTMDWrapper.swift 是按 Swift 5 风格写的
-                // (OpenBMB demo 的代码), 直接编会撞:
-                //   - deinit 里访问 non-Sendable OpaquePointer
-                //   - 把 @MainActor closure 发到 DispatchQueue.global()
-                //   - mtmd_ios_token C 结构体跨 actor 边界传递
-                // 这些都是 Swift 5 写法下完全合法的代码。本 target 锁
-                // Swift 5 模式, 保持跟上游 demo 同步能力 — 将来上游升级
-                // 我们能 diff 同步, 不必重写并发模型。
-                //
-                // PhoneClawEngine target (LiteRT 路径) 不受此影响, 仍在
-                // Swift 6 strict 模式编译。
+                // OpenBMB demo 代码是 Swift 5 风格 (deinit access non-Sendable,
+                // @MainActor closure 跨 DispatchQueue 等), Swift 6 strict
+                // concurrency 不接, 锁 v5 模式。
+                // 注意: 没有 .interoperabilityMode(.Cxx) — 全部通过
+                // CMTMDBridge.h 走 C 接口, 不直接碰 mtmd-ios.h 的 std::string。
                 .swiftLanguageMode(.v5),
             ]
         ),
-    ]
+    ],
+    cxxLanguageStandard: .cxx17  // mtmd-ios C++ 实现需要 C++17
 )

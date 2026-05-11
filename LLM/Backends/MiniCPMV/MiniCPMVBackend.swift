@@ -1,0 +1,356 @@
+import Foundation
+import Combine
+import CoreImage
+import MTMDEngine
+
+// MARK: - MiniCPM-V Backend
+//
+// InferenceService 实现，封装 OpenBMB 的 mtmd-ios C API (llama.cpp 推 LLM,
+// CoreML 推 SigLIP2 vision tower 走 ANE)。
+//
+// 跟 LiteRTBackend 的差异:
+//   - 模型由 3 个文件组成: LLM .gguf + mmproj .gguf + 可选 CoreML .mlmodelc
+//     bundleResolver 把这 3 个路径打包返回, 而不是 LiteRT 的单文件 path。
+//   - MTMDWrapper 是 @MainActor + ObservableObject (OpenBMB demo 风格),
+//     这里通过 Task { @MainActor in ... } 桥接。
+//   - 没有 KV 持久化 session 的概念 — MTMD 内部维护对话状态, 切换/清理
+//     走 reset()。InferenceService 协议里的 KV session 方法走默认 no-op。
+//   - 没有 MTP speculative decoding — setEnableSpeculativeDecoding 为 no-op。
+//
+// 当前状态 (Phase 1.2):
+//   ✅ load / unload
+//   ✅ generate(prompt:) 纯文本路径 (通过 Combine→AsyncStream 桥接)
+//   ⏳ generateMultimodal — Phase 1.2.2
+//   ⏳ generateRaw with images — Phase 1.2.2
+//   ⏳ generateLive — Phase 1.2.3
+//   ⏳ enterLiveMode / exitLiveMode — Phase 1.2.3
+//
+// 未对接到 AgentEngine — 路由层 (后端选择) 走 Phase 1.3。
+
+// MARK: - Path Bundle
+
+/// MiniCPM-V 模型的 3 个文件路径打包。
+public struct MTMDPathBundle: Sendable {
+    /// LLM 主权重 .gguf (e.g. MiniCPM-V-4_6-Q4_K_M.gguf)
+    public let modelPath: URL
+    /// 多模态投影 .gguf (e.g. MiniCPM-V-4_6-mmproj-f16.gguf)
+    public let mmprojPath: URL
+    /// CoreML/ANE 加速的 vision tower .mlmodelc 目录 (可选)。
+    /// nil 时 vision encoder fallback 到 llama.cpp GPU/CPU 路径 (会慢很多,
+    /// 视频场景几乎不可用)。
+    public let coremlPath: URL?
+
+    public init(modelPath: URL, mmprojPath: URL, coremlPath: URL? = nil) {
+        self.modelPath = modelPath
+        self.mmprojPath = mmprojPath
+        self.coremlPath = coremlPath
+    }
+}
+
+// MARK: - Backend
+
+@Observable
+final class MiniCPMVBackend: InferenceService {
+
+    // MARK: InferenceService State
+
+    private(set) var isLoaded = false
+    private(set) var isLoading = false
+    private(set) var isGenerating = false
+    var statusMessage = tr("等待加载模型...", "Waiting to load model...")
+    private(set) var stats = InferenceStats()
+
+    // MARK: Sampling (per InferenceService)
+    //
+    // MiniCPM-V 默认 temperature 0.7 (OpenBMB demo 设定, 对齐模型
+    // generation_config.json), top_k/top_p 在 mtmd-ios.cpp 内部统一禁用,
+    // 走纯温度采样。这里保留协议要求的 4 个字段, top_k/top_p 实际不参与
+    // 采样, 留着是为了 UI 滑条共用代码路径。
+
+    var samplingTopK = 40
+    var samplingTopP: Float = 0.95
+    var samplingTemperature: Float = 0.7
+    var maxOutputTokens = 1024
+
+    // MARK: Private
+
+    @ObservationIgnored private let bundleResolver: (String) -> MTMDPathBundle?
+
+    /// MTMDWrapper 在 @MainActor 上构造, 首次 load 时懒加载。
+    @ObservationIgnored private var wrapper: MTMDWrapper?
+
+    @ObservationIgnored private var loadedModelID: String?
+    @ObservationIgnored private var preferGPU: Bool = true
+
+    // MARK: Init
+
+    init(bundleResolver: @escaping (String) -> MTMDPathBundle?) {
+        self.bundleResolver = bundleResolver
+    }
+
+    // MARK: - Lifecycle
+
+    func load(modelID: String) async throws {
+        if loadedModelID == modelID, isLoaded { return }
+        if isLoading { return }
+
+        guard let bundle = bundleResolver(modelID) else {
+            throw ModelBackendError.modelFileMissing(modelID)
+        }
+
+        // 文件存在性预检
+        guard FileManager.default.fileExists(atPath: bundle.modelPath.path) else {
+            throw ModelBackendError.modelFileMissing(bundle.modelPath.lastPathComponent)
+        }
+        guard FileManager.default.fileExists(atPath: bundle.mmprojPath.path) else {
+            throw ModelBackendError.modelFileMissing(bundle.mmprojPath.lastPathComponent)
+        }
+        // coremlPath 是可选, 不存在不报错 — fallback 到 CPU/GPU vision
+
+        await MainActor.run {
+            self.isLoading = true
+            self.statusMessage = tr("加载 MiniCPM-V...", "Loading MiniCPM-V...")
+        }
+
+        // 如果之前有其它模型, 先清掉
+        if let old = wrapper {
+            await old.cleanup()
+        }
+
+        // MTMDWrapper 是 @MainActor 类, 构造和方法调用都需要 main 上下文。
+        // 这里通过 await MainActor.run 完成跨 actor 桥接。
+        let w: MTMDWrapper = await MainActor.run {
+            let new = MTMDWrapper()
+            self.wrapper = new
+            return new
+        }
+
+        // 决定 n_ctx — v4.6 视频路径需要 8192, 其它默认 4096。
+        // Phase 1.2 文本场景统一 4096, 视频路径在 Phase 1.2.3 引入。
+        let nCtx = 4096
+
+        let params = MTMDParams(
+            modelPath: bundle.modelPath.path,
+            mmprojPath: bundle.mmprojPath.path,
+            coremlPath: bundle.coremlPath?.path ?? "",
+            nPredict: maxOutputTokens,
+            nCtx: nCtx,
+            nThreads: 4,
+            temperature: samplingTemperature,
+            useGPU: preferGPU,
+            mmprojUseGPU: preferGPU,
+            warmup: true,
+            imageMaxSliceNums: 9
+        )
+
+        do {
+            try await w.initialize(with: params)
+        } catch {
+            await MainActor.run {
+                self.isLoading = false
+                self.statusMessage = tr("加载失败: \(error.localizedDescription)",
+                                        "Load failed: \(error.localizedDescription)")
+            }
+            throw error
+        }
+
+        await MainActor.run {
+            self.loadedModelID = modelID
+            self.isLoaded = true
+            self.isLoading = false
+            self.statusMessage = tr("MiniCPM-V 已就绪",
+                                    "MiniCPM-V ready")
+        }
+    }
+
+    func unload() {
+        // 协议是 sync, 实际清理需要跑 @MainActor 上的 wrapper.cleanup。
+        // 同步状态先翻掉, 后台异步执行 wrapper 清理 — 跟 LiteRTBackend 同款套路。
+        isLoaded = false
+        loadedModelID = nil
+        statusMessage = tr("已卸载", "Unloaded")
+
+        Task { @MainActor [weak self] in
+            await self?.wrapper?.cleanup()
+            self?.wrapper = nil
+        }
+    }
+
+    func cancel() {
+        isGenerating = false
+        Task { @MainActor [weak self] in
+            self?.wrapper?.stopGeneration()
+        }
+    }
+
+    // MARK: - Live Mode (stub — Phase 1.2.3)
+
+    func enterLiveMode(systemPrompt: String?) async throws {
+        // TODO Phase 1.2.3: 持久 conversation + 多模态帧流
+        // 暂时只把 system prompt 注入 wrapper, 等于普通 chat 起一个 system turn。
+        guard let w = wrapper else {
+            throw ModelBackendError.modelNotLoaded
+        }
+        if let sp = systemPrompt, !sp.isEmpty {
+            try await w.addTextInBackground(sp, role: "system")
+        }
+    }
+
+    func exitLiveMode() async {
+        // TODO Phase 1.2.3
+        if let w = wrapper {
+            await w.reset()
+        }
+    }
+
+    // MARK: - Text Generation
+
+    /// 纯文本推理: 通过 Combine 订阅 wrapper.$currentToken 把 publisher 流
+    /// 转换为 InferenceService 协议要求的 AsyncThrowingStream<String, Error>。
+    ///
+    /// 注意 prompt 处理:
+    ///   InferenceService 文档说 "调用方负责构造 Gemma 4 的 <|turn>...<turn|> 模板"。
+    ///   MiniCPM-V 用的是 Qwen3.5 chat template, 跟 Gemma 4 不兼容。
+    ///   Phase 1.2 这里我们直接把 prompt 作为 user role 传给 MTMD wrapper,
+    ///   wrapper 内部会按 Qwen 模板包装。AgentEngine 那边对接 MiniCPM-V 时要
+    ///   传"裸 user text", 不能传带 Gemma turn markers 的 prompt。
+    ///   Phase 1.3 路由层会负责按 backend 选择正确的 prompt builder。
+    func generate(prompt: String) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            Task { @MainActor [weak self] in
+                guard let self else {
+                    continuation.finish()
+                    return
+                }
+                guard self.isLoaded, let w = self.wrapper else {
+                    continuation.finish(throwing: ModelBackendError.modelNotLoaded)
+                    return
+                }
+
+                self.isGenerating = true
+
+                // Combine 订阅: 每次 currentToken 变化 yield content 给 stream,
+                // is_end 时 finish。把 cancellable 绑到 continuation termination
+                // 防止 stream 早退留下悬空订阅。
+                //
+                // 用 final class 包一层 (Swift 6 strict concurrency 不接受
+                // 跨并发边界捕获 `var cancellable`, 见 SE-0420)。
+                final class CancellableBox: @unchecked Sendable {
+                    var c: AnyCancellable?
+                }
+                let box = CancellableBox()
+                box.c = w.$currentToken
+                    .dropFirst()  // 忽略初始 .empty
+                    .sink { token in
+                        if !token.content.isEmpty {
+                            continuation.yield(token.content)
+                        }
+                        if token.isEnd {
+                            continuation.finish()
+                            box.c?.cancel()
+                            Task { @MainActor [weak self] in
+                                self?.isGenerating = false
+                            }
+                        }
+                    }
+
+                continuation.onTermination = { _ in
+                    box.c?.cancel()
+                    Task { @MainActor [weak self] in
+                        self?.wrapper?.stopGeneration()
+                        self?.isGenerating = false
+                    }
+                }
+
+                // 注入 prompt + 启动生成
+                do {
+                    try await w.addTextInBackground(prompt, role: "user")
+                    try await w.startGeneration()
+                } catch {
+                    continuation.finish(throwing: error)
+                    box.c?.cancel()
+                    self.isGenerating = false
+                }
+            }
+        }
+    }
+
+    // MARK: - Multimodal Generation (stub — Phase 1.2.2)
+
+    func generateMultimodal(
+        images: [CIImage],
+        audios: [AudioInput],
+        prompt: String,
+        systemPrompt: String
+    ) -> AsyncThrowingStream<String, Error> {
+        // TODO Phase 1.2.2:
+        //   1. CIImage → 临时 PNG 落盘 (mtmd_ios_prefill_image 吃 path, 不吃 buffer)
+        //   2. systemPrompt → wrapper.addTextInBackground(role: "system")
+        //   3. 每张图 → wrapper.addImageInBackground(tmpPath)
+        //   4. prompt → wrapper.addTextInBackground(role: "user")
+        //   5. wrapper.startGeneration() + 同上文 Combine 桥接
+        //   audios 暂不支持 (MiniCPM-V 4.6 无 audio, 4.5/o 系列才有)
+        AsyncThrowingStream { $0.finish(throwing: MiniCPMVBackendError.notImplemented("multimodal")) }
+    }
+
+    func generateRaw(
+        text: String,
+        images: [CIImage]
+    ) -> AsyncThrowingStream<String, Error> {
+        // 没图就走文本路径, 有图回退到 multimodal (Phase 1.2.2 之后)。
+        if images.isEmpty {
+            return generate(prompt: text)
+        }
+        return AsyncThrowingStream { $0.finish(throwing: MiniCPMVBackendError.notImplemented("raw+images")) }
+    }
+
+    func generateLive(
+        prompt: String,
+        images: [CIImage],
+        audios: [AudioInput]
+    ) -> AsyncThrowingStream<String, Error> {
+        // TODO Phase 1.2.3
+        AsyncThrowingStream { $0.finish(throwing: MiniCPMVBackendError.notImplemented("live")) }
+    }
+
+    // MARK: - Backend-specific overrides
+
+    func setPreferredBackend(_ backend: String) {
+        // MiniCPM-V 通过 MTMDParams.useGPU + mmprojUseGPU 控制 GPU/CPU,
+        // 这里记下偏好, 下次 load 时生效。已加载的 engine 不会自动重启。
+        preferGPU = (backend.lowercased() == "gpu")
+    }
+
+    func setEnableSpeculativeDecoding(_ enabled: Bool) {
+        // MiniCPM-V 没有 MTP speculative decoding, 此开关无意义, no-op。
+        // 协议里有这个方法是 LiteRT 专有的, 默认实现就是 no-op, 我们这里
+        // 显式覆盖一个空 body 让意图清晰。
+        _ = enabled
+    }
+
+    // KV session 相关 (revertToTextOnly, resetKVSession, prepareForSessionGroupTransition,
+    // lastKVPrefillTokens, kvSessionActive, sessionHasContext) 全部走协议默认实现
+    // (no-op / 0 / false), MiniCPM-V 没有 LiteRT 那种 persistent KV session 概念。
+}
+
+// MARK: - Errors
+
+public enum MiniCPMVBackendError: LocalizedError {
+    case notImplemented(String)
+    case bundleResolutionFailed(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .notImplemented(let what):
+            return tr(
+                "MiniCPM-V 后端尚未实现: \(what)",
+                "MiniCPM-V backend not implemented yet: \(what)"
+            )
+        case .bundleResolutionFailed(let modelID):
+            return tr(
+                "找不到 MiniCPM-V 模型 \(modelID) 的文件路径",
+                "Cannot resolve MiniCPM-V model \(modelID) file paths"
+            )
+        }
+    }
+}

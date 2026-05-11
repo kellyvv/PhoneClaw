@@ -7,7 +7,7 @@
 
 import Foundation
 import Combine
-import llama
+internal import CMTMDBridge
 
 
 /// MTMD 多模态推理包装器
@@ -61,7 +61,7 @@ public class MTMDWrapper: ObservableObject {
         
         // 清理资源
         if let ctx = context {
-            mtmd_ios_free(ctx)
+            cmtmd_free(ctx)
             context = nil
         }
         
@@ -86,9 +86,28 @@ public class MTMDWrapper: ObservableObject {
         // 在后台线程执行初始化
         return try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
-                var cParams = params.toCParams()
-                let ctx = mtmd_ios_init(&cParams)
-                
+                // 直接调 C 桥接, 把 Swift String 作为 C-string 传过去 —
+                // 不再需要 Swift 端用 std.string(...) 构造 C++ 字段。
+                let ctx = params.modelPath.withCString { modelPathC in
+                    params.mmprojPath.withCString { mmprojPathC in
+                        params.coremlPath.withCString { coremlPathC in
+                            cmtmd_init(
+                                modelPathC,
+                                mmprojPathC,
+                                coremlPathC,
+                                Int32(params.nPredict),
+                                Int32(params.nCtx),
+                                Int32(params.nThreads),
+                                params.temperature,
+                                params.useGPU,
+                                params.mmprojUseGPU,
+                                params.warmup,
+                                Int32(params.imageMaxSliceNums)
+                            )
+                        }
+                    }
+                }
+
                 if ctx == nil {
                     continuation.resume(throwing: MTMDError.initializationFailed("无法创建 MTMD 上下文"))
                     return
@@ -136,10 +155,10 @@ public class MTMDWrapper: ObservableObject {
             timeoutMessage: "addImageInBackground timed out after \(Int(timeoutSeconds))s (image=\(imagePath))"
         ) { resumeOnce in
             DispatchQueue.global(qos: .userInitiated).async {
-                let result = mtmd_ios_prefill_image(ctx, std.string(imagePath))
+                let result = imagePath.withCString { cmtmd_prefill_image(ctx, $0) }
 
                 if result != 0 {
-                    let errorMessage = mtmd_ios_get_last_error(ctx)
+                    let errorMessage = cmtmd_get_last_error(ctx)
                     let error = errorMessage != nil ? String(cString: errorMessage!) : "Unknown error"
                     print("MTMDWrapper: addImageInBackground failed, imagePath=\(imagePath), error=\(error)")
                     resumeOnce(.failure(MTMDError.imageLoadFailed(error)))
@@ -168,10 +187,10 @@ public class MTMDWrapper: ObservableObject {
             timeoutMessage: "addFrameInBackground timed out after \(Int(timeoutSeconds))s (frame=\(imagePath))"
         ) { resumeOnce in
             DispatchQueue.global(qos: .userInitiated).async {
-                let result = mtmd_ios_prefill_frame(ctx, std.string(imagePath))
+                let result = imagePath.withCString { cmtmd_prefill_frame(ctx, $0) }
 
                 if result != 0 {
-                    let errorMessage = mtmd_ios_get_last_error(ctx)
+                    let errorMessage = cmtmd_get_last_error(ctx)
                     let error = errorMessage != nil ? String(cString: errorMessage!) : "Unknown error"
                     print("MTMDWrapper: addFrameInBackground failed, imagePath=\(imagePath), error=\(error)")
                     resumeOnce(.failure(MTMDError.imageLoadFailed(error)))
@@ -201,10 +220,14 @@ public class MTMDWrapper: ObservableObject {
         // 在后台线程执行 C 函数调用
         return try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
-                let result = mtmd_ios_prefill_text(ctx, std.string(text), std.string(role))
-                
+                let result = text.withCString { textC in
+                    role.withCString { roleC in
+                        cmtmd_prefill_text(ctx, textC, roleC)
+                    }
+                }
+
                 if result != 0 {
-                    let errorMessage = mtmd_ios_get_last_error(ctx)
+                    let errorMessage = cmtmd_get_last_error(ctx)
                     let error = errorMessage != nil ? String(cString: errorMessage!) : "Unknown error"
                     continuation.resume(throwing: MTMDError.textAddFailed(error))
                 } else {
@@ -268,7 +291,7 @@ public class MTMDWrapper: ObservableObject {
             print("MTMDWrapper: setImageMaxSliceNums 调用时上下文未就绪，nop")
             return
         }
-        mtmd_ios_set_image_max_slice_nums(ctx, Int32(n))
+        cmtmd_set_image_max_slice_nums(ctx, Int32(n))
         print("MTMDWrapper: image_max_slice_nums 已切换为 \(n)")
     }
 
@@ -278,7 +301,7 @@ public class MTMDWrapper: ObservableObject {
         
         // 清理资源
         if let ctx = context {
-            mtmd_ios_free(ctx)
+            cmtmd_free(ctx)
             context = nil
         }
         
@@ -315,7 +338,7 @@ public class MTMDWrapper: ObservableObject {
             // 在后台线程执行 C 函数调用
             let cToken = await withCheckedContinuation { continuation in
                 DispatchQueue.global(qos: .userInitiated).async {
-                    let token = mtmd_ios_loop(ctx)
+                    let token = cmtmd_loop(ctx)
                     continuation.resume(returning: token)
                 }
             }

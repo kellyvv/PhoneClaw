@@ -6,7 +6,7 @@
 //
 
 import Foundation
-import llama
+internal import CMTMDBridge
 
 /// MTMD 参数配置
 @frozen public struct MTMDParams: Sendable {
@@ -106,20 +106,7 @@ import llama
         )
     }
     
-    /// 转换为 C 结构体
-    internal func toCParams() -> mtmd_ios_params {
-        var params = mtmd_ios_params_default()
-        params.model_path = std.string(modelPath)
-        params.mmproj_path = std.string(mmprojPath)
-        params.coreml_path = std.string(coremlPath)
-        params.n_predict = Int32(nPredict)
-        params.n_ctx = Int32(nCtx)
-        params.n_threads = Int32(nThreads)
-        params.temperature = temperature
-        params.use_gpu = useGPU
-        params.mmproj_use_gpu = mmprojUseGPU
-        params.warmup = warmup
-        params.image_max_slice_nums = Int32(imageMaxSliceNums)
-        return params
-    }
+    // 注: 老版本这里有个 toCParams() 直接拿 std::string 拼 mtmd_ios_params,
+    // 需要 Swift/C++ interop。重构后 MTMDWrapper 走 cmtmd_init 一次性接收
+    // C-string 参数, 不再需要 Swift 端构造 C++ 结构体, 此方法已废弃。
 } 
