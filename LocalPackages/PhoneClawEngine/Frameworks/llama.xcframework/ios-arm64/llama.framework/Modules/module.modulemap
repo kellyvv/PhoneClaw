@@ -1,0 +1,20 @@
+framework module llama {
+    header "llama.h"
+    header "ggml.h"
+    header "ggml-alloc.h"
+    header "ggml-backend.h"
+    header "ggml-metal.h"
+    header "ggml-cpu.h"
+    header "ggml-blas.h"
+    header "gguf.h"
+    header "mtmd-ios.h"
+    header "mtmd.h"
+    header "mtmd-helper.h"
+
+    link "c++"
+    link framework "Accelerate"
+    link framework "Metal"
+    link framework "Foundation"
+
+    export *
+}
