@@ -309,22 +309,27 @@ struct ContentView: View {
                 .buttonStyle(.plain)
                 .disabled(!canEnterLiveMode)
 
-                Button(action: toggleThinkingMode) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 11, weight: .semibold))
-                        Text(tr("思考", "Think"))
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                // 思考按钮: 只对 supportsThinking 模型显示 (Gemma 4)。
+                // MiniCPM-V 4.6 没思考模式 (要切到 4.6-Thinking 变体), 整个按钮藏掉
+                // 避免点了没反应的哑按钮 UX。
+                if showThinkingButton {
+                    Button(action: toggleThinkingMode) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 11, weight: .semibold))
+                            Text(tr("思考", "Think"))
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        }
+                        .foregroundStyle(engine.config.enableThinking ? Theme.bg : Theme.textSecondary)
+                        .padding(.horizontal, 10)
+                        .frame(height: 34)
+                        .background(
+                            engine.config.enableThinking ? Theme.accent : Theme.bgElevated,
+                            in: RoundedRectangle(cornerRadius: 9)
+                        )
                     }
-                    .foregroundStyle(engine.config.enableThinking ? Theme.bg : Theme.textSecondary)
-                    .padding(.horizontal, 10)
-                    .frame(height: 34)
-                    .background(
-                        engine.config.enableThinking ? Theme.accent : Theme.bgElevated,
-                        in: RoundedRectangle(cornerRadius: 9)
-                    )
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
 
                 Button(action: { showConfigurations = true }) {
                     Image(systemName: "gearshape")
@@ -859,8 +864,25 @@ struct ContentView: View {
         && !engine.isProcessing && engine.inference.isLoaded
     }
 
+    /// 当前选中模型的能力声明。UI 按它 gate Live / 思考 / MTP 等按钮显示。
+    /// 找不到对应 descriptor (理论上不可能) 时返回默认全 false 能力, 把按钮全藏掉,
+    /// 避免误显示无效按钮把 UX 搞乱。
+    private var currentModelCapabilities: ModelCapabilities {
+        guard let desc = engine.availableModels.first(where: { $0.id == engine.config.selectedModelID }) else {
+            return ModelCapabilities()
+        }
+        return desc.capabilities
+    }
+
     private var canEnterLiveMode: Bool {
-        engine.inference.isLoaded
+        engine.inference.isLoaded && currentModelCapabilities.supportsLive
+    }
+
+    /// 顶部 "思考" 按钮是否显示。只有声明 supportsThinking=true 的模型才显示, 否则
+    /// 整个按钮藏掉 (而不是 disable+灰色) — disable 还在那里占位但点不亮, 反而更
+    /// 让用户疑惑。比如 MiniCPM-V 4.6 没思考模式, 整个按钮在 v4.6 加载时消失。
+    private var showThinkingButton: Bool {
+        currentModelCapabilities.supportsThinking
     }
 
     private var canCancelGeneration: Bool {

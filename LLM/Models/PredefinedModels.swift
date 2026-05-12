@@ -134,7 +134,7 @@ public extension ModelDescriptor {
         capabilities: ModelCapabilities(
             supportsVision: true,
             supportsAudio: false,           // v4.6 无音频 (4.5/o 系列才有)
-            supportsLive: false,            // Phase 1.2.3 再开
+            supportsLive: true,             // Phase 1.2.3 已上线 (enter/exit/generateLive 全部实现)
             supportsStructuredPlanning: false,
             supportsThinking: false,        // 4.6 非 thinking, 要走 4.6-Thinking 变体
             supportsPersistentSession: false, // MTMD 没有 LiteRT 那种 KV session 概念

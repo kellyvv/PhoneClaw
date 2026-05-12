@@ -337,6 +337,13 @@ struct ConfigurationsView: View {
 
     // MARK: - 推理 Backend (GPU / CPU)
 
+    /// 当前选中模型的 family。用于 gate 那些只对特定家族有意义的 UI 控件
+    /// (例如 MTP 推测解码只 Gemma 4 .litertlm 才有, MiniCPM-V 没有这个概念)。
+    /// 找不到 descriptor 时返回 nil, 调用方按需 fallback。
+    private var currentModelFamily: ModelFamily? {
+        engine.availableModels.first(where: { $0.id == selectedModelID })?.family
+    }
+
     /// 按 model + backend 实测/估算的 decode tok/s.
     /// - E2B: iPhone 17 Pro Max 实测
     /// - E4B: GPU 实测, CPU 按 E2B 比例推算
@@ -393,38 +400,42 @@ struct ConfigurationsView: View {
             .labelStyle(.titleAndIcon)
             .fixedSize(horizontal: false, vertical: true)
 
-            Divider().background(Theme.border).padding(.vertical, 2)
+            // Gemma 4 MTP speculative decoding 仅对 Gemma 4 .litertlm 有效
+            // (它的 mtp_drafter section 是模型一部分, 别的家族没有)。
+            // MiniCPM-V / 未来其它家族进来后, 整段藏起来 — 别让用户看到一个
+            // 点了 no-op 的开关误以为没生效。
+            if currentModelFamily == .gemma4 {
+                Divider().background(Theme.border).padding(.vertical, 2)
 
-            // Gemma 4 MTP speculative decoding. drafter 预测 K=3 个候选,
-            // verifier 一次接受/拒绝。
-            //
-            // 实测 (iPhone GPU + Metal, 2026-05): MTP 是不是净赢由两个独立闸门决定 —
-            //   (1) drafter accept rate ≥ ~30% (E2B 中文 19% / 英文 29% 都不够,
-            //       E4B 36% 才稳过算法层闸门);
-            //   (2) 全程 headroom > ~1500 MB (长输出会让 KV cache 把 headroom 压垮,
-            //       系统逼近 jetsam 阈值后 Metal 调度被限速, MTP 反而变慢)。
-            //
-            // 实测矩阵:
-            //   E2B 中/英长输出 : -27% / -43% (卡闸门 1, 接受率不足)
-            //   E4B 英文短输出  : +37%        (两个闸门都过)
-            //   E4B 中文长输出  : -25%        (卡闸门 2, 内存压力)
-            //
-            // 仅 Gemma 4 .litertlm (含 mtp_drafter section) 有效, 其它模型开关不生效。
-            // 默认关闭, 用户自行 opt-in。
-            Toggle(isOn: $enableSpeculativeDecoding) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(tr("MTP 推测解码", "MTP speculative decoding"))
-                        .font(.subheadline)
-                        .foregroundStyle(Theme.textPrimary)
-                    Text(tr(
-                        "Gemma 4 E4B 短回复可能加速；E2B 或长回复反而变慢",
-                        "Gemma 4 E4B + short replies may speed up; E2B or long replies slow down"
-                    ))
-                    .font(.caption2)
-                    .foregroundStyle(Theme.textTertiary)
+                // MTP speculative decoding. drafter 预测 K=3 个候选, verifier 一次接受/拒绝。
+                //
+                // 实测 (iPhone GPU + Metal, 2026-05): MTP 是不是净赢由两个独立闸门决定 —
+                //   (1) drafter accept rate ≥ ~30% (E2B 中文 19% / 英文 29% 都不够,
+                //       E4B 36% 才稳过算法层闸门);
+                //   (2) 全程 headroom > ~1500 MB (长输出会让 KV cache 把 headroom 压垮,
+                //       系统逼近 jetsam 阈值后 Metal 调度被限速, MTP 反而变慢)。
+                //
+                // 实测矩阵:
+                //   E2B 中/英长输出 : -27% / -43% (卡闸门 1, 接受率不足)
+                //   E4B 英文短输出  : +37%        (两个闸门都过)
+                //   E4B 中文长输出  : -25%        (卡闸门 2, 内存压力)
+                //
+                // 默认关闭, 用户自行 opt-in。
+                Toggle(isOn: $enableSpeculativeDecoding) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(tr("MTP 推测解码", "MTP speculative decoding"))
+                            .font(.subheadline)
+                            .foregroundStyle(Theme.textPrimary)
+                        Text(tr(
+                            "Gemma 4 E4B 短回复可能加速；E2B 或长回复反而变慢",
+                            "Gemma 4 E4B + short replies may speed up; E2B or long replies slow down"
+                        ))
+                        .font(.caption2)
+                        .foregroundStyle(Theme.textTertiary)
+                    }
                 }
+                .tint(Theme.accent)
             }
-            .tint(Theme.accent)
         }
         .padding(16)
         // iOS 17/18: .background(_:in:) 让 Shape 注册成 hit-test 目标会吃掉
