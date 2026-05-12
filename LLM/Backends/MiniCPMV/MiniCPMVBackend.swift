@@ -326,14 +326,30 @@ final class MiniCPMVBackend: InferenceService {
             try await w.addTextInBackground(sp, role: "system")
         }
 
-        // 关键: 切到每帧 1 slice。视频帧用 9 slice 会让每帧 ANE 编码涨 5×,
-        // 30 fps 流根本撑不住。退出时会还原到 9。
+        // Live mode 切片档位 = 4 (2×2 grid + overview ≈ 315 visual tokens/帧)。
+        //
+        // 历史: 这里曾经设过 1 (= 仅 overview, ~63 token), 对齐 OpenBMB demo
+        // 视频路径的"30 fps 流" 配置。但我们的 Live 不是 30 fps 视频流, 是
+        // **1-2 fps 的语音 + 偶尔贴帧**。slice=1 的代价 (低分辨率视觉编码)
+        // 远大于收益 (高帧率).
+        //
+        // 实测对比 (同一张 360×480 摄像头帧, 同一问题 "你现在能看到什么"):
+        //   MiniCPM-V 4.6 slice=1 (~63 token):   "你可以看到摄像头正在工作的画面"  ← 复述系统通知, 没看图
+        //   Gemma 4 E2B (~2394 patches, 38× 多): "你正在使用电脑，屏幕上显示着一些代码..."  ← 真正描述画面
+        //
+        // 调到 slice=4 让 MiniCPM-V 拿到 ~5× 更多视觉 token (~315 token,
+        // 仍只是 E2B 的 ~1/8, 但应该足以从"复述通知"升级到"具体描述")。
+        // 代价: 每帧 vision encode 从 ~400ms (slice=1) 涨到 ~2s (slice=4),
+        // Live turn E2E ~+1.5s, 但 reply 真有意义比快了 1.5s 但答非所问更重要。
+        //
+        // 未来如果上 30 fps 真视频流, 可以加一个 separate "Live video" 配置 / API
+        // 切回 slice=1。当前这一档对齐"语音 Live 助手 + 偶尔看摄像头"的真实用法。
         await MainActor.run {
-            w.setImageMaxSliceNums(1)
+            w.setImageMaxSliceNums(4)
         }
 
         isLiveMode = true
-        print("[MiniCPMV] enterLiveMode: KV reset + slice=1, system prompt \(systemPrompt?.isEmpty == false ? "injected" : "skipped")")
+        print("[MiniCPMV] enterLiveMode: KV reset + slice=4, system prompt \(systemPrompt?.isEmpty == false ? "injected" : "skipped")")
     }
 
     func exitLiveMode() async {
