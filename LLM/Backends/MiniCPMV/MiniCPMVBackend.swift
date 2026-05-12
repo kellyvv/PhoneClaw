@@ -82,6 +82,24 @@ final class MiniCPMVBackend: InferenceService {
     @ObservationIgnored private var loadedModelID: String?
     @ObservationIgnored private var preferGPU: Bool = true
 
+    /// KV reuse 状态: 当前 wrapper KV cache 里已 prefill 过的 (role, content) 序列。
+    /// 下次 generate 比对 newSegments 与此列表的最长前缀, 只 prefill 增量部分,
+    /// 避免每轮重跑 system prompt + 全部历史。
+    ///
+    /// 何时更新:
+    ///   - generate 成功完成 (isEnd): 追加 (assistant, 实际生成内容)。下一轮
+    ///     PromptBuilder 会把同一条 assistant message 放进 newSegments, 前缀
+    ///     匹配上 → 只 prefill 新 user message。
+    ///   - generate 失败 / 中途取消: 不动, 但下一轮如果发现 newSegments 不能
+    ///     完全延续 prefilledSegments, 会触发 cleanKVCache + 全量重 prefill。
+    ///
+    /// 何时清空 (cleanKVCache + 列表归零):
+    ///   - 调用 load 切换到不同模型
+    ///   - 调用 unload
+    ///   - newSegments 跟 prefilledSegments 出现 divergence (system 变了 /
+    ///     skill 加载了 / 历史被截断了 — 任何前缀不再 match 的情况)
+    @ObservationIgnored private var prefilledSegments: [PromptSegment] = []
+
     // MARK: Init
 
     init(bundleResolver: @escaping (String) -> MTMDPathBundle?) {
@@ -116,6 +134,8 @@ final class MiniCPMVBackend: InferenceService {
         if let old = wrapper {
             await old.cleanup()
         }
+        // 切模型后 KV cache 状态完全失效, 重置 tracker
+        prefilledSegments = []
 
         // MTMDWrapper 是 @MainActor 类, 构造和方法调用都需要 main 上下文。
         // 这里通过 await MainActor.run 完成跨 actor 桥接。
@@ -169,6 +189,7 @@ final class MiniCPMVBackend: InferenceService {
         isLoaded = false
         loadedModelID = nil
         statusMessage = tr("已卸载", "Unloaded")
+        prefilledSegments = []  // KV reuse 跟踪状态归零
 
         Task { @MainActor [weak self] in
             await self?.wrapper?.cleanup()
@@ -203,18 +224,103 @@ final class MiniCPMVBackend: InferenceService {
         }
     }
 
+    // MARK: - Gemma → Qwen prompt translation
+    //
+    // InferenceService 协议规定调用方 (AgentEngine / PromptBuilder) 构造的
+    // prompt 走 Gemma 4 turn marker 格式:
+    //   <|turn>system\n<sys><turn|>\n<|turn>user\n<u1><turn|>\n
+    //   <|turn>model\n<a1><turn|>\n<|turn>user\n<u2><turn|>\n<|turn>model\n
+    //
+    // MiniCPM-V (Qwen3.5 backbone + OpenBMB mtmd-ios) 用 Qwen chat template:
+    //   <|im_start|>system\n<sys><|im_end|>
+    //   <|im_start|>user\n<u1><|im_end|>
+    //   <|im_start|>assistant\n<a1><|im_end|>
+    //   ...
+    //
+    // 把 Gemma 整段塞给 mtmd_ios_prefill_text(role="user") 会:
+    //   1. 模型看到嵌套乱码 marker (Qwen 把整块 Gemma 包裹在 user 里),
+    //      生成乱跳 / 输出残破 turn marker 不停。
+    //   2. mtmd_ios 自动在最前面塞默认 "You are a helpful assistant" system,
+    //      把 PhoneClaw 真正的 system prompt 顶下去, agent 行为完全失效。
+    //
+    // 这里做转换: 解析 Gemma marker 把 prompt 拆成 (role, content) 数组,
+    // 按顺序逐段 prefill_text 喂给 mtmd_ios, 让它走原生 Qwen 模板。
+    // 角色映射: gemma "system" → qwen "system",
+    //          gemma "user"   → qwen "user",
+    //          gemma "model"  → qwen "assistant" (这是关键 — Qwen 不认 model 角色)。
+    //
+    // 末尾的 "<|turn>model\n" 开口 turn (没闭合 <turn|>) 是 "请现在生成助手回复"
+    // 的提示, mtmd_ios 在 startGeneration 时会自动添加 <|im_start|>assistant\n,
+    // 我们丢弃它。
+
+    /// Gemma 4 turn marker 解析的输出。`role` 已映射到 Qwen 词汇。
+    /// Equatable 让 KV reuse 比较 prefilled vs new 时能直接 ==。
+    private struct PromptSegment: Equatable {
+        let role: String       // "system" | "user" | "assistant" (或 "__cancelled__" / "__error__" 哨兵)
+        let content: String
+    }
+
+    /// 计算 prefilled 跟 new 的最长公共前缀长度 (按 role + content 完全匹配)。
+    /// 用于决定 KV reuse 时只 prefill 哪些尾部 segments。
+    private static func commonPrefixLength(
+        prefilled: [PromptSegment],
+        new: [PromptSegment]
+    ) -> Int {
+        var i = 0
+        let limit = min(prefilled.count, new.count)
+        while i < limit && prefilled[i] == new[i] {
+            i += 1
+        }
+        return i
+    }
+
+    /// 把 Gemma 4 风格 prompt 解析成 (role, content) 段, 丢弃末尾 open turn。
+    /// 找不到任何 Gemma marker 的话, 整段当 user role 兜底。
+    private static func translateGemmaToQwen(_ prompt: String) -> [PromptSegment] {
+        var segments: [PromptSegment] = []
+
+        // 匹配完整闭合的 turn: <|turn>ROLE\nCONTENT<turn|>
+        // \w+ 抓 role, [\s\S]*? 非贪婪抓 content (要跨行)。
+        let pattern = #"<\|turn>(\w+)\n([\s\S]*?)<turn\|>"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
+            return [PromptSegment(role: "user", content: prompt)]
+        }
+
+        let nsPrompt = prompt as NSString
+        let matches = regex.matches(in: prompt, range: NSRange(location: 0, length: nsPrompt.length))
+
+        for match in matches {
+            guard match.numberOfRanges == 3 else { continue }
+            let gemmaRole = nsPrompt.substring(with: match.range(at: 1))
+            let content = nsPrompt.substring(with: match.range(at: 2))
+            let qwenRole: String
+            switch gemmaRole {
+            case "model":  qwenRole = "assistant"
+            case "system": qwenRole = "system"
+            case "user":   qwenRole = "user"
+            default:       qwenRole = "user"  // 未知角色降级为 user
+            }
+            // 跳过空内容 (有时 Gemma 模板的 system block 会是占位空段)
+            let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            segments.append(PromptSegment(role: qwenRole, content: content))
+        }
+
+        // 没匹配到任何 marker → prompt 是裸文本, 当 user 处理
+        if segments.isEmpty {
+            return [PromptSegment(role: "user", content: prompt)]
+        }
+        return segments
+    }
+
     // MARK: - Text Generation
 
     /// 纯文本推理: 通过 Combine 订阅 wrapper.$currentToken 把 publisher 流
     /// 转换为 InferenceService 协议要求的 AsyncThrowingStream<String, Error>。
     ///
-    /// 注意 prompt 处理:
-    ///   InferenceService 文档说 "调用方负责构造 Gemma 4 的 <|turn>...<turn|> 模板"。
-    ///   MiniCPM-V 用的是 Qwen3.5 chat template, 跟 Gemma 4 不兼容。
-    ///   Phase 1.2 这里我们直接把 prompt 作为 user role 传给 MTMD wrapper,
-    ///   wrapper 内部会按 Qwen 模板包装。AgentEngine 那边对接 MiniCPM-V 时要
-    ///   传"裸 user text", 不能传带 Gemma turn markers 的 prompt。
-    ///   Phase 1.3 路由层会负责按 backend 选择正确的 prompt builder。
+    /// prompt 走 Gemma 4 turn marker 格式 (PromptBuilder 的输出), 这里通过
+    /// `translateGemmaToQwen` 拆解成 (role, content) 段, 逐段 prefill_text
+    /// 喂给 mtmd_ios, 让 Qwen3.5 chat template 在底层正确包装。详见上文。
     func generate(prompt: String) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
             Task { @MainActor [weak self] in
@@ -230,46 +336,91 @@ final class MiniCPMVBackend: InferenceService {
                 self.isGenerating = true
 
                 // Combine 订阅: 每次 currentToken 变化 yield content 给 stream,
-                // is_end 时 finish。把 cancellable 绑到 continuation termination
-                // 防止 stream 早退留下悬空订阅。
+                // is_end 时 finish。同时累积 emittedTokens 用于 KV reuse 跟踪。
                 //
                 // 用 final class 包一层 (Swift 6 strict concurrency 不接受
-                // 跨并发边界捕获 `var cancellable`, 见 SE-0420)。
-                final class CancellableBox: @unchecked Sendable {
+                // 跨并发边界捕获 `var cancellable` / `var emittedTokens`, 见 SE-0420)。
+                final class StreamState: @unchecked Sendable {
                     var c: AnyCancellable?
+                    var emittedTokens: String = ""
+                    var completedSuccessfully: Bool = false
                 }
-                let box = CancellableBox()
-                box.c = w.$currentToken
+                let state = StreamState()
+
+                // Snapshot 新 segments + 决定增量 prefill 范围, 用于成功后更新 tracker。
+                let newSegments = Self.translateGemmaToQwen(prompt)
+
+                state.c = w.$currentToken
                     .dropFirst()  // 忽略初始 .empty
                     .sink { token in
                         if !token.content.isEmpty {
+                            state.emittedTokens += token.content
                             continuation.yield(token.content)
                         }
                         if token.isEnd {
+                            state.completedSuccessfully = true
                             continuation.finish()
-                            box.c?.cancel()
+                            state.c?.cancel()
                             Task { @MainActor [weak self] in
-                                self?.isGenerating = false
+                                guard let self else { return }
+                                self.isGenerating = false
+                                // KV cache 里现在有: prefilledSegments (前缀) + 本轮新增 segments + 生成的 assistant 内容。
+                                // 把这三段拼起来作为下次 generate 的"已 prefill"基线。
+                                self.prefilledSegments = newSegments + [
+                                    PromptSegment(role: "assistant", content: state.emittedTokens)
+                                ]
                             }
                         }
                     }
 
                 continuation.onTermination = { _ in
-                    box.c?.cancel()
+                    state.c?.cancel()
                     Task { @MainActor [weak self] in
-                        self?.wrapper?.stopGeneration()
-                        self?.isGenerating = false
+                        guard let self else { return }
+                        self.wrapper?.stopGeneration()
+                        self.isGenerating = false
+                        // 如果是中途取消, 当前 KV cache 状态半成品 — 下次 generate
+                        // 会检测到 newSegments != prefilledSegments + assistant
+                        // → 触发 cleanKVCache + 全量重 prefill, 自动恢复。
+                        if !state.completedSuccessfully {
+                            // 标记为 stale: 下次必走 full re-prefill 路径 (前缀肯定不匹配)
+                            self.prefilledSegments = [
+                                PromptSegment(role: "__cancelled__", content: "")
+                            ]
+                        }
                     }
                 }
 
-                // 注入 prompt + 启动生成
+                // 增量 prefill: 跟 prefilledSegments 比对最长公共前缀,
+                // 只对新增 segments 调 addTextInBackground。
                 do {
-                    try await w.addTextInBackground(prompt, role: "user")
+                    let commonPrefixLen = Self.commonPrefixLength(
+                        prefilled: self.prefilledSegments,
+                        new: newSegments
+                    )
+                    let needsReset = commonPrefixLen < self.prefilledSegments.count
+                    let tailStart = needsReset ? 0 : commonPrefixLen
+
+                    if needsReset {
+                        // 前缀分叉 (system 变了 / skill 加载 / 历史截断 / 上轮 cancel).
+                        // 清 KV cache (保留模型权重) + 从头 prefill。
+                        w.cleanKVCache()
+                        self.prefilledSegments = []
+                    }
+
+                    for seg in newSegments[tailStart...] {
+                        try await w.addTextInBackground(seg.content, role: seg.role)
+                    }
+
                     try await w.startGeneration()
                 } catch {
                     continuation.finish(throwing: error)
-                    box.c?.cancel()
+                    state.c?.cancel()
                     self.isGenerating = false
+                    // 出错后 KV 状态未知, 强制下次重置
+                    self.prefilledSegments = [
+                        PromptSegment(role: "__error__", content: "")
+                    ]
                 }
             }
         }

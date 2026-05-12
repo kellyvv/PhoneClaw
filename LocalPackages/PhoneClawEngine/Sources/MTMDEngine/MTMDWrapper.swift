@@ -234,7 +234,9 @@ public class MTMDWrapper: ObservableObject {
                     // 回到主线程更新状态
                     Task { @MainActor in
                         self.hasContent = true
-                        print("MTMDWrapper: 文本添加成功（后台线程）: \(text)")
+                        // Silenced: log printed full prompt every turn (incl. system block ~2 KB),
+                        // doubling console output without adding signal. Restore for debugging.
+                        // print("MTMDWrapper: 文本添加成功（后台线程）: \(text)")
                         continuation.resume()
                     }
                 }
@@ -279,6 +281,26 @@ public class MTMDWrapper: ObservableObject {
         print("MTMDWrapper: 生成已停止")
     }
     
+    /// 清空 KV cache 但保留模型上下文 — 比 reset() 轻得多 (不卸载权重)。
+    ///
+    /// 用途: prompt-shape 切换 (例如新对话开始 / 系统提示变更 / 历史截断),
+    /// 上次的 KV 缓存全部失效, 但模型本身不变。调用此方法后, 下次
+    /// addTextInBackground 从一个干净的 KV 状态开始。
+    ///
+    /// 跟 reset() 的差异:
+    ///   - reset(): 释放 ctx, 重置 initializationState. 下次必须 initialize().
+    ///   - cleanKVCache(): 只清 KV, ctx / 模型权重 / params 全部保留, 立即可用。
+    ///
+    /// - Returns: true 表示成功; false 表示 ctx 不可用或底层失败。
+    @discardableResult
+    public func cleanKVCache() -> Bool {
+        guard let ctx = context else { return false }
+        // 顺手把上次的 fullOutput 也清掉, 否则下次拼接 token 时会带上历史残留。
+        fullOutput = ""
+        hasContent = false
+        return cmtmd_clean_kv_cache(ctx)
+    }
+
     /// 运行时调整单张图最大切片数（无需 reload mmproj）。
     ///
     /// clip 在每张图编码时都会重新读取 hparams.custom_image_max_slice_nums，
@@ -360,7 +382,9 @@ public class MTMDWrapper: ObservableObject {
             // 检查是否生成完成
             if cToken.is_end {
                 updateGenerationState(.completed)
-                print("MTMDWrapper: 生成完成: \(fullOutput)")
+                // Silenced: full output is already returned via @Published currentToken stream
+                // and re-logged by [Agent] 1st raw upstream. Restore for debugging.
+                // print("MTMDWrapper: 生成完成: \(fullOutput)")
                 // 清理任务引用但不重置状态，让状态保持为 completed
                 // 注意：不在这里清 KV cache，否则多轮上下文会丢。
                 // KV 的清理统一交给显式 reset()（切换模型 / 新对话入口）
