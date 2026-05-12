@@ -270,15 +270,21 @@ public class MTMDWrapper: ObservableObject {
         }
     }
     
-    /// 停止生成
+    /// 停止生成。幂等 — 多次调用只在首次"由 active → completed"时打日志。
+    ///
+    /// 为什么要幂等：上层 (MiniCPMVBackend) 的 cancel() 跟 AsyncStream 的
+    /// onTermination 经常都会触发 stopGeneration。无脑无条件 print 会让日志
+    /// 出现两行甚至三行 "生成已停止" 噪音。Live mode 的 "prefill-then-cancel"
+    /// 套路 (`for try await _ in stream { inference.cancel(); break }`) 必然
+    /// 双打：cancel() 走一次, break → onTermination 再走一次。
     public func stopGeneration() {
         generationTask?.cancel()
         generationTask = nil
-        // 只有在当前状态不是 completed 时才重置为 idle
         if generationState != .completed {
             updateGenerationState(.completed)
+            print("MTMDWrapper: 生成已停止")
         }
-        print("MTMDWrapper: 生成已停止")
+        // else: 已经 completed (自然结束 / 前一次 stopGeneration 已处理) — 静默
     }
     
     /// 清空 KV cache 但保留模型上下文 — 比 reset() 轻得多 (不卸载权重)。

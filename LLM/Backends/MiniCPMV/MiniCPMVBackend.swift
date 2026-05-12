@@ -185,6 +185,31 @@ final class MiniCPMVBackend: InferenceService {
             throw error
         }
 
+        // Vision cold-start 预热 (只在有 CoreML 路径时做)
+        //
+        // 为什么要做: mtmd_ios 在首次调 prefill_image / prefill_frame 时会做两件
+        // 高代价的事:
+        //   1. CoreML merger 模型 lazy load (~13s)
+        //   2. 首张图 ANE 编译 (~2s)
+        // 实测 Live mode 路径下首张视频帧因为 LiveModeEngine 有 15s 兜底超时, 这
+        // 28s+ 的冷启动会让首问 reply 直接空。chat 路径不会卡死但用户感知到 30s 黑屏。
+        //
+        // 这里在 load() 同步预热: 加载用一张 448×448 白图模拟一次 prefill, 把
+        // merger CoreML load + ANE 第一次编译挪到 load 时间一次性吃掉, 之后所有
+        // 真实 vision 调用都享受 < 1s 的稳态。
+        //
+        // 代价: load() 总耗时 +~13s (从 ~3s → ~16s)。UI 应该有 "加载中" 转圈,
+        // 用户感知就是 "首次启动慢一点", 一旦进入聊天/Live 都是热的。
+        //
+        // 失败处理: warmup 抛错就吞掉 print 一行, 不让它阻塞加载。下次真实 vision
+        // 调用还会重试 (并承担那 13s 冷启动), 比直接 fail load 体验好。
+        //
+        // 跳过条件: coremlPath 空 → 走 llama.cpp GPU vision 路径, 没有 CoreML
+        // lazy load 问题。
+        if bundle.coremlPath != nil {
+            await self.warmupVision(w)
+        }
+
         await MainActor.run {
             self.loadedModelID = modelID
             self.isLoaded = true
@@ -197,6 +222,48 @@ final class MiniCPMVBackend: InferenceService {
             self.statusMessage = tr("MiniCPM-V 已就绪",
                                     "MiniCPM-V ready")
         }
+    }
+
+    /// 预热 vision 编码路径: 触发 CoreML merger 模型 lazy load + ANE 第一次编译。
+    /// 用 448×448 白图 (CLIP 训练 canonical size), slice=1 (匹配 Live mode 形状)。
+    /// 预热结束后清 KV + 还原 slice=9 给 chat 路径用。
+    private func warmupVision(_ w: MTMDWrapper) async {
+        let t0 = CFAbsoluteTimeGetCurrent()
+        print("[MiniCPMV] vision warmup (slice=1, 448x448 dummy)...")
+
+        // slice=1: 让 ANE 编译 1-slice 形状; chat 路径之后会自己再编 9-slice 形状,
+        // 但 merger CoreML model load (13s 那个) 是 shape-agnostic 的, 那部分已经吃掉。
+        await MainActor.run { w.setImageMaxSliceNums(1) }
+
+        do {
+            // 生成 448×448 白色 JPEG (匹配 CLIP 预期输入尺寸, 减少 resize 开销)
+            let warmupURL = try await Task.detached(priority: .userInitiated) {
+                let img = CIImage(color: CIColor.white)
+                    .cropped(to: CGRect(x: 0, y: 0, width: 448, height: 448))
+                return try Self.writeCIImageToTempJPEG(img, index: 0)
+            }.value
+
+            do {
+                try await w.addFrameInBackground(warmupURL.path)
+            } catch {
+                // 失败不致命 — 下次真实 vision 调用会重试 (并承担那 13s)
+                print("[MiniCPMV] vision warmup addFrame failed: \(error.localizedDescription) — continuing without warm cache")
+            }
+
+            // 不论成功失败都清掉临时文件
+            Self.cleanupTempFiles([warmupURL])
+        } catch {
+            print("[MiniCPMV] vision warmup file write failed: \(error.localizedDescription)")
+        }
+
+        // 清掉预热产生的 KV; 还原 slice=9 默认 (chat 路径用)
+        await MainActor.run {
+            _ = w.cleanKVCache()
+            w.setImageMaxSliceNums(9)
+        }
+
+        let ms = Int((CFAbsoluteTimeGetCurrent() - t0) * 1000)
+        print("[MiniCPMV] vision warmup done in \(ms) ms")
     }
 
     func unload() {
