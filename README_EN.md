@@ -25,7 +25,14 @@ A local AI Agent for iPhone. Offline. Private. Native.
 </div>
 
 
-PhoneClaw is a local AI Agent that runs entirely on your iPhone. No internet connection. No data uploads. No cloud dependency.
+PhoneClaw is a local AI Agent that runs entirely on your iPhone. Ships with multiple on-device models (Gemma 4 and MiniCPM-V). No internet connection. No data uploads. No cloud dependency.
+
+## 2026-05-12 Update
+
+- Released v1.4.0 — [Download](https://github.com/kellyvv/PhoneClaw/releases/tag/v1.4.0)
+- Added MiniCPM-V 4.6 multimodal model — image Q&A and real-time camera recognition in LIVE mode
+- Model downloads now support multi-file bundles with automatic extraction, no manual handling needed
+- Fixed several known issues in LIVE mode
 
 ## 2026-05-07 Update
 
@@ -97,7 +104,7 @@ PhoneClaw is a local AI Agent that runs entirely on your iPhone. No internet con
 
 **100% Offline & Private**: All inference runs entirely on your iPhone. No network connections are made by default. Your conversations, images, and personal data are never uploaded or routed through any third-party server.
 
-**Flexible Model Management**: Supports Gemma 4 E2B and E4B. Download models directly on your iPhone, or bundle them into the app at build time. Includes a built-in model switcher, system prompt editor, and automatic history trimming for iPhone memory constraints.
+**Flexible Model Management**: Supports Gemma 4 E2B/E4B and MiniCPM-V 4.6. Download models directly on your iPhone, or bundle them into the app at build time. Includes a built-in model switcher, system prompt editor, and automatic history trimming for iPhone memory constraints.
 
 ## Built-in Skill Examples
 
@@ -141,6 +148,7 @@ Model recommendation:
 |-------|----------|
 | Gemma 4 E2B | Lightweight: chat / translation / single-turn queries, A16 and above |
 | Gemma 4 E4B | Full-featured: multi-turn tool conversations and complex agent flows, iPhone 15 Pro and above |
+| MiniCPM-V 4.6 | Multimodal: image Q&A / real-time camera in LIVE mode, A17 Pro and above recommended |
 
 ## Quick Start
 
@@ -410,6 +418,8 @@ Explore connecting external video input and screen understanding with local mode
 - [Gemma 4 E4B MLX model](https://huggingface.co/mlx-community/gemma-4-e4b-it-4bit)
 - [Gemma 4 E2B (ModelScope mirror)](https://modelscope.cn/models/mlx-community/gemma-4-e2b-it-4bit)
 - [Gemma 4 E4B (ModelScope mirror)](https://modelscope.cn/models/mlx-community/gemma-4-e4b-it-4bit)
+- [MiniCPM-V 4.6 model](https://huggingface.co/openbmb/MiniCPM-V-4_6)
+- [OpenBMB MiniCPM-V iOS Demo](https://github.com/OpenBMB/MiniCPM-V-Apps)
 
 ## License
 

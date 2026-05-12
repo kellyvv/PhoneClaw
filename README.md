@@ -25,7 +25,14 @@
 </div>
 
 
-PhoneClaw 是一个运行在 iPhone 上的本地 AI Agent。它使用 Gemma 4 LiteRT-LM 在设备端完成推理，不依赖云端，不上传聊天内容。
+PhoneClaw 是一个运行在 iPhone 上的本地 AI Agent。内置 Gemma 4 和 MiniCPM-V 多个本地模型，在设备端完成推理，不依赖云端，不上传聊天内容。
+
+## 2026-05-12 更新
+
+- 发布 v1.4.0 — [下载地址](https://github.com/kellyvv/PhoneClaw/releases/tag/v1.4.0)
+- 新增 MiniCPM-V 4.6 多模态模型，支持图片问答和 LIVE 模式下的摄像头实时识别
+- 模型下载支持多文件 bundle，自动解压，无需手动处理
+- 修复了 LIVE 模式的多个已知问题
 
 ## 2026-05-07 更新
 
@@ -100,7 +107,7 @@ PhoneClaw 是一个运行在 iPhone 上的本地 AI Agent。它使用 Gemma 4 Li
 
 **断点续传的模型下载**：Gemma 主模型和 LIVE 语音模型都支持手机端下载、取消、继续下载和失败重试。下载中间态保存在本机，不会写入半成品模型目录。
 
-**灵活的模型管理**：支持 Gemma 4 E2B 和 E4B LiteRT 两个规格，可在手机端直接下载，也可以在构建时打包进 App。内置模型切换、System Prompt 编辑，针对 iPhone 内存限制做了缓存清理和历史裁剪。
+**灵活的模型管理**：支持 Gemma 4 E2B/E4B 和 MiniCPM-V 4.6 三个规格，可在手机端直接下载，也可以在构建时打包进 App。内置模型切换、System Prompt 编辑，针对 iPhone 内存限制做了缓存清理和历史裁剪。
 
 **中英文双语体验**：配置页可选择自动、中文或 English。切换语言会同步 UI、默认系统提示词、内置 Skill、工具结果和权限文案。
 
@@ -141,6 +148,7 @@ PhoneClaw 是一个运行在 iPhone 上的本地 AI Agent。它使用 Gemma 4 Li
 |------|---------|
 | Gemma 4 E2B | 轻量款，聊天 / 翻译 / 单轮查询，A16 及以上 |
 | Gemma 4 E4B | 完整款，多轮工具对话 + 复杂 agent 能力，建议 iPhone 15 Pro 及以上 |
+| MiniCPM-V 4.6 | 多模态款，图片问答 / LIVE 摄像头实时识别，建议 A17 Pro 及以上 |
 
 ### 1. 克隆项目
 
@@ -351,6 +359,8 @@ PhoneClaw 不会假设自己能像桌面系统那样任意操控所有 App，而
 - [Gemma 4 E4B MLX 模型](https://huggingface.co/mlx-community/gemma-4-e4b-it-4bit)
 - [Gemma 4 E2B (ModelScope 国内镜像)](https://modelscope.cn/models/mlx-community/gemma-4-e2b-it-4bit)
 - [Gemma 4 E4B (ModelScope 国内镜像)](https://modelscope.cn/models/mlx-community/gemma-4-e4b-it-4bit)
+- [MiniCPM-V 4.6 模型](https://huggingface.co/openbmb/MiniCPM-V-4_6)
+- [OpenBMB MiniCPM-V iOS Demo](https://github.com/OpenBMB/MiniCPM-V-Apps)
 
 ## License
 
