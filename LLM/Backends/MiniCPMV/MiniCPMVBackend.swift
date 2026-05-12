@@ -178,6 +178,11 @@ final class MiniCPMVBackend: InferenceService {
             self.loadedModelID = modelID
             self.isLoaded = true
             self.isLoading = false
+            // backend 标签用于 [Perf] 行 + UI tooltip; "llama.cpp-metal" 对齐
+            // LiteRTBackend 的 "litert-gpu" / "litert-cpu" 命名约定 (后端_设备).
+            // CoreML/ANE 只在 vision encode 时介入, 纯文本路径全在 llama.cpp,
+            // 所以这里跟 vision 状态无关.
+            self.stats.backend = self.preferGPU ? "llama.cpp-metal" : "llama.cpp-cpu"
             self.statusMessage = tr("MiniCPM-V 已就绪",
                                     "MiniCPM-V ready")
         }
@@ -340,20 +345,34 @@ final class MiniCPMVBackend: InferenceService {
                 //
                 // 用 final class 包一层 (Swift 6 strict concurrency 不接受
                 // 跨并发边界捕获 `var cancellable` / `var emittedTokens`, 见 SE-0420)。
+                //
+                // 性能埋点字段 (ttftMs / chunkCount): 对齐 LiteRTBackend, sink 里
+                // 每来一个非空 chunk +1, 首个非空 chunk 记 TTFT。isEnd 时算
+                // chunks_per_sec 写回 self.stats + 走 PCLog.perf。
                 final class StreamState: @unchecked Sendable {
                     var c: AnyCancellable?
                     var emittedTokens: String = ""
                     var completedSuccessfully: Bool = false
+                    var ttftMs: Double?
+                    var chunkCount: Int = 0
                 }
                 let state = StreamState()
 
                 // Snapshot 新 segments + 决定增量 prefill 范围, 用于成功后更新 tracker。
                 let newSegments = Self.translateGemmaToQwen(prompt)
 
+                // 计时起点: prefill 开始的瞬间。TTFT = 这个时刻到首个非空 chunk
+                // 的间隔, 包括 prefill 延迟 + 首 token 解码, 跟 LiteRT 对齐。
+                let startTime = CFAbsoluteTimeGetCurrent()
+
                 state.c = w.$currentToken
                     .dropFirst()  // 忽略初始 .empty
                     .sink { token in
                         if !token.content.isEmpty {
+                            if state.ttftMs == nil {
+                                state.ttftMs = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
+                            }
+                            state.chunkCount += 1
                             state.emittedTokens += token.content
                             continuation.yield(token.content)
                         }
@@ -361,9 +380,27 @@ final class MiniCPMVBackend: InferenceService {
                             state.completedSuccessfully = true
                             continuation.finish()
                             state.c?.cancel()
+                            // 算完整 perf 行所需的 elapsed (相对 startTime, 不是相对首 token)
+                            let elapsed = CFAbsoluteTimeGetCurrent() - startTime
+                            let chunksPerSec: Double = (elapsed > 0 && state.chunkCount > 0)
+                                ? Double(state.chunkCount) / elapsed
+                                : 0
+                            let finalTtftMs = state.ttftMs ?? 0
+                            let finalChunkCount = state.chunkCount
                             Task { @MainActor [weak self] in
                                 guard let self else { return }
                                 self.isGenerating = false
+                                // 把 stats 三件套写回 (loadTimeMs / backend / peakMemoryMB
+                                // 由 load() 时填的或默认值, 这里只动 ttft / chunks / rate)
+                                self.stats.ttftMs = finalTtftMs
+                                self.stats.totalChunks = finalChunkCount
+                                self.stats.chunksPerSec = chunksPerSec
+                                PCLog.perf(
+                                    ttftMs: Int(finalTtftMs),
+                                    chunks: finalChunkCount,
+                                    chunksPerSec: chunksPerSec,
+                                    headroomMB: MemoryStats.headroomMB
+                                )
                                 // KV cache 里现在有: prefilledSegments (前缀) + 本轮新增 segments + 生成的 assistant 内容。
                                 // 把这三段拼起来作为下次 generate 的"已 prefill"基线。
                                 self.prefilledSegments = newSegments + [
@@ -377,12 +414,16 @@ final class MiniCPMVBackend: InferenceService {
                     state.c?.cancel()
                     Task { @MainActor [weak self] in
                         guard let self else { return }
-                        self.wrapper?.stopGeneration()
-                        self.isGenerating = false
-                        // 如果是中途取消, 当前 KV cache 状态半成品 — 下次 generate
-                        // 会检测到 newSegments != prefilledSegments + assistant
-                        // → 触发 cleanKVCache + 全量重 prefill, 自动恢复。
+                        // 自然完成时 sink 已经把 isEnd 处理完了, 这里不要再调
+                        // stopGeneration —— 它会无谓地打 "MTMDWrapper: 生成已停止"
+                        // 一行噪音 (因为 wrapper 内部把 completed → completed 当
+                        // 状态变更打印). 只有真的被外部 cancel/throw 时才需要停。
                         if !state.completedSuccessfully {
+                            self.wrapper?.stopGeneration()
+                            self.isGenerating = false
+                            // 中途取消: 当前 KV cache 状态半成品 — 下次 generate
+                            // 会检测到 newSegments != prefilledSegments + assistant
+                            // → 触发 cleanKVCache + 全量重 prefill, 自动恢复。
                             // 标记为 stale: 下次必走 full re-prefill 路径 (前缀肯定不匹配)
                             self.prefilledSegments = [
                                 PromptSegment(role: "__cancelled__", content: "")
