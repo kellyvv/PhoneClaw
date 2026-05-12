@@ -486,9 +486,15 @@ class AgentEngine {
                 }
             )
 
-            // MiniCPM-V backend: bundleResolver 从 LLM 主文件路径派生 mmproj
-            // 和 ANE 兄弟文件路径 (Phase 1.5 把 ggufBundle 文件列表显式建模之前
-            // 走命名约定)。
+            // MiniCPM-V backend: bundleResolver 从 descriptor.companionFiles 找
+            // 真实文件名 (按 CompanionRole 查), 不再硬编码命名约定。这样下载链路
+            // 跟加载链路的真相源都在 PredefinedModels.swift, 改一处即两端同步。
+            //
+            // 历史 (这里特别说一下, 不踩同样的坑): 上一版按 OpenBMB demo 的命名
+            // 约定硬编码 `MiniCPM-V-4_6-mmproj-f16.gguf`, 但 OBS bucket 上的真
+            // 名字是 `mmproj-model-f16.gguf`。手 sideload 时能跑 (因为按硬编码名
+            // 放), UI 下载链路就炸 (下载到 OBS 真名字, resolver 找硬编码名找不到)。
+            // 现在按 role + descriptor.fileName 来, 哪边变了改一行就行。
             let miniCPMV = MiniCPMVBackend(bundleResolver: { modelID in
                 guard let desc = resolvedCatalog.availableModels.first(where: { $0.id == modelID }),
                       desc.artifactKind == .ggufBundle,
@@ -497,20 +503,34 @@ class AgentEngine {
                 }
                 let baseDir = llmPath.deletingLastPathComponent()
 
-                // v4.6 命名约定 (跟 OpenBMB demo 一致):
-                //   <baseDir>/MiniCPM-V-4_6-Q4_K_M.gguf            ← llmPath (本身)
-                //   <baseDir>/MiniCPM-V-4_6-mmproj-f16.gguf        ← mmproj
-                //   <baseDir>/coreml_minicpmv46_vit_all_f32.mlmodelc/ ← ANE (可选)
-                let mmprojPath = baseDir.appendingPathComponent("MiniCPM-V-4_6-mmproj-f16.gguf")
-                let coremlPath = baseDir.appendingPathComponent("coreml_minicpmv46_vit_all_f32.mlmodelc")
-
-                // mmproj 必须存在; ANE 缺失会 fallback 到 llama.cpp GPU/CPU vision
-                // (慢但可用), 所以不强制。
-                guard FileManager.default.fileExists(atPath: mmprojPath.path) else {
+                // 必需: mmproj — descriptor 里 role == .multimodalProjector 的 companion。
+                // 没声明就直接 nil (load 阶段会给清晰错误信息)。
+                guard let mmprojCompanion = desc.companionFiles.first(where: { $0.role == .multimodalProjector }) else {
                     return nil
                 }
-                let resolvedCoreml: URL? = FileManager.default.fileExists(atPath: coremlPath.path)
-                    ? coremlPath : nil
+                let mmprojCanonicalPath = baseDir.appendingPathComponent(mmprojCompanion.localResourceName)
+
+                // Backward compat: 上一版用 hardcoded "MiniCPM-V-4_6-mmproj-f16.gguf"
+                // (跟 OpenBMB demo 命名一致), sideload 用户可能本地是这个名字。
+                // 新下载链路按 OBS 真名 "mmproj-model-f16.gguf" 落盘。两个都尝试,
+                // 哪个先在就用哪个 — 让历史 sideload 用户不需要重命名。
+                let mmprojLegacyPath = baseDir.appendingPathComponent("MiniCPM-V-4_6-mmproj-f16.gguf")
+                let mmprojPath: URL
+                if FileManager.default.fileExists(atPath: mmprojCanonicalPath.path) {
+                    mmprojPath = mmprojCanonicalPath
+                } else if FileManager.default.fileExists(atPath: mmprojLegacyPath.path) {
+                    mmprojPath = mmprojLegacyPath
+                } else {
+                    return nil
+                }
+
+                // 可选: CoreML ANE vision encoder — role == .coreMLVisionEncoder。
+                // 缺失或文件不存在都允许, backend 自己 fallback 到 llama.cpp 走 vision
+                // (慢, 但单图 chat 至少能跑)。
+                let resolvedCoreml: URL? = desc.companionFiles
+                    .first(where: { $0.role == .coreMLVisionEncoder })
+                    .map { baseDir.appendingPathComponent($0.localResourceName) }
+                    .flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil }
 
                 return MTMDPathBundle(
                     modelPath: llmPath,

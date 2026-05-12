@@ -275,6 +275,21 @@ public enum ArchiveFormat: String, Sendable {
     case zip
 }
 
+/// Companion 在模型 bundle 里的角色。backend (例如 MiniCPMVBackend) 的 bundleResolver
+/// 按 role 找文件, 而不是按文件名硬编码 — 让 OBS / HF 上不同源的同一模型可以有不同
+/// 的下载文件名 (例如 OpenBMB OBS 叫 `mmproj-model-f16.gguf`, 而我们之前的命名约定
+/// 是 `MiniCPM-V-4_6-mmproj-f16.gguf`) 而不影响 backend 加载逻辑。
+public enum CompanionRole: String, Sendable, Codable {
+    /// 多模态投影 — vision tower 输出投到 LLM embedding 空间的中间层。
+    /// MiniCPM-V / LLaVA / Qwen-VL 这类 vision-LLM 必需。
+    case multimodalProjector
+    /// CoreML ANE 加速的 vision tower (mlmodelc 目录, 通常打 .zip 上传)。
+    /// 可选 — 缺失时 backend 回退到 CPU/GPU vision 路径。
+    case coreMLVisionEncoder
+    /// 通用 sidecar — 不归任何上面的类的兄弟文件。
+    case other
+}
+
 /// "Companion file" = 跟主模型权重并列必须 (或可选) 的兄弟文件。
 ///
 /// 典型使用场景: MiniCPM-V GGUF bundle —
@@ -290,6 +305,8 @@ public enum ArchiveFormat: String, Sendable {
 ///   - `isRequired = false` 的 companion (例如 ANE 加速可选, 缺失 fallback 到 CPU)
 ///     下载失败不阻塞整个 install 流程, 只记一个 warn 日志。
 public struct CompanionFile: Sendable {
+    /// Companion 在 bundle 里的语义角色. backend 用 role 找文件而不是硬编码文件名。
+    public let role: CompanionRole
     /// 落盘文件名 (含扩展名). 例如 "mmproj-model-f16.gguf" 或
     /// "coreml_minicpmv46_vit_all_f32.mlmodelc.zip".
     public let fileName: String
@@ -306,7 +323,14 @@ public struct CompanionFile: Sendable {
     /// 典型可选 companion: ANE 加速器 — 缺了 vision encoder fallback 到 CPU。
     public let isRequired: Bool
 
+    /// backend 加载时实际拿到的本地路径名 — 直下载就是 fileName, 归档就是
+    /// 解压后的目录名 (extractedDirectoryName)。
+    public var localResourceName: String {
+        extractedDirectoryName ?? fileName
+    }
+
     public init(
+        role: CompanionRole,
         fileName: String,
         downloadURLs: [URL],
         expectedFileSize: Int64,
@@ -314,6 +338,7 @@ public struct CompanionFile: Sendable {
         extractedDirectoryName: String? = nil,
         isRequired: Bool = true
     ) {
+        self.role = role
         self.fileName = fileName
         self.downloadURLs = downloadURLs
         self.expectedFileSize = expectedFileSize

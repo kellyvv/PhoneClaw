@@ -137,6 +137,7 @@ public extension ModelDescriptor {
             // 1. multimodal projector — vision tower 输出投到 LLM embedding 空间
             //    的中间层. backend 必需; 缺失则 mtmd_init 失败。
             CompanionFile(
+                role: .multimodalProjector,
                 fileName: "mmproj-model-f16.gguf",
                 downloadURLs: [
                     URL(string: "https://data-transfer-huawei.obs.cn-north-4.myhuaweicloud.com/minicpmv46-instruct/mmproj-model-f16.gguf")!,
@@ -147,12 +148,12 @@ public extension ModelDescriptor {
                 isRequired: true
             ),
             // 2. ANE 加速 vision tower — CoreML mlmodelc 目录, 打包成 .zip 上传。
-            //    bundleResolver 期望解压后的目录 coreml_minicpmv46_vit_all_f32.mlmodelc/
-            //    (LLM/Backends/MiniCPMV/MiniCPMVBackend.swift 里硬编码的名字)。
+            //    解压后目录名 = extractedDirectoryName, bundleResolver 按 role 找。
             //    可选: ANE 缺失时 vision encoder 会回退到 llama.cpp Metal/CPU 路径
             //    (单帧编码从 ~400ms 涨到 5-10s), 视频/Live 场景几乎不可用, 但单图
             //    chat 至少不会崩。
             CompanionFile(
+                role: .coreMLVisionEncoder,
                 fileName: "coreml_minicpmv46_vit_all_f32.mlmodelc.zip",
                 downloadURLs: [
                     URL(string: "https://data-transfer-huawei.obs.cn-north-4.myhuaweicloud.com/minicpmv46-instruct/coreml_minicpmv46_vit_all_f32.mlmodelc.zip")!,
