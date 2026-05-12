@@ -345,12 +345,33 @@ struct ConfigurationsView: View {
     }
 
     /// 按 model + backend 实测/估算的 decode tok/s.
-    /// - E2B: iPhone 17 Pro Max 实测
-    /// - E4B: GPU 实测, CPU 按 E2B 比例推算
+    /// - Gemma 4 E2B: iPhone 17 Pro Max 实测 (LiteRT-LM)
+    /// - Gemma 4 E4B: GPU 实测, CPU 按 E2B 比例推算
+    /// - MiniCPM-V 4.6: iPhone 17 Pro Max 实测 (llama.cpp Metal + ANE vision)
+    ///   纯文本 ~10-15 tok/s, vision turn ~5-7 tok/s. 取保守中位数。
+    ///   Hybrid Mamba/GDN op 在 Metal 上的优化不如纯 transformer GEMM 成熟, 比
+    ///   Gemma 4 慢一半左右 (详见 LLM/Backends/MiniCPMV/MiniCPMVBackend.swift 注释)。
     private var estimatedSpeedText: String {
-        let isE4B = selectedModelID.contains("e4b")
         let fastLabel = tr("较快", "fast")
         let slowLabel = tr("较慢", "slower")
+        let mediumLabel = tr("中等", "medium")
+
+        // MiniCPM-V 走独立分支 — model-family 一对应 (id 前缀 minicpm-v)。
+        if selectedModelID.hasPrefix("minicpm-v") {
+            switch preferredBackend {
+            case "gpu":
+                return tr("MiniCPM-V · 推理速度 ~10 tok/s (\(mediumLabel))",
+                          "MiniCPM-V · Inference ~10 tok/s (\(mediumLabel))")
+            case "cpu":
+                return tr("MiniCPM-V · 推理速度 ~3 tok/s (\(slowLabel))",
+                          "MiniCPM-V · Inference ~3 tok/s (\(slowLabel))")
+            default:
+                return ""
+            }
+        }
+
+        // Gemma 4 (E2B / E4B) 原有逻辑保持。
+        let isE4B = selectedModelID.contains("e4b")
         switch (preferredBackend, isE4B) {
         case ("gpu", false): return tr("E2B · 推理速度 ~25 tok/s (\(fastLabel))",
                                                "E2B · Inference ~25 tok/s (\(fastLabel))")
@@ -387,18 +408,26 @@ struct ConfigurationsView: View {
                 .font(.caption)
                 .foregroundStyle(Theme.textTertiary)
 
-            // 始终可见的内存提醒
-            Label(
-                tr(
-                    "低内存手机建议选 CPU — GPU 占内存较高。",
-                    "Low-memory devices: prefer CPU — GPU is memory-heavy."
-                ),
-                systemImage: "exclamationmark.triangle.fill"
-            )
-            .font(.caption)
-            .foregroundStyle(Theme.textSecondary)
-            .labelStyle(.titleAndIcon)
-            .fixedSize(horizontal: false, vertical: true)
+            // 内存提醒 — 这条只对 Gemma 4 LiteRT GPU 路径成立。LiteRT GPU 模式
+            // 会 pin ~800 MB 用于 Metal 张量, 跟 CPU 相比内存压力大很多, 低内存
+            // 机型容易撞 jetsam 上限。
+            // MiniCPM-V 走 llama.cpp Metal, Metal 缓存只用临时空间 (~500 MB 模型
+            // 权重 mmap, KV 48 MB, compute buffer ~500 MB), 内存占用跟 CPU 接近,
+            // 同时 GPU 速度比 CPU 快 ~3×。给 MiniCPM-V 用户看 "建议选 CPU 省内存"
+            // 反而把人引导到差体验。所以这条 warning 只对 Gemma 4 显示。
+            if currentModelFamily == .gemma4 {
+                Label(
+                    tr(
+                        "低内存手机建议选 CPU — GPU 占内存较高。",
+                        "Low-memory devices: prefer CPU — GPU is memory-heavy."
+                    ),
+                    systemImage: "exclamationmark.triangle.fill"
+                )
+                .font(.caption)
+                .foregroundStyle(Theme.textSecondary)
+                .labelStyle(.titleAndIcon)
+                .fixedSize(horizontal: false, vertical: true)
+            }
 
             // Gemma 4 MTP speculative decoding 仅对 Gemma 4 .litertlm 有效
             // (它的 mtp_drafter section 是模型一部分, 别的家族没有)。
