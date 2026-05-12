@@ -31,7 +31,6 @@ PhoneClaw 是一个运行在 iPhone 上的本地 AI Agent。内置 Gemma 4 和 M
 
 - 发布 v1.4.0 — [下载地址](https://github.com/kellyvv/PhoneClaw/releases/tag/v1.4.0)
 - 新增 MiniCPM-V 4.6 多模态模型，支持图片问答和 LIVE 模式下的摄像头实时识别
-- 模型下载支持多文件 bundle，自动解压，无需手动处理
 - 修复了 LIVE 模式的多个已知问题
 
 ## 2026-05-07 更新

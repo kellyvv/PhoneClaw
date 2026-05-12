@@ -31,7 +31,6 @@ PhoneClaw is a local AI Agent that runs entirely on your iPhone. Ships with mult
 
 - Released v1.4.0 — [Download](https://github.com/kellyvv/PhoneClaw/releases/tag/v1.4.0)
 - Added MiniCPM-V 4.6 multimodal model — image Q&A and real-time camera recognition in LIVE mode
-- Model downloads now support multi-file bundles with automatic extraction, no manual handling needed
 - Fixed several known issues in LIVE mode
 
 ## 2026-05-07 Update
