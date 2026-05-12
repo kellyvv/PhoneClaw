@@ -106,10 +106,83 @@ public extension ModelDescriptor {
         runtimeProfile: MLXModelProfiles.gemma4_e4b
     )
 
+    // MARK: - MiniCPM-V 4.6 (llama.cpp + mtmd-ios + ANE)
+
+    /// MiniCPM-V 4.6 — 1.3B (Qwen3.5-0.8B + SigLIP2-400M), Q4_K_M GGUF。
+    /// 视觉多模态主力, 视频帧理解 v4.6 强项。
+    ///
+    /// 落盘三个文件 (`fileName` 指 LLM 主权重, 兄弟文件由 backend 派生):
+    ///   - MiniCPM-V-4_6-Q4_K_M.gguf      ~500 MB    LLM 主权重 (走 llama.cpp Metal/CPU)
+    ///   - MiniCPM-V-4_6-mmproj-f16.gguf  ~1.1 GB    multimodal projector
+    ///   - coreml_minicpmv46_vit_all_f32.mlmodelc/  几百 MB  ANE 加速 vision tower (可选)
+    /// 总磁盘 ~1.6 GB, 内存推荐 ≥ 6 GB。
+    static let miniCPMV4_6 = ModelDescriptor(
+        id: "minicpm-v-4_6-q4_k_m",
+        displayName: "MiniCPM-V 4.6",
+        family: .miniCPMV,
+        artifactKind: .ggufBundle,
+        downloadURLs: [
+            // OpenBMB demo 用的华为云中转 (国内速度优先, 跟 HF 内容同源)。
+            // HF / hf-mirror / modelscope 三镜像将来在 Phase 1.5 加。
+            URL(string: "https://data-transfer-huawei.obs.cn-north-4.myhuaweicloud.com/minicpmv46-instruct/MiniCPM-V-4_6-Q4_K_M.gguf")!,
+        ],
+        fileName: "MiniCPM-V-4_6-Q4_K_M.gguf",
+        // LLM 主文件实际字节 (HEAD 探测得来, 2026-05-08 OBS 上的版本)。
+        expectedFileSize: 529_101_504,
+        // GGUF bundle 的兄弟文件: mmproj 必需, ANE 加速可选。
+        // bundleResolver (AgentEngine.swift) 在 load 时按命名约定从 modelsDirectory
+        // 找这两个文件; 现在下载链路在这里显式声明它们好让 DownloadAsset 一次性
+        // 把整 bundle 下完。
+        companionFiles: [
+            // 1. multimodal projector — vision tower 输出投到 LLM embedding 空间
+            //    的中间层. backend 必需; 缺失则 mtmd_init 失败。
+            CompanionFile(
+                role: .multimodalProjector,
+                fileName: "mmproj-model-f16.gguf",
+                downloadURLs: [
+                    URL(string: "https://data-transfer-huawei.obs.cn-north-4.myhuaweicloud.com/minicpmv46-instruct/mmproj-model-f16.gguf")!,
+                ],
+                expectedFileSize: 1_108_747_040,  // HEAD 探测, 2026-05
+                archive: nil,
+                extractedDirectoryName: nil,
+                isRequired: true
+            ),
+            // 2. ANE 加速 vision tower — CoreML mlmodelc 目录, 打包成 .zip 上传。
+            //    解压后目录名 = extractedDirectoryName, bundleResolver 按 role 找。
+            //    可选: ANE 缺失时 vision encoder 会回退到 llama.cpp Metal/CPU 路径
+            //    (单帧编码从 ~400ms 涨到 5-10s), 视频/Live 场景几乎不可用, 但单图
+            //    chat 至少不会崩。
+            CompanionFile(
+                role: .coreMLVisionEncoder,
+                fileName: "coreml_minicpmv46_vit_all_f32.mlmodelc.zip",
+                downloadURLs: [
+                    URL(string: "https://data-transfer-huawei.obs.cn-north-4.myhuaweicloud.com/minicpmv46-instruct/coreml_minicpmv46_vit_all_f32.mlmodelc.zip")!,
+                ],
+                expectedFileSize: 1_029_728_188,  // HEAD 探测, 2026-05 (压缩后, STORED 方式 ≈ 原始大小)
+                archive: .zip,
+                extractedDirectoryName: "coreml_minicpmv46_vit_all_f32.mlmodelc",
+                isRequired: false  // 缺失只是慢, 不阻塞 install
+            ),
+        ],
+        capabilities: ModelCapabilities(
+            supportsVision: true,
+            supportsAudio: false,           // v4.6 无音频 (4.5/o 系列才有)
+            supportsLive: true,             // Phase 1.2.3 已上线 (enter/exit/generateLive 全部实现)
+            supportsStructuredPlanning: false,
+            supportsThinking: false,        // 4.6 非 thinking, 要走 4.6-Thinking 变体
+            supportsPersistentSession: false, // MTMD 没有 LiteRT 那种 KV session 概念
+            supportsSessionSnapshot: false,
+            // 4096 KV / 总预算 3500, 跟 Gemma 4 E2B 同档。视频路径将来切 8192。
+            safeContextBudgetTokens: 3500,
+            defaultReservedOutputTokens: 700
+        ),
+        runtimeProfile: MLXModelProfiles.miniCPMV_4_6
+    )
+
     // MARK: - All Models
 
     /// 所有可用模型（按推荐顺序）
-    static let allModels: [ModelDescriptor] = [.gemma4E2B, .gemma4E4B]
+    static let allModels: [ModelDescriptor] = [.gemma4E2B, .gemma4E4B, .miniCPMV4_6]
 
     /// 默认模型
     static let defaultModel: ModelDescriptor = .gemma4E2B

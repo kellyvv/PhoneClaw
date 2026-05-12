@@ -337,13 +337,41 @@ struct ConfigurationsView: View {
 
     // MARK: - 推理 Backend (GPU / CPU)
 
+    /// 当前选中模型的 family。用于 gate 那些只对特定家族有意义的 UI 控件
+    /// (例如 MTP 推测解码只 Gemma 4 .litertlm 才有, MiniCPM-V 没有这个概念)。
+    /// 找不到 descriptor 时返回 nil, 调用方按需 fallback。
+    private var currentModelFamily: ModelFamily? {
+        engine.availableModels.first(where: { $0.id == selectedModelID })?.family
+    }
+
     /// 按 model + backend 实测/估算的 decode tok/s.
-    /// - E2B: iPhone 17 Pro Max 实测
-    /// - E4B: GPU 实测, CPU 按 E2B 比例推算
+    /// - Gemma 4 E2B: iPhone 17 Pro Max 实测 (LiteRT-LM)
+    /// - Gemma 4 E4B: GPU 实测, CPU 按 E2B 比例推算
+    /// - MiniCPM-V 4.6: iPhone 17 Pro Max 实测 (llama.cpp Metal + ANE vision)
+    ///   纯文本 ~10-15 tok/s, vision turn ~5-7 tok/s. 取保守中位数。
+    ///   Hybrid Mamba/GDN op 在 Metal 上的优化不如纯 transformer GEMM 成熟, 比
+    ///   Gemma 4 慢一半左右 (详见 LLM/Backends/MiniCPMV/MiniCPMVBackend.swift 注释)。
     private var estimatedSpeedText: String {
-        let isE4B = selectedModelID.contains("e4b")
         let fastLabel = tr("较快", "fast")
         let slowLabel = tr("较慢", "slower")
+        let mediumLabel = tr("中等", "medium")
+
+        // MiniCPM-V 走独立分支 — model-family 一对应 (id 前缀 minicpm-v)。
+        if selectedModelID.hasPrefix("minicpm-v") {
+            switch preferredBackend {
+            case "gpu":
+                return tr("MiniCPM-V · 推理速度 ~10 tok/s (\(mediumLabel))",
+                          "MiniCPM-V · Inference ~10 tok/s (\(mediumLabel))")
+            case "cpu":
+                return tr("MiniCPM-V · 推理速度 ~3 tok/s (\(slowLabel))",
+                          "MiniCPM-V · Inference ~3 tok/s (\(slowLabel))")
+            default:
+                return ""
+            }
+        }
+
+        // Gemma 4 (E2B / E4B) 原有逻辑保持。
+        let isE4B = selectedModelID.contains("e4b")
         switch (preferredBackend, isE4B) {
         case ("gpu", false): return tr("E2B · 推理速度 ~25 tok/s (\(fastLabel))",
                                                "E2B · Inference ~25 tok/s (\(fastLabel))")
@@ -380,51 +408,63 @@ struct ConfigurationsView: View {
                 .font(.caption)
                 .foregroundStyle(Theme.textTertiary)
 
-            // 始终可见的内存提醒
-            Label(
-                tr(
-                    "低内存手机建议选 CPU — GPU 占内存较高。",
-                    "Low-memory devices: prefer CPU — GPU is memory-heavy."
-                ),
-                systemImage: "exclamationmark.triangle.fill"
-            )
-            .font(.caption)
-            .foregroundStyle(Theme.textSecondary)
-            .labelStyle(.titleAndIcon)
-            .fixedSize(horizontal: false, vertical: true)
-
-            Divider().background(Theme.border).padding(.vertical, 2)
-
-            // Gemma 4 MTP speculative decoding. drafter 预测 K=3 个候选,
-            // verifier 一次接受/拒绝。
-            //
-            // 实测 (iPhone GPU + Metal, 2026-05): MTP 是不是净赢由两个独立闸门决定 —
-            //   (1) drafter accept rate ≥ ~30% (E2B 中文 19% / 英文 29% 都不够,
-            //       E4B 36% 才稳过算法层闸门);
-            //   (2) 全程 headroom > ~1500 MB (长输出会让 KV cache 把 headroom 压垮,
-            //       系统逼近 jetsam 阈值后 Metal 调度被限速, MTP 反而变慢)。
-            //
-            // 实测矩阵:
-            //   E2B 中/英长输出 : -27% / -43% (卡闸门 1, 接受率不足)
-            //   E4B 英文短输出  : +37%        (两个闸门都过)
-            //   E4B 中文长输出  : -25%        (卡闸门 2, 内存压力)
-            //
-            // 仅 Gemma 4 .litertlm (含 mtp_drafter section) 有效, 其它模型开关不生效。
-            // 默认关闭, 用户自行 opt-in。
-            Toggle(isOn: $enableSpeculativeDecoding) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(tr("MTP 推测解码", "MTP speculative decoding"))
-                        .font(.subheadline)
-                        .foregroundStyle(Theme.textPrimary)
-                    Text(tr(
-                        "Gemma 4 E4B 短回复可能加速；E2B 或长回复反而变慢",
-                        "Gemma 4 E4B + short replies may speed up; E2B or long replies slow down"
-                    ))
-                    .font(.caption2)
-                    .foregroundStyle(Theme.textTertiary)
-                }
+            // 内存提醒 — 这条只对 Gemma 4 LiteRT GPU 路径成立。LiteRT GPU 模式
+            // 会 pin ~800 MB 用于 Metal 张量, 跟 CPU 相比内存压力大很多, 低内存
+            // 机型容易撞 jetsam 上限。
+            // MiniCPM-V 走 llama.cpp Metal, Metal 缓存只用临时空间 (~500 MB 模型
+            // 权重 mmap, KV 48 MB, compute buffer ~500 MB), 内存占用跟 CPU 接近,
+            // 同时 GPU 速度比 CPU 快 ~3×。给 MiniCPM-V 用户看 "建议选 CPU 省内存"
+            // 反而把人引导到差体验。所以这条 warning 只对 Gemma 4 显示。
+            if currentModelFamily == .gemma4 {
+                Label(
+                    tr(
+                        "低内存手机建议选 CPU — GPU 占内存较高。",
+                        "Low-memory devices: prefer CPU — GPU is memory-heavy."
+                    ),
+                    systemImage: "exclamationmark.triangle.fill"
+                )
+                .font(.caption)
+                .foregroundStyle(Theme.textSecondary)
+                .labelStyle(.titleAndIcon)
+                .fixedSize(horizontal: false, vertical: true)
             }
-            .tint(Theme.accent)
+
+            // Gemma 4 MTP speculative decoding 仅对 Gemma 4 .litertlm 有效
+            // (它的 mtp_drafter section 是模型一部分, 别的家族没有)。
+            // MiniCPM-V / 未来其它家族进来后, 整段藏起来 — 别让用户看到一个
+            // 点了 no-op 的开关误以为没生效。
+            if currentModelFamily == .gemma4 {
+                Divider().background(Theme.border).padding(.vertical, 2)
+
+                // MTP speculative decoding. drafter 预测 K=3 个候选, verifier 一次接受/拒绝。
+                //
+                // 实测 (iPhone GPU + Metal, 2026-05): MTP 是不是净赢由两个独立闸门决定 —
+                //   (1) drafter accept rate ≥ ~30% (E2B 中文 19% / 英文 29% 都不够,
+                //       E4B 36% 才稳过算法层闸门);
+                //   (2) 全程 headroom > ~1500 MB (长输出会让 KV cache 把 headroom 压垮,
+                //       系统逼近 jetsam 阈值后 Metal 调度被限速, MTP 反而变慢)。
+                //
+                // 实测矩阵:
+                //   E2B 中/英长输出 : -27% / -43% (卡闸门 1, 接受率不足)
+                //   E4B 英文短输出  : +37%        (两个闸门都过)
+                //   E4B 中文长输出  : -25%        (卡闸门 2, 内存压力)
+                //
+                // 默认关闭, 用户自行 opt-in。
+                Toggle(isOn: $enableSpeculativeDecoding) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(tr("MTP 推测解码", "MTP speculative decoding"))
+                            .font(.subheadline)
+                            .foregroundStyle(Theme.textPrimary)
+                        Text(tr(
+                            "Gemma 4 E4B 短回复可能加速；E2B 或长回复反而变慢",
+                            "Gemma 4 E4B + short replies may speed up; E2B or long replies slow down"
+                        ))
+                        .font(.caption2)
+                        .foregroundStyle(Theme.textTertiary)
+                    }
+                }
+                .tint(Theme.accent)
+            }
         }
         .padding(16)
         // iOS 17/18: .background(_:in:) 让 Shape 注册成 hit-test 目标会吃掉

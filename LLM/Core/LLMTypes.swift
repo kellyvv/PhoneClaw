@@ -211,7 +211,9 @@ public struct PromptPlan: Sendable, Equatable {
 /// 模型家族。同一家族共享 prompt 格式和能力特征。
 public enum ModelFamily: String, Sendable, Codable {
     case gemma4
-    // 未来: case qwen, miniCPM, ...
+    /// MiniCPM-V (OpenBMB), Qwen3.5 backbone + SigLIP2 vision tower。
+    case miniCPMV
+    // 未来: case qwen, ...
 }
 
 // MARK: - Artifact Kind
@@ -222,6 +224,10 @@ public enum ArtifactKind: String, Sendable {
     case litertlmFile
     /// 多文件目录 (MLX: config.json + safetensors + tokenizer + ...)
     case mlxDirectory
+    /// GGUF bundle (MiniCPM-V): LLM .gguf + mmproj .gguf + 可选 ANE .mlmodelc。
+    /// `ModelDescriptor.fileName` 指向 LLM 主权重, 其它兄弟文件由 backend
+    /// 的 bundleResolver 按命名约定派生 (见 AgentEngine 里实现)。
+    case ggufBundle
 }
 
 // MARK: - Model Capabilities
@@ -261,6 +267,87 @@ public struct ModelCapabilities: Sendable {
     }
 }
 
+// MARK: - Companion File (兄弟文件, 例如 mmproj / ANE 加速器)
+
+/// 后下载的归档格式 — `LiteRTModelStore.performInstall` 在文件下载完后会按这个
+/// 字段做后处理 (例如 `.zip` 走 `ZipExtractor.extract`)。
+public enum ArchiveFormat: String, Sendable {
+    case zip
+}
+
+/// Companion 在模型 bundle 里的角色。backend (例如 MiniCPMVBackend) 的 bundleResolver
+/// 按 role 找文件, 而不是按文件名硬编码 — 让 OBS / HF 上不同源的同一模型可以有不同
+/// 的下载文件名 (例如 OpenBMB OBS 叫 `mmproj-model-f16.gguf`, 而我们之前的命名约定
+/// 是 `MiniCPM-V-4_6-mmproj-f16.gguf`) 而不影响 backend 加载逻辑。
+public enum CompanionRole: String, Sendable, Codable {
+    /// 多模态投影 — vision tower 输出投到 LLM embedding 空间的中间层。
+    /// MiniCPM-V / LLaVA / Qwen-VL 这类 vision-LLM 必需。
+    case multimodalProjector
+    /// CoreML ANE 加速的 vision tower (mlmodelc 目录, 通常打 .zip 上传)。
+    /// 可选 — 缺失时 backend 回退到 CPU/GPU vision 路径。
+    case coreMLVisionEncoder
+    /// 通用 sidecar — 不归任何上面的类的兄弟文件。
+    case other
+}
+
+/// "Companion file" = 跟主模型权重并列必须 (或可选) 的兄弟文件。
+///
+/// 典型使用场景: MiniCPM-V GGUF bundle —
+///   - 主文件 (ModelDescriptor.fileName): LLM 主权重 .gguf
+///   - companion: mmproj .gguf (vision projector)
+///   - companion: CoreML ANE .mlmodelc.zip (需要解压)
+///
+/// 设计要点:
+///   - 每个 companion 自带完整下载元数据 (URLs / 大小 / 归档格式), 不复用主文件的
+///   - `extractedDirectoryName` 非 nil 表示这是个归档文件, 下载完要解压成同名目录
+///     (不带 .zip 后缀)。例如 `coreml_minicpmv46_vit_all_f32.mlmodelc.zip` 解压
+///     成 `coreml_minicpmv46_vit_all_f32.mlmodelc/` 目录。
+///   - `isRequired = false` 的 companion (例如 ANE 加速可选, 缺失 fallback 到 CPU)
+///     下载失败不阻塞整个 install 流程, 只记一个 warn 日志。
+public struct CompanionFile: Sendable {
+    /// Companion 在 bundle 里的语义角色. backend 用 role 找文件而不是硬编码文件名。
+    public let role: CompanionRole
+    /// 落盘文件名 (含扩展名). 例如 "mmproj-model-f16.gguf" 或
+    /// "coreml_minicpmv46_vit_all_f32.mlmodelc.zip".
+    public let fileName: String
+    /// 按优先级排列的下载镜像 (跟主文件用同套镜像策略)
+    public let downloadURLs: [URL]
+    /// 预期下载字节数 (压缩后, 不是解压后大小). 用于 UI 进度估算。
+    public let expectedFileSize: Int64
+    /// 归档格式; nil = 直接落盘不需要后处理。
+    public let archive: ArchiveFormat?
+    /// 归档解压目标目录名 (相对 modelsDirectory). archive 非 nil 时必填,
+    /// nil 时忽略。例如 "coreml_minicpmv46_vit_all_f32.mlmodelc".
+    public let extractedDirectoryName: String?
+    /// false 表示可选: 下载失败/缺失不阻塞 install. 默认 true (必需)。
+    /// 典型可选 companion: ANE 加速器 — 缺了 vision encoder fallback 到 CPU。
+    public let isRequired: Bool
+
+    /// backend 加载时实际拿到的本地路径名 — 直下载就是 fileName, 归档就是
+    /// 解压后的目录名 (extractedDirectoryName)。
+    public var localResourceName: String {
+        extractedDirectoryName ?? fileName
+    }
+
+    public init(
+        role: CompanionRole,
+        fileName: String,
+        downloadURLs: [URL],
+        expectedFileSize: Int64,
+        archive: ArchiveFormat? = nil,
+        extractedDirectoryName: String? = nil,
+        isRequired: Bool = true
+    ) {
+        self.role = role
+        self.fileName = fileName
+        self.downloadURLs = downloadURLs
+        self.expectedFileSize = expectedFileSize
+        self.archive = archive
+        self.extractedDirectoryName = extractedDirectoryName
+        self.isRequired = isRequired
+    }
+}
+
 // MARK: - Model Descriptor (替代 BundledModelOption)
 
 /// Backend-neutral 模型描述符。
@@ -281,6 +368,9 @@ public struct ModelDescriptor: Identifiable, Hashable, Sendable {
     public let fileName: String
     /// 预期文件大小 (bytes)，用于下载进度
     public let expectedFileSize: Int64
+    /// 兄弟文件 (mmproj / ANE 加速 / 其它 sidecar)。空数组表示单文件模型。
+    /// 多文件 bundle (ArtifactKind.ggufBundle) 用这里声明额外要下的文件。
+    public let companionFiles: [CompanionFile]
     /// 模型能力
     public let capabilities: ModelCapabilities
     /// 运行时 profile (内存预算、输出上限)
@@ -289,6 +379,37 @@ public struct ModelDescriptor: Identifiable, Hashable, Sendable {
 
     /// 兼容旧代码: 返回第一个 URL
     public var downloadURL: URL { downloadURLs[0] }
+
+    /// bundle 总下载体积 (主文件 + 所有 companions 压缩后字节)。用于 UI 进度估算。
+    public var totalDownloadSize: Int64 {
+        expectedFileSize + companionFiles.reduce(0) { $0 + $1.expectedFileSize }
+    }
+
+    /// 显式 memberwise init: 给 companionFiles 默认 `[]` 让所有已有的 Gemma 4
+    /// 单文件 descriptor 调用方不用改 (companionFiles 是这次新加的字段)。
+    public init(
+        id: String,
+        displayName: String,
+        family: ModelFamily,
+        artifactKind: ArtifactKind,
+        downloadURLs: [URL],
+        fileName: String,
+        expectedFileSize: Int64,
+        companionFiles: [CompanionFile] = [],
+        capabilities: ModelCapabilities,
+        runtimeProfile: ModelRuntimeProfile
+    ) {
+        self.id = id
+        self.displayName = displayName
+        self.family = family
+        self.artifactKind = artifactKind
+        self.downloadURLs = downloadURLs
+        self.fileName = fileName
+        self.expectedFileSize = expectedFileSize
+        self.companionFiles = companionFiles
+        self.capabilities = capabilities
+        self.runtimeProfile = runtimeProfile
+    }
 
     public static func == (lhs: ModelDescriptor, rhs: ModelDescriptor) -> Bool {
         lhs.id == rhs.id

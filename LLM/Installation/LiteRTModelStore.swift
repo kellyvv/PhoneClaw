@@ -106,17 +106,33 @@ final class LiteRTModelStore: ModelInstaller {
         try FileManager.default.createDirectory(at: modelsDirectory, withIntermediateDirectories: true)
         let sources = await rankedDownloadSources(for: model)
 
+        // 主文件 (LLM 主权重) — 永远在 files[0]
+        var files: [DownloadFile] = [
+            DownloadFile(
+                relativePath: model.fileName,
+                expectedSize: model.expectedFileSize > 0 ? model.expectedFileSize : nil,
+                sources: sources
+            )
+        ]
+
+        // Companion files — GGUF bundle 类模型 (MiniCPM-V) 的 mmproj / ANE 等。
+        // 每个 companion 自带 downloadURLs, 我们按主文件相同的镜像排序策略给它
+        // 各自打 ranked sources, 一起塞进同一个 DownloadAsset.files 让下载器
+        // 一次性串行下完 (manifest 记录每文件的进度 + 断点续传).
+        for companion in model.companionFiles {
+            let companionSources = await rankedDownloadSources(for: companion.downloadURLs)
+            files.append(DownloadFile(
+                relativePath: companion.fileName,
+                expectedSize: companion.expectedFileSize > 0 ? companion.expectedFileSize : nil,
+                sources: companionSources
+            ))
+        }
+
         let asset = DownloadAsset(
             id: model.id,
             displayName: model.displayName,
             destinationDirectory: modelsDirectory,
-            files: [
-                DownloadFile(
-                    relativePath: model.fileName,
-                    expectedSize: model.expectedFileSize > 0 ? model.expectedFileSize : nil,
-                    sources: sources
-                )
-            ]
+            files: files
         )
 
         _ = try await downloadCoordinator().download(asset: asset)
@@ -125,6 +141,91 @@ final class LiteRTModelStore: ModelInstaller {
             throw LiteRTDownloadError.invalidResponse
         }
         try await validateDownloadedFile(model: model, at: path)
+
+        // 下载完成后处理: 解压归档型 companion (例如 ANE .mlmodelc.zip).
+        // 失败处理:
+        //   - isRequired=true companion 解压失败 → 整个 install 报错 (用户能 retry).
+        //   - isRequired=false 失败 → 打 warn 日志, 继续 (backend 路径会 fallback).
+        // 解压成功后删掉 .zip 释放磁盘 (~1 GB).
+        for companion in model.companionFiles {
+            guard let archive = companion.archive,
+                  let extractedName = companion.extractedDirectoryName else {
+                continue  // 直下载, 无后处理
+            }
+            let archiveURL = modelsDirectory.appendingPathComponent(companion.fileName)
+            let extractedURL = modelsDirectory.appendingPathComponent(extractedName)
+
+            // 已存在解压目录 (例如这次 install 是 retry, 上次解压成功了) → 跳过
+            if FileManager.default.fileExists(atPath: extractedURL.path) {
+                // 清理 .zip 如果还在 (上次解压完没清掉)
+                try? FileManager.default.removeItem(at: archiveURL)
+                continue
+            }
+
+            do {
+                switch archive {
+                case .zip:
+                    try ZipExtractor.extract(at: archiveURL, to: modelsDirectory)
+                }
+                // 解压验证: 期望的目录应该出现了
+                guard FileManager.default.fileExists(atPath: extractedURL.path) else {
+                    throw ZipExtractorError.extractionFailed("expected directory \(extractedName) not produced")
+                }
+                // 释放磁盘
+                try? FileManager.default.removeItem(at: archiveURL)
+            } catch {
+                if companion.isRequired {
+                    throw error
+                } else {
+                    print("[LiteRTModelStore] WARN: optional companion \(companion.fileName) extract failed: \(error.localizedDescription) — model will load without it (fallback path may be slower)")
+                    // 失败的 .zip 留着不删, 用户下次 retry 可能能成功
+                }
+            }
+        }
+    }
+
+    /// 给一组 URLs (companion 用) 打 ranked sources, 复用主文件的镜像排序逻辑。
+    private func rankedDownloadSources(for urls: [URL]) async -> [DownloadFile.Source] {
+        let original = urls.enumerated().map { index, url in
+            DownloadFile.Source(label: mirrorName(for: url), url: url, priority: index)
+        }
+        let probeCandidates = original.filter { !isHuggingFaceOrigin($0.url) }
+        guard probeCandidates.count > 1 else { return original }
+
+        var results: [SourceProbeResult] = []
+        await withTaskGroup(of: SourceProbeResult?.self) { group in
+            for source in probeCandidates {
+                group.addTask {
+                    await Self.probe(source: source)
+                }
+            }
+            for await result in group {
+                if let result {
+                    results.append(result)
+                }
+            }
+        }
+
+        guard !results.isEmpty else { return original }
+
+        let rankedLabels = results
+            .sorted {
+                if $0.bytesPerSecond == $1.bytesPerSecond {
+                    return $0.source.priority < $1.source.priority
+                }
+                return $0.bytesPerSecond > $1.bytesPerSecond
+            }
+            .map(\.source.label)
+
+        let ranked = rankedLabels.compactMap { label in
+            original.first { $0.label == label }
+        }
+        let remaining = original.filter { source in
+            !rankedLabels.contains(source.label)
+        }
+        return (ranked + remaining).enumerated().map { index, source in
+            DownloadFile.Source(label: source.label, url: source.url, priority: index)
+        }
     }
 
     private func rankedDownloadSources(for model: ModelDescriptor) async -> [DownloadFile.Source] {
