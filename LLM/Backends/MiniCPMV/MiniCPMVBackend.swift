@@ -100,6 +100,13 @@ final class MiniCPMVBackend: InferenceService {
     ///     skill 加载了 / 历史被截断了 — 任何前缀不再 match 的情况)
     @ObservationIgnored private var prefilledSegments: [PromptSegment] = []
 
+    /// Live mode 标志位。enterLiveMode 设 true, exitLiveMode 设 false。
+    /// 影响 generateLive 的 KV 语义 — Live 模式下不 reset KV cache,
+    /// 跨多轮累积视频帧 + 用户语音转写, 利用 MiniCPM-V 4.6 SSM 线性 KV 增长的优势。
+    /// 也用于 generate(prompt:) 的防御检查 — 如果调用方忘了 exitLive,
+    /// 我们 best-effort 提示并强制 reset。
+    @ObservationIgnored private var isLiveMode: Bool = false
+
     // MARK: Init
 
     init(bundleResolver: @escaping (String) -> MTMDPathBundle?) {
@@ -149,13 +156,17 @@ final class MiniCPMVBackend: InferenceService {
         // Phase 1.2 文本场景统一 4096, 视频路径在 Phase 1.2.3 引入。
         let nCtx = 4096
 
+        // nThreads = 6: A18/A19 Pro 都是 6 性能核; OpenBMB demo 默认 4 是按
+        // iPhone 12 量级老设备保守取的, A18+ 把这两核空着浪费。embedding lookup
+        // + sampling + 部分 KV 操作走 CPU, 多 2 个线程能省 5-10% 端到端时间。
+        // 低端设备 (iPhone 11 / SE2 4 核) 也接受 6 — Apple OS 内部会按核数 cap。
         let params = MTMDParams(
             modelPath: bundle.modelPath.path,
             mmprojPath: bundle.mmprojPath.path,
             coremlPath: bundle.coremlPath?.path ?? "",
             nPredict: maxOutputTokens,
             nCtx: nCtx,
-            nThreads: 4,
+            nThreads: 6,
             temperature: samplingTemperature,
             useGPU: preferGPU,
             mmprojUseGPU: preferGPU,
@@ -209,24 +220,67 @@ final class MiniCPMVBackend: InferenceService {
         }
     }
 
-    // MARK: - Live Mode (stub — Phase 1.2.3)
+    // MARK: - Live Mode
+    //
+    // Live 模式 = LiveModeEngine + Camera + VAD/ASR/TTS pipeline 的下游推理目标。
+    // 跟单图 multimodal 路径的根本差异:
+    //
+    //   - **跨轮 KV 持久化**: 用户在 Live mode 里多轮发问, 每轮 = 一帧 (可选) +
+    //     一段 transcript, KV cache 不 reset, 让 SSM 状态自然累积。这是 v4.6
+    //     的核心卖点 — SSM 线性 KV 增长, 跑长视频流不爆。
+    //   - **每帧 1 slice**: setImageMaxSliceNums(1) — 30 fps 不能每帧切 5+ 张,
+    //     overview 一张 ~64 token 是 OpenBMB demo 视频路径的标准配置。
+    //   - **addFrame 不是 addImage**: mtmd_ios 内部对 frame / image 走同一份
+    //     prefill 逻辑 (实际看 C++ 实现完全一致), 但保留 API 区分留作未来差异化
+    //     (例如 v5 可能给 frame 加位置/时间编码)。这里跟官方对齐用 addFrame。
+    //   - **JPEG 不是 PNG**: 视频帧不需要无损, JPEG 50% 比 PNG 编码快 5-10×, 文件
+    //     小 ~80%, 落盘 IO 也省。chat 单图路径保留 PNG (OCR 场景需要清晰)。
+    //
+    // 局限 (Phase 1.2.3 MVP):
+    //   - nCtx 仍是 4096 (跟 chat 复用同一份 init)。Live 里大约能撑 ~50-60 个
+    //     带帧的 turn。再多需要 OpenBMB demo 那样切 nCtx=8192, 后续按需求加。
+    //   - 没有"主动遗忘老帧" — KV 满了就直接 fail prefill。OpenBMB demo 也没做。
 
     func enterLiveMode(systemPrompt: String?) async throws {
-        // TODO Phase 1.2.3: 持久 conversation + 多模态帧流
-        // 暂时只把 system prompt 注入 wrapper, 等于普通 chat 起一个 system turn。
         guard let w = wrapper else {
             throw ModelBackendError.modelNotLoaded
         }
+
+        // 清空状态 — Live mode 从干净 KV 起步, 不复用 chat 路径残留
+        // MTMDWrapper 是 @MainActor, 跨 actor 调用必须 await MainActor.run
+        // (cleanKVCache 返回 Bool @discardableResult, 闭包里显式 _= 避免类型推断成 ()->Bool)
+        await MainActor.run {
+            _ = w.cleanKVCache()
+        }
+        prefilledSegments = []
+
+        // 系统提示一次性写进 KV, 后续每轮 generateLive 不再重复
         if let sp = systemPrompt, !sp.isEmpty {
             try await w.addTextInBackground(sp, role: "system")
         }
+
+        // 关键: 切到每帧 1 slice。视频帧用 9 slice 会让每帧 ANE 编码涨 5×,
+        // 30 fps 流根本撑不住。退出时会还原到 9。
+        await MainActor.run {
+            w.setImageMaxSliceNums(1)
+        }
+
+        isLiveMode = true
+        print("[MiniCPMV] enterLiveMode: KV reset + slice=1, system prompt \(systemPrompt?.isEmpty == false ? "injected" : "skipped")")
     }
 
     func exitLiveMode() async {
-        // TODO Phase 1.2.3
+        isLiveMode = false
         if let w = wrapper {
-            await w.reset()
+            await MainActor.run {
+                // 还原 chat 路径默认 (9 slice = 大图/OCR 友好)
+                w.setImageMaxSliceNums(9)
+                // 清 KV 但保留模型权重 — 比 reset() 轻 (不卸 ctx)
+                w.cleanKVCache()
+            }
         }
+        prefilledSegments = []
+        print("[MiniCPMV] exitLiveMode: KV cleared, slice=9 restored")
     }
 
     // MARK: - Gemma → Qwen prompt translation
@@ -336,6 +390,17 @@ final class MiniCPMVBackend: InferenceService {
                 guard self.isLoaded, let w = self.wrapper else {
                     continuation.finish(throwing: ModelBackendError.modelNotLoaded)
                     return
+                }
+
+                // 防御: 调用方在 Live mode 里直接调 text generate (没 exitLive)。
+                // Live KV 跟 chat tracker 不兼容, 强制 reset 把 isLiveMode 撇清,
+                // 让 chat 路径走干净的 full re-prefill。
+                if self.isLiveMode {
+                    print("[MiniCPMV] ⚠️ generate(prompt:) called while isLiveMode=true — auto-exitLiveMode + KV reset")
+                    self.isLiveMode = false
+                    w.setImageMaxSliceNums(9)
+                    w.cleanKVCache()
+                    self.prefilledSegments = []
                 }
 
                 self.isGenerating = true
@@ -712,8 +777,163 @@ final class MiniCPMVBackend: InferenceService {
         images: [CIImage],
         audios: [AudioInput]
     ) -> AsyncThrowingStream<String, Error> {
-        // TODO Phase 1.2.3
-        AsyncThrowingStream { $0.finish(throwing: MiniCPMVBackendError.notImplemented("live")) }
+        if !audios.isEmpty {
+            print("[MiniCPMV] generateLive: ignoring \(audios.count) audio input(s) — v4.6 has no audio encoder")
+        }
+        return _runLiveStream(userPrompt: prompt, frames: images)
+    }
+
+    /// Live 模式推理流。跟 multimodal 路径同款 sink/perf/cleanup, 但 KV 语义不同:
+    ///   - **不 cleanKVCache** — 跨轮累积上下文
+    ///   - **addFrame 而非 addImage** — 走视频帧 API (语义对齐 OpenBMB demo)
+    ///   - **JPEG 50% 落盘** — 视频帧不需要无损
+    ///   - **不 stamp prefilledSegments** — Live 与 chat 文本 KV tracker 是两套 state
+    private func _runLiveStream(
+        userPrompt: String,
+        frames: [CIImage]
+    ) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            Task { @MainActor [weak self] in
+                guard let self else {
+                    continuation.finish()
+                    return
+                }
+                guard self.isLoaded, let w = self.wrapper else {
+                    continuation.finish(throwing: ModelBackendError.modelNotLoaded)
+                    return
+                }
+                if !self.isLiveMode {
+                    // 防御: 调用方没 enterLiveMode 就直接调 generateLive。我们不
+                    // hard-fail (LiveModeEngine 的契约会保证顺序), 但打 warn 提醒。
+                    print("[MiniCPMV] ⚠️ generateLive called before enterLiveMode — KV may be in unexpected state")
+                }
+
+                self.isGenerating = true
+
+                final class StreamState: @unchecked Sendable {
+                    var c: AnyCancellable?
+                    var completedSuccessfully: Bool = false
+                    var ttftMs: Double?
+                    var chunkCount: Int = 0
+                    var tempFiles: [URL] = []
+                }
+                let state = StreamState()
+                let startTime = CFAbsoluteTimeGetCurrent()
+
+                state.c = w.$currentToken
+                    .dropFirst()
+                    .sink { token in
+                        if !token.content.isEmpty {
+                            if state.ttftMs == nil {
+                                state.ttftMs = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
+                            }
+                            state.chunkCount += 1
+                            continuation.yield(token.content)
+                        }
+                        if token.isEnd {
+                            state.completedSuccessfully = true
+                            continuation.finish()
+                            state.c?.cancel()
+                            let elapsed = CFAbsoluteTimeGetCurrent() - startTime
+                            let chunksPerSec: Double = (elapsed > 0 && state.chunkCount > 0)
+                                ? Double(state.chunkCount) / elapsed
+                                : 0
+                            let finalTtftMs = state.ttftMs ?? 0
+                            let finalChunkCount = state.chunkCount
+                            let tempFilesCopy = state.tempFiles
+                            Task { @MainActor [weak self] in
+                                guard let self else { return }
+                                self.isGenerating = false
+                                self.stats.ttftMs = finalTtftMs
+                                self.stats.totalChunks = finalChunkCount
+                                self.stats.chunksPerSec = chunksPerSec
+                                PCLog.perf(
+                                    ttftMs: Int(finalTtftMs),
+                                    chunks: finalChunkCount,
+                                    chunksPerSec: chunksPerSec,
+                                    headroomMB: MemoryStats.headroomMB
+                                )
+                                // Live 不 stamp prefilledSegments — 维持 isLiveMode=true 下
+                                // 文本 KV tracker 不参与, 退出 Live 时 exitLiveMode 统一清。
+                                Self.cleanupTempFiles(tempFilesCopy)
+                            }
+                        }
+                    }
+
+                continuation.onTermination = { _ in
+                    state.c?.cancel()
+                    let tempFilesCopy = state.tempFiles
+                    Task { @MainActor [weak self] in
+                        guard let self else {
+                            Self.cleanupTempFiles(tempFilesCopy)
+                            return
+                        }
+                        if !state.completedSuccessfully {
+                            // Live 模式 cancel: 停 decode 但 KV 保留 (用户打断不丢上下文)
+                            self.wrapper?.stopGeneration()
+                            self.isGenerating = false
+                            Self.cleanupTempFiles(tempFilesCopy)
+                        }
+                    }
+                }
+
+                do {
+                    // Live: 不 reset KV — 跨轮累积是核心特性
+
+                    // 1. 每帧落 JPEG → addFrameInBackground → 立刻 unlink
+                    //    用 detached task 把 JPEG 编码扔到后台, 不卡 main。
+                    for (idx, img) in frames.enumerated() {
+                        let encoded: URL = try await Task.detached(priority: .userInitiated) {
+                            try Self.writeCIImageToTempJPEG(img, index: idx)
+                        }.value
+                        state.tempFiles.append(encoded)
+                        do {
+                            try await w.addFrameInBackground(encoded.path)
+                        } catch {
+                            Self.cleanupTempFiles([encoded])
+                            state.tempFiles.removeAll { $0 == encoded }
+                            throw error
+                        }
+                        Self.cleanupTempFiles([encoded])
+                        state.tempFiles.removeAll { $0 == encoded }
+                    }
+
+                    // 2. user text — Live 里 prompt 是 PromptBuilder.buildLiveVoiceUserPrompt
+                    //    的输出 (transcript + 可选 system event marker), 走 user role
+                    try await w.addTextInBackground(userPrompt, role: "user")
+
+                    // 3. start
+                    try await w.startGeneration()
+                } catch {
+                    continuation.finish(throwing: error)
+                    state.c?.cancel()
+                    self.isGenerating = false
+                    Self.cleanupTempFiles(state.tempFiles)
+                    // Live 错误不 stamp __error__ — 它是 chat tracker 的状态, Live 用不到
+                }
+            }
+        }
+    }
+
+    /// CIImage → 临时 JPEG (50% 质量)。Live 视频帧专用 —
+    /// 比 PNG 编码快 5-10×, 文件小 ~80%, 视觉无损失对 vision model 训练数据分布
+    /// 几乎无影响 (训练集里大量是 JPEG)。
+    private static func writeCIImageToTempJPEG(_ image: CIImage, index: Int) throws -> URL {
+        let dir = FileManager.default.temporaryDirectory
+        let filename = "mtmd-frame-\(UUID().uuidString)-\(index).jpg"
+        let url = dir.appendingPathComponent(filename)
+
+        let cs = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+        let ctx = CIContext(options: nil)
+        guard let jpegData = ctx.jpegRepresentation(
+            of: image,
+            colorSpace: cs,
+            options: [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: 0.5]
+        ) else {
+            throw MiniCPMVBackendError.imageEncodeFailed("CIContext.jpegRepresentation returned nil")
+        }
+        try jpegData.write(to: url, options: .atomic)
+        return url
     }
 
     // MARK: - Backend-specific overrides
