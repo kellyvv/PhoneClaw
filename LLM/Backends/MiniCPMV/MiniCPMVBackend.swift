@@ -939,6 +939,27 @@ final class MiniCPMVBackend: InferenceService {
                             // Live 模式 cancel: 停 decode 但 KV 保留 (用户打断不丢上下文)
                             self.wrapper?.stopGeneration()
                             self.isGenerating = false
+
+                            // 关键修复: cancel-during-decode 让 KV 里残留一个**没闭合的**
+                            // <|im_start|>assistant\n<think>\n\n</think>\n\n[少数已 decode token]
+                            //   ↑ 没有 <|im_end|> 结尾。
+                            // Live mode 跨轮复用 KV — 下次 generate 模型会把残缺的 assistant
+                            // turn 当"上轮没说完", 影响后续语义判断。例如 LiveModeEngine 的
+                            // notifyCameraStateChanged "prefill-then-cancel" 注入摄像头状态后,
+                            // 模型实测会把新提问当成对上轮残文的延续, 返回 "你可以看到摄像头正
+                            // 在工作的画面" 这种复述系统通知的怪话。
+                            //
+                            // 修法: 调 prefill_text(role="assistant", text=" ") —
+                            // mtmd-ios 内部把 assistant 角色格式化成 `{text}<|im_end|>\n`,
+                            // 等于给悬空 turn 补一个 close marker, KV 状态变干净。
+                            // 单空格是为了过 mtmd-ios 的 text.empty() 早期返回检查 (空字符串
+                            // 会返回 -1)。这一个空格的 token 对 attention 几乎无影响。
+                            if let w = self.wrapper {
+                                Task { @MainActor in
+                                    try? await w.addTextInBackground(" ", role: "assistant")
+                                }
+                            }
+
                             Self.cleanupTempFiles(tempFilesCopy)
                         }
                     }

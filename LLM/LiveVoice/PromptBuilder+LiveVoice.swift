@@ -44,15 +44,25 @@ extension PromptBuilder {
     ///   - 中文: prefix="你是" → "(你是手机龙虾) 用户的话"      (保留原有抗漂移 wrap)
     ///   - 英文: prefix=""    → "用户的话"                      (不 wrap, 系统 prompt 已经够)
     /// 摄像头状态由 notifyCameraStateChanged() 事件驱动注入, 不在每条消息里重复。
+    ///
+    /// **vision 轮特殊处理**：当 hasVision=true 时, 跳过 persona wrapping。
+    /// 真实场景观察 (MiniCPM-V 4.6, 0.8B): "(你是手机龙虾) 你现在可以看到什么"
+    /// 这种 user message 会被小模型当成"关于身份的元指令", 模型不去看图, 反而
+    /// 输出身份/状态类回答 (例如复述上一条 camera-on 系统通知)。视觉查询本身就
+    /// 不需要 persona 提醒 — 图像信号足够强 + system prompt 里也有 persona。
+    /// Gemma 4 VLM 上同样适用 (VLM 训练数据里的 image+query 一般不带身份 wrap)。
     static func buildLiveVoiceUserPrompt(
         userTranscript: String,
         locale: LiveLocale = .zhCN,
         hasVision: Bool
     ) -> String {
-        _ = hasVision
         let cfg = locale.config
         guard !cfg.userPromptPrefix.isEmpty else {
             // locale 选择不带 per-turn persona 提醒 (e.g. 英文)
+            return userTranscript
+        }
+        if hasVision {
+            // 视觉轮: 不 wrap, 让 user message 是纯查询, 给图像/视觉 token 让位
             return userTranscript
         }
         // userPromptPrefix 已包含 locale 需要的尾部空格 (中文 "你是" 不带空格连接)。
