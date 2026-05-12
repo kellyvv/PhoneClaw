@@ -267,6 +267,62 @@ public struct ModelCapabilities: Sendable {
     }
 }
 
+// MARK: - Companion File (兄弟文件, 例如 mmproj / ANE 加速器)
+
+/// 后下载的归档格式 — `LiteRTModelStore.performInstall` 在文件下载完后会按这个
+/// 字段做后处理 (例如 `.zip` 走 `ZipExtractor.extract`)。
+public enum ArchiveFormat: String, Sendable {
+    case zip
+}
+
+/// "Companion file" = 跟主模型权重并列必须 (或可选) 的兄弟文件。
+///
+/// 典型使用场景: MiniCPM-V GGUF bundle —
+///   - 主文件 (ModelDescriptor.fileName): LLM 主权重 .gguf
+///   - companion: mmproj .gguf (vision projector)
+///   - companion: CoreML ANE .mlmodelc.zip (需要解压)
+///
+/// 设计要点:
+///   - 每个 companion 自带完整下载元数据 (URLs / 大小 / 归档格式), 不复用主文件的
+///   - `extractedDirectoryName` 非 nil 表示这是个归档文件, 下载完要解压成同名目录
+///     (不带 .zip 后缀)。例如 `coreml_minicpmv46_vit_all_f32.mlmodelc.zip` 解压
+///     成 `coreml_minicpmv46_vit_all_f32.mlmodelc/` 目录。
+///   - `isRequired = false` 的 companion (例如 ANE 加速可选, 缺失 fallback 到 CPU)
+///     下载失败不阻塞整个 install 流程, 只记一个 warn 日志。
+public struct CompanionFile: Sendable {
+    /// 落盘文件名 (含扩展名). 例如 "mmproj-model-f16.gguf" 或
+    /// "coreml_minicpmv46_vit_all_f32.mlmodelc.zip".
+    public let fileName: String
+    /// 按优先级排列的下载镜像 (跟主文件用同套镜像策略)
+    public let downloadURLs: [URL]
+    /// 预期下载字节数 (压缩后, 不是解压后大小). 用于 UI 进度估算。
+    public let expectedFileSize: Int64
+    /// 归档格式; nil = 直接落盘不需要后处理。
+    public let archive: ArchiveFormat?
+    /// 归档解压目标目录名 (相对 modelsDirectory). archive 非 nil 时必填,
+    /// nil 时忽略。例如 "coreml_minicpmv46_vit_all_f32.mlmodelc".
+    public let extractedDirectoryName: String?
+    /// false 表示可选: 下载失败/缺失不阻塞 install. 默认 true (必需)。
+    /// 典型可选 companion: ANE 加速器 — 缺了 vision encoder fallback 到 CPU。
+    public let isRequired: Bool
+
+    public init(
+        fileName: String,
+        downloadURLs: [URL],
+        expectedFileSize: Int64,
+        archive: ArchiveFormat? = nil,
+        extractedDirectoryName: String? = nil,
+        isRequired: Bool = true
+    ) {
+        self.fileName = fileName
+        self.downloadURLs = downloadURLs
+        self.expectedFileSize = expectedFileSize
+        self.archive = archive
+        self.extractedDirectoryName = extractedDirectoryName
+        self.isRequired = isRequired
+    }
+}
+
 // MARK: - Model Descriptor (替代 BundledModelOption)
 
 /// Backend-neutral 模型描述符。
@@ -287,6 +343,9 @@ public struct ModelDescriptor: Identifiable, Hashable, Sendable {
     public let fileName: String
     /// 预期文件大小 (bytes)，用于下载进度
     public let expectedFileSize: Int64
+    /// 兄弟文件 (mmproj / ANE 加速 / 其它 sidecar)。空数组表示单文件模型。
+    /// 多文件 bundle (ArtifactKind.ggufBundle) 用这里声明额外要下的文件。
+    public let companionFiles: [CompanionFile]
     /// 模型能力
     public let capabilities: ModelCapabilities
     /// 运行时 profile (内存预算、输出上限)
@@ -295,6 +354,37 @@ public struct ModelDescriptor: Identifiable, Hashable, Sendable {
 
     /// 兼容旧代码: 返回第一个 URL
     public var downloadURL: URL { downloadURLs[0] }
+
+    /// bundle 总下载体积 (主文件 + 所有 companions 压缩后字节)。用于 UI 进度估算。
+    public var totalDownloadSize: Int64 {
+        expectedFileSize + companionFiles.reduce(0) { $0 + $1.expectedFileSize }
+    }
+
+    /// 显式 memberwise init: 给 companionFiles 默认 `[]` 让所有已有的 Gemma 4
+    /// 单文件 descriptor 调用方不用改 (companionFiles 是这次新加的字段)。
+    public init(
+        id: String,
+        displayName: String,
+        family: ModelFamily,
+        artifactKind: ArtifactKind,
+        downloadURLs: [URL],
+        fileName: String,
+        expectedFileSize: Int64,
+        companionFiles: [CompanionFile] = [],
+        capabilities: ModelCapabilities,
+        runtimeProfile: ModelRuntimeProfile
+    ) {
+        self.id = id
+        self.displayName = displayName
+        self.family = family
+        self.artifactKind = artifactKind
+        self.downloadURLs = downloadURLs
+        self.fileName = fileName
+        self.expectedFileSize = expectedFileSize
+        self.companionFiles = companionFiles
+        self.capabilities = capabilities
+        self.runtimeProfile = runtimeProfile
+    }
 
     public static func == (lhs: ModelDescriptor, rhs: ModelDescriptor) -> Bool {
         lhs.id == rhs.id
