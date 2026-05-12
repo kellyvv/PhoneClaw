@@ -521,8 +521,13 @@ final class MiniCPMVBackend: InferenceService {
                                 state.ttftMs = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
                             }
                             state.chunkCount += 1
+                            // emittedTokens 保持 raw 形式 (跟模型真实 token 输出一致),
+                            // 下一轮 KV reuse 比对 prefilledSegments 时 re-prefill
+                            // 的 assistant text 才能产生跟当前 KV 一致的 token 序列。
                             state.emittedTokens += token.content
-                            continuation.yield(token.content)
+                            // yield 走 decoded 形式 — UI 拿真换行才能让 MarkdownUI
+                            // 正确渲染 `###` 标题、`---` 分隔线等结构。
+                            continuation.yield(Self.decodeEscapes(token.content))
                         }
                         if token.isEnd {
                             state.completedSuccessfully = true
@@ -716,7 +721,9 @@ final class MiniCPMVBackend: InferenceService {
                                 state.ttftMs = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
                             }
                             state.chunkCount += 1
-                            continuation.yield(token.content)
+                            // decodeEscapes: 把字面 `\n` 转真换行, 让 MarkdownUI 能渲染
+                            // (multimodal 不做 KV reuse, 不用保存 raw 版本)
+                            continuation.yield(Self.decodeEscapes(token.content))
                         }
                         if token.isEnd {
                             state.completedSuccessfully = true
@@ -847,6 +854,57 @@ final class MiniCPMVBackend: InferenceService {
         return url
     }
 
+    /// Decode 模型输出里的字面转义序列。
+    ///
+    /// 现象 (实测 MiniCPM-V 4.6 长 markdown 回复):
+    ///   模型输出 "便于全面分析两者差异:\n\n---\n### 1. 模型规模与参数\n- ..."
+    ///   字符串里 `\n` 是 2 个字面字符 (0x5C 0x6E), 不是真换行 (0x0A)。
+    ///   MarkdownUI 看到字面 `\n` 当普通字符渲染, ### 头、--- 横线全部不识别,
+    ///   整段挤在一行显示。
+    ///
+    /// 根因猜测 (不深追): GGUF tokenizer 把 byte-to-unicode 映射后的 newline
+    /// token (Ċ) 存成了字面 escape 字符串而不是 0x0A; 或 Qwen3.5 训练数据里
+    /// JSON-style escape 占比够大让模型直接学了字面 `\n` 这个 pattern。
+    /// 总之 mtmd_ios 的 `common_token_to_piece` 出来就是这个样子。
+    ///
+    /// 只 MiniCPM-V 路径需要这一步 — Gemma 4 LiteRT 输出真换行没这毛病。
+    /// 这里不走 String.replacingOccurrences 链式调用 (3 次扫整串), 改一次性
+    /// O(n) 字符遍历, 减一点 streaming 路径的 per-token 开销。
+    ///
+    /// 已知副作用: 如果用户真的让模型输出 "JSON 里的 \\n 应该写成 \\n", 第二处
+    /// 也会被解成真换行。chat UI 上几乎没人这么问, 接受这个误伤换换换行渲染。
+    private static func decodeEscapes(_ s: String) -> String {
+        // 快速路径: 不含 backslash 直接返回, 大部分 token 走这条
+        guard s.contains("\\") else { return s }
+
+        var out = String()
+        out.reserveCapacity(s.count)
+        var iter = s.makeIterator()
+        while let ch = iter.next() {
+            guard ch == "\\" else {
+                out.append(ch)
+                continue
+            }
+            // 看下一个字符决定怎么处理
+            guard let next = iter.next() else {
+                out.append("\\")  // 流末尾孤立 backslash, 保留
+                break
+            }
+            switch next {
+            case "n":  out.append("\n")
+            case "t":  out.append("\t")
+            case "r":  out.append("\r")
+            case "\\": out.append("\\")
+            case "\"": out.append("\"")
+            default:
+                // 其它 \X 序列不认得, 保留原样 (用户可能真要这个)
+                out.append("\\")
+                out.append(next)
+            }
+        }
+        return out
+    }
+
     /// 安静地删除一批临时文件, 失败忽略 (清理路径不让它再抛异常)。
     private static func cleanupTempFiles(_ urls: [URL]) {
         let fm = FileManager.default
@@ -911,7 +969,9 @@ final class MiniCPMVBackend: InferenceService {
                                 state.ttftMs = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
                             }
                             state.chunkCount += 1
-                            continuation.yield(token.content)
+                            // decodeEscapes: 字面 `\n` → 真换行。Live 也走 markdown UI
+                            // (虽然 TTS 朗读时 sanitizer 会再扁平化掉换行)
+                            continuation.yield(Self.decodeEscapes(token.content))
                         }
                         if token.isEnd {
                             state.completedSuccessfully = true
