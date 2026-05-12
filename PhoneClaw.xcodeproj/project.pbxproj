@@ -16,7 +16,6 @@
 		0C5EBE615C219F104D6D9C8D /* (null) in Sources */ = {isa = PBXBuildFile; };
 		0D58F93BFFFFE778CD8A34D1 /* LiveModeEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83C5B0E5FD420CCB6BD8D1A4 /* LiveModeEngine.swift */; };
 		0F13CB63EFD6EB20B60C013B /* ASRService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C500DE8A47482D5DA7DA6D3 /* ASRService.swift */; };
-		41A4AE7307B1AEB76793BDC9 /* ASRBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A5F58AC37EA816ED739551D /* ASRBackend.swift */; };
 		10405212EEF000AA04B72748 /* (null) in Sources */ = {isa = PBXBuildFile; };
 		1D6B9BBA44F194BB9B33BD65 /* (null) in Sources */ = {isa = PBXBuildFile; };
 		20B8C55E032BA07B3E640E80 /* Skills.swift in Sources */ = {isa = PBXBuildFile; fileRef = 571908036E6DCED1D58C1E9E /* Skills.swift */; };
@@ -32,6 +31,7 @@
 		2CADFF678567A2ECB88CE265 /* (null) in Sources */ = {isa = PBXBuildFile; };
 		2F4A6C8E0A1B2C3D4E5F6071 /* AudioCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F4A6C8E0A1B2C3D4E5F6070 /* AudioCaptureService.swift */; };
 		32D9B612A8A28256BD2CCA55 /* LiveAudioIO.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8D921B323B9D6342A22A29E /* LiveAudioIO.swift */; };
+		41A4AE7307B1AEB76793BDC9 /* ASRBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A5F58AC37EA816ED739551D /* ASRBackend.swift */; };
 		41D5F6BA01C2365F10D7C4EA /* LiveSkillCall.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83C97FEEC133F40BDEFBD9AE /* LiveSkillCall.swift */; };
 		42C98281CDF93BA47D0FC59D /* (null) in Sources */ = {isa = PBXBuildFile; };
 		43DD7FAECE6EEBA9D504D3D5 /* (null) in Sources */ = {isa = PBXBuildFile; };
@@ -131,16 +131,14 @@
 		BB2000000000000000000005 /* RuntimePolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000005 /* RuntimePolicy.swift */; };
 		BB2000000000000000000006 /* PredefinedModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000006 /* PredefinedModels.swift */; };
 		BB2000000000000000000007 /* LiteRTBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000007 /* LiteRTBackend.swift */; };
-		MINICPMV0000000000001 /* MiniCPMVBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = MINICPMV0000000000101 /* MiniCPMVBackend.swift */; };
-		DISPATCHER000000000001 /* BackendDispatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = DISPATCHER000000000101 /* BackendDispatcher.swift */; };
 		BB2000000000000000000008 /* LiteRTCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000008 /* LiteRTCatalog.swift */; };
 		BB2000000000000000000009 /* LiteRTModelStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000009 /* LiteRTModelStore.swift */; };
-		BB2000000000000000000A99 /* ZipExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000A99 /* ZipExtractor.swift */; };
 		BB2000000000000000000012 /* PCLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000012 /* PCLog.swift */; };
 		BB2000000000000000000099 /* AudioBypassTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000099 /* AudioBypassTest.swift */; };
 		BB2000000000000000000100 /* LanguageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000100 /* LanguageService.swift */; };
 		BB2000000000000000000101 /* L10n.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000101 /* L10n.swift */; };
 		BB2000000000000000000102 /* PromptLocale.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000102 /* PromptLocale.swift */; };
+		BB2000000000000000000A99 /* ZipExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000A99 /* ZipExtractor.swift */; };
 		BD75E7E5620A8FF0A868E9F0 /* libPods-PhoneClaw.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 4F4ACB3F4531FF61E0AADA07 /* libPods-PhoneClaw.a */; };
 		BE6E6C928537BCC4DBC975E9 /* (null) in Sources */ = {isa = PBXBuildFile; };
 		C05906F882C28E546FC97B26 /* (null) in Sources */ = {isa = PBXBuildFile; };
@@ -173,6 +171,7 @@
 		DA25510B6177007641B5978D /* SherpaOnnx.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEA10A9D8F9AB4A2764A1A13 /* SherpaOnnx.swift */; };
 		DCB2FB741B3A2162725430FC /* (null) in Sources */ = {isa = PBXBuildFile; };
 		DE49DFCF4DF4FBABCBCC20DC /* (null) in Sources */ = {isa = PBXBuildFile; };
+		DISPATCHER000000000001 /* BackendDispatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = DISPATCHER000000000101 /* BackendDispatcher.swift */; };
 		E3848EFFD200BB2BCB325939 /* (null) in Sources */ = {isa = PBXBuildFile; };
 		E9D6E75B5D98FAD1F17265D7 /* LiveOutputEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05853E0317CAA5E4BBEDD865 /* LiveOutputEvent.swift */; };
 		F1AF2D7AAB111966A35AB32E /* (null) in Sources */ = {isa = PBXBuildFile; };
@@ -187,6 +186,7 @@
 		FD845BA1DB428F45EDEE9000 /* (null) in Sources */ = {isa = PBXBuildFile; };
 		FEFA2136332FF2B38F71C999 /* PromptBuilder+LiveVoice.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3E547AAB840AEB6F57C71A4 /* PromptBuilder+LiveVoice.swift */; };
 		ICONASSETS0000000000002 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = ICONASSETS0000000000001 /* Assets.xcassets */; };
+		MINICPMV0000000000001 /* MiniCPMVBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = MINICPMV0000000000101 /* MiniCPMVBackend.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -208,10 +208,10 @@
 		52F30C6348B834E5D157205F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		571908036E6DCED1D58C1E9E /* Skills.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Skills.swift; sourceTree = "<group>"; };
 		7C500DE8A47482D5DA7DA6D3 /* ASRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ASRService.swift; path = Shared/Audio/ASRService.swift; sourceTree = SOURCE_ROOT; };
-		8A5F58AC37EA816ED739551D /* ASRBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ASRBackend.swift; path = Shared/Audio/ASRBackend.swift; sourceTree = SOURCE_ROOT; };
 		83C5B0E5FD420CCB6BD8D1A4 /* LiveModeEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveModeEngine.swift; path = Live/Core/LiveModeEngine.swift; sourceTree = SOURCE_ROOT; };
 		83C97FEEC133F40BDEFBD9AE /* LiveSkillCall.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveSkillCall.swift; path = Live/Turn/Types/LiveSkillCall.swift; sourceTree = SOURCE_ROOT; };
 		840B21562E52B6B93D4410D0 /* LiveModeUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveModeUI.swift; path = Live/UI/LiveModeUI.swift; sourceTree = SOURCE_ROOT; };
+		8A5F58AC37EA816ED739551D /* ASRBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ASRBackend.swift; path = Shared/Audio/ASRBackend.swift; sourceTree = SOURCE_ROOT; };
 		9BCB3AA5590B964AC46945D5 /* LiveTurnProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveTurnProcessor.swift; path = Live/Turn/LiveTurnProcessor.swift; sourceTree = SOURCE_ROOT; };
 		9C503EC6B19AD0CF5515B98E /* LiveComponentTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveComponentTest.swift; path = Live/Debug/LiveComponentTest.swift; sourceTree = SOURCE_ROOT; };
 		9D80CB631331A0CA07699BDE /* OutputSanitizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OutputSanitizer.swift; path = Shared/Audio/OutputSanitizer.swift; sourceTree = SOURCE_ROOT; };
@@ -265,16 +265,14 @@
 		BB1000000000000000000005 /* RuntimePolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimePolicy.swift; sourceTree = "<group>"; };
 		BB1000000000000000000006 /* PredefinedModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PredefinedModels.swift; sourceTree = "<group>"; };
 		BB1000000000000000000007 /* LiteRTBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiteRTBackend.swift; sourceTree = "<group>"; };
-		MINICPMV0000000000101 /* MiniCPMVBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniCPMVBackend.swift; sourceTree = "<group>"; };
-		DISPATCHER000000000101 /* BackendDispatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendDispatcher.swift; sourceTree = "<group>"; };
 		BB1000000000000000000008 /* LiteRTCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiteRTCatalog.swift; sourceTree = "<group>"; };
 		BB1000000000000000000009 /* LiteRTModelStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiteRTModelStore.swift; sourceTree = "<group>"; };
-		BB1000000000000000000A99 /* ZipExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZipExtractor.swift; sourceTree = "<group>"; };
 		BB1000000000000000000012 /* PCLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PCLog.swift; path = Shared/PCLog.swift; sourceTree = SOURCE_ROOT; };
 		BB1000000000000000000099 /* AudioBypassTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioBypassTest.swift; sourceTree = "<group>"; };
 		BB1000000000000000000100 /* LanguageService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LanguageService.swift; path = Shared/LanguageService.swift; sourceTree = SOURCE_ROOT; };
 		BB1000000000000000000101 /* L10n.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = L10n.swift; path = Shared/L10n.swift; sourceTree = SOURCE_ROOT; };
 		BB1000000000000000000102 /* PromptLocale.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PromptLocale.swift; path = LLM/PromptLocale.swift; sourceTree = SOURCE_ROOT; };
+		BB1000000000000000000A99 /* ZipExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZipExtractor.swift; sourceTree = "<group>"; };
 		C1A2B3D4E5F607182930A1B3 /* SkillLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillLoader.swift; sourceTree = "<group>"; };
 		C1A2B3D4E5F607182930A1C3 /* SkillRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillRegistry.swift; sourceTree = "<group>"; };
 		C3C4D5E6F7081A2B3C52D3E5 /* ChatModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatModels.swift; sourceTree = "<group>"; };
@@ -302,6 +300,7 @@
 		D5E6F7081A2B3C4D5E6F7094 /* piz_compressed.exr */ = {isa = PBXFileReference; lastKnownFileType = file; name = piz_compressed.exr; path = App/piz_compressed.exr; sourceTree = SOURCE_ROOT; };
 		D5E6F7081A2B3C4D5E6F7096 /* studio_env.hdr */ = {isa = PBXFileReference; lastKnownFileType = text; name = studio_env.hdr; path = App/studio_env.hdr; sourceTree = SOURCE_ROOT; };
 		DAF684F9A04FAEE76440F69C /* OrbAudioAnalyser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OrbAudioAnalyser.swift; path = Live/Audio/OrbAudioAnalyser.swift; sourceTree = SOURCE_ROOT; };
+		DISPATCHER000000000101 /* BackendDispatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendDispatcher.swift; sourceTree = "<group>"; };
 		E18A47114A10132E25E220F8 /* AgentEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentEngine.swift; sourceTree = "<group>"; };
 		E1E383F793CD103FF368037A /* LiveHistoryMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveHistoryMessage.swift; path = Live/Turn/Types/LiveHistoryMessage.swift; sourceTree = SOURCE_ROOT; };
 		E62C3CEFC7AE63873D751E75 /* ConfigurationsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigurationsView.swift; sourceTree = "<group>"; };
@@ -312,6 +311,7 @@
 		F73C9FFB0EEDE520F2885102 /* OrbSceneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OrbSceneView.swift; path = Live/UI/LiveOrb/OrbSceneView.swift; sourceTree = SOURCE_ROOT; };
 		F8D921B323B9D6342A22A29E /* LiveAudioIO.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveAudioIO.swift; path = Live/Audio/LiveAudioIO.swift; sourceTree = SOURCE_ROOT; };
 		ICONASSETS0000000000001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		MINICPMV0000000000101 /* MiniCPMVBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniCPMVBackend.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -355,7 +355,7 @@
 				AC5E0AA2711EA01E891DE3A7 /* Products */,
 				03C67BBB35FEB376174D7420 /* Pods */,
 				E1D6A9BAE368B2FB909A7774 /* Frameworks */,
-				A34ECDFC2F9C76C1007D0FB8 /* Recovered References */,
+				A34ECDFC2F9C76C1007D0FB8 /* Bundled Models */,
 			);
 			sourceTree = "<group>";
 		};
@@ -509,14 +509,6 @@
 			path = Backends;
 			sourceTree = "<group>";
 		};
-		MINICPMV0000000000201 /* MiniCPMV */ = {
-			isa = PBXGroup;
-			children = (
-				MINICPMV0000000000101 /* MiniCPMVBackend.swift */,
-			);
-			path = MiniCPMV;
-			sourceTree = "<group>";
-		};
 		BB3000000000000000000004 /* Installation */ = {
 			isa = PBXGroup;
 			children = (
@@ -655,6 +647,14 @@
 				C4D5E6F70819A2B3C463E4F6 /* Theme.swift */,
 			);
 			path = UI;
+			sourceTree = "<group>";
+		};
+		MINICPMV0000000000201 /* MiniCPMV */ = {
+			isa = PBXGroup;
+			children = (
+				MINICPMV0000000000101 /* MiniCPMVBackend.swift */,
+			);
+			path = MiniCPMV;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -1128,7 +1128,7 @@
 					"-lsherpa-onnx",
 					"-lc++",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.phoneclaw;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kellyvv.phoneclaw;
 				SDKROOT = iphoneos;
 				SWIFT_OBJC_BRIDGING_HEADER = "$(SRCROOT)/PhoneClaw-Bridging-Header.h";
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -1166,7 +1166,7 @@
 					"-lsherpa-onnx",
 					"-lc++",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.phoneclaw;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kellyvv.phoneclaw;
 				SDKROOT = iphoneos;
 				SWIFT_OBJC_BRIDGING_HEADER = "$(SRCROOT)/PhoneClaw-Bridging-Header.h";
 				TARGETED_DEVICE_FAMILY = "1,2";
