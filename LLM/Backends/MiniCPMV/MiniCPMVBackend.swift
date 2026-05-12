@@ -467,7 +467,31 @@ final class MiniCPMVBackend: InferenceService {
         }
     }
 
-    // MARK: - Multimodal Generation (stub — Phase 1.2.2)
+    // MARK: - Multimodal Generation
+    //
+    // 多模态调用链 (AgentEngine → BackendDispatcher → 这里):
+    //   - prompt 是裸用户文本 (没有 turn marker, 没有 system 包裹)
+    //   - systemPrompt 是裸 system 文本 (pure-vision path 常为空)
+    //   - images 是 CIImage 数组 (一次性, 不像 Live 是流)
+    //   - audios 暂不支持 — MiniCPM-V 4.6 没有 audio encoder (4.5/o 系列才有),
+    //     给了也忽略
+    //
+    // 内部 prefill 顺序 (跟 OpenBMB demo 对齐):
+    //   1. systemPrompt → addTextInBackground(role: "system")  [非空时]
+    //   2. images       → addImageInBackground(tmpPath)         [每张图]
+    //   3. prompt       → addTextInBackground(role: "user")
+    //   4. startGeneration
+    //
+    // 关键细节:
+    //   - CIImage 必须先落到磁盘 PNG, 因为 mtmd_ios_prefill_image 吃 const std::string &,
+    //     不吃 buffer。一张图用完立刻 unlink, 不堆磁盘垃圾。
+    //   - 每次 multimodal 都 cleanKVCache: vision token 不在 prefilledSegments
+    //     tracker 范围里 (它只记 text segment), 让文本 KV reuse 逻辑去 diff
+    //     image-混入的 KV 等于让它撞墙 — 不如直接重置。多模态本来就不高频,
+    //     吃一次 prefill 成本无所谓。
+    //   - 结束后用 __multimodal__ 哨兵 stamp prefilledSegments, 下一轮纯文本
+    //     generate 会发现前缀对不上 → 走 full re-prefill, 干净起步。
+    //   - perf / [Perf] / stats 跟纯文本路径完全对齐, 共用同款 sink 逻辑。
 
     func generateMultimodal(
         images: [CIImage],
@@ -475,25 +499,212 @@ final class MiniCPMVBackend: InferenceService {
         prompt: String,
         systemPrompt: String
     ) -> AsyncThrowingStream<String, Error> {
-        // TODO Phase 1.2.2:
-        //   1. CIImage → 临时 PNG 落盘 (mtmd_ios_prefill_image 吃 path, 不吃 buffer)
-        //   2. systemPrompt → wrapper.addTextInBackground(role: "system")
-        //   3. 每张图 → wrapper.addImageInBackground(tmpPath)
-        //   4. prompt → wrapper.addTextInBackground(role: "user")
-        //   5. wrapper.startGeneration() + 同上文 Combine 桥接
-        //   audios 暂不支持 (MiniCPM-V 4.6 无 audio, 4.5/o 系列才有)
-        AsyncThrowingStream { $0.finish(throwing: MiniCPMVBackendError.notImplemented("multimodal")) }
+        if !audios.isEmpty {
+            print("[MiniCPMV] generateMultimodal: ignoring \(audios.count) audio input(s) — v4.6 has no audio encoder")
+        }
+        return _runMultimodalStream(systemPrompt: systemPrompt, userPrompt: prompt, images: images)
     }
 
     func generateRaw(
         text: String,
         images: [CIImage]
     ) -> AsyncThrowingStream<String, Error> {
-        // 没图就走文本路径, 有图回退到 multimodal (Phase 1.2.2 之后)。
+        // 没图就走文本路径 (会再走一遍 Gemma→Qwen 解析, 兼容 raw turn marker 输入)。
+        // 有图走 multimodal: raw 调用方手写的模板我们没法在 vision 框架下复用,
+        // 干脆当 (empty system, text=user_prompt, images) 喂给多模态路径。
         if images.isEmpty {
             return generate(prompt: text)
         }
-        return AsyncThrowingStream { $0.finish(throwing: MiniCPMVBackendError.notImplemented("raw+images")) }
+        return _runMultimodalStream(systemPrompt: "", userPrompt: text, images: images)
+    }
+
+    // MARK: Multimodal stream (shared by generateMultimodal + generateRaw+images)
+
+    /// 共享的多模态推理流。系统提示可空, 图片可空 (=纯文本但走 multimodal 入口),
+    /// 但调用方应该至少给一个有效输入。
+    ///
+    /// 跟 text-only `generate(prompt:)` 的区别:
+    ///   - 永远 cleanKVCache 重置, 不做 KV reuse
+    ///   - 在 prefill 阶段先落图到 tmp PNG, 用完立刻 unlink
+    ///   - 结束后 prefilledSegments 标 __multimodal__, 下轮纯文本必触发 reset
+    // 不加 @MainActor: 协议方法 generateMultimodal / generateRaw 都是 nonisolated,
+    // 这里只是构造 AsyncThrowingStream + 把工作扔进 Task { @MainActor ... }, 没有
+    // 直接访问 self 状态, 所以本函数本身不需要 main 隔离。
+    private func _runMultimodalStream(
+        systemPrompt: String,
+        userPrompt: String,
+        images: [CIImage]
+    ) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            Task { @MainActor [weak self] in
+                guard let self else {
+                    continuation.finish()
+                    return
+                }
+                guard self.isLoaded, let w = self.wrapper else {
+                    continuation.finish(throwing: ModelBackendError.modelNotLoaded)
+                    return
+                }
+
+                self.isGenerating = true
+
+                // 同款 stream state final class (跟 text path 一致)
+                final class StreamState: @unchecked Sendable {
+                    var c: AnyCancellable?
+                    var completedSuccessfully: Bool = false
+                    var ttftMs: Double?
+                    var chunkCount: Int = 0
+                    var tempFiles: [URL] = []
+                }
+                let state = StreamState()
+                let startTime = CFAbsoluteTimeGetCurrent()
+
+                // Combine sink — 跟文本路径一模一样的格式 (perf + [Perf] + stats 写回)
+                state.c = w.$currentToken
+                    .dropFirst()
+                    .sink { token in
+                        if !token.content.isEmpty {
+                            if state.ttftMs == nil {
+                                state.ttftMs = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
+                            }
+                            state.chunkCount += 1
+                            continuation.yield(token.content)
+                        }
+                        if token.isEnd {
+                            state.completedSuccessfully = true
+                            continuation.finish()
+                            state.c?.cancel()
+                            let elapsed = CFAbsoluteTimeGetCurrent() - startTime
+                            let chunksPerSec: Double = (elapsed > 0 && state.chunkCount > 0)
+                                ? Double(state.chunkCount) / elapsed
+                                : 0
+                            let finalTtftMs = state.ttftMs ?? 0
+                            let finalChunkCount = state.chunkCount
+                            let tempFilesCopy = state.tempFiles
+                            Task { @MainActor [weak self] in
+                                guard let self else { return }
+                                self.isGenerating = false
+                                self.stats.ttftMs = finalTtftMs
+                                self.stats.totalChunks = finalChunkCount
+                                self.stats.chunksPerSec = chunksPerSec
+                                PCLog.perf(
+                                    ttftMs: Int(finalTtftMs),
+                                    chunks: finalChunkCount,
+                                    chunksPerSec: chunksPerSec,
+                                    headroomMB: MemoryStats.headroomMB
+                                )
+                                // 多模态结束 → 下一轮纯文本必走 full re-prefill
+                                self.prefilledSegments = [
+                                    PromptSegment(role: "__multimodal__", content: "")
+                                ]
+                                Self.cleanupTempFiles(tempFilesCopy)
+                            }
+                        }
+                    }
+
+                continuation.onTermination = { _ in
+                    state.c?.cancel()
+                    let tempFilesCopy = state.tempFiles
+                    Task { @MainActor [weak self] in
+                        guard let self else {
+                            Self.cleanupTempFiles(tempFilesCopy)
+                            return
+                        }
+                        if !state.completedSuccessfully {
+                            self.wrapper?.stopGeneration()
+                            self.isGenerating = false
+                            self.prefilledSegments = [
+                                PromptSegment(role: "__cancelled__", content: "")
+                            ]
+                            Self.cleanupTempFiles(tempFilesCopy)
+                        }
+                    }
+                }
+
+                do {
+                    // 多模态: 一律 reset, 不复用 KV
+                    w.cleanKVCache()
+                    self.prefilledSegments = []
+
+                    // 1. system (可空)
+                    let trimmedSys = systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmedSys.isEmpty {
+                        try await w.addTextInBackground(systemPrompt, role: "system")
+                    }
+
+                    // 2. 每张图: 落 PNG → prefill → 立刻 unlink (失败也 unlink)。
+                    //    PNG 编码扔到 detached task, 别在主线程跑 CIContext.pngRepresentation
+                    //    (一张全屏截图能阻塞 100-300ms)。
+                    for (idx, img) in images.enumerated() {
+                        let encoded: URL = try await Task.detached(priority: .userInitiated) {
+                            try Self.writeCIImageToTempPNG(img, index: idx)
+                        }.value
+                        state.tempFiles.append(encoded)
+                        do {
+                            try await w.addImageInBackground(encoded.path)
+                        } catch {
+                            // 出错也清掉, 不留尾巴
+                            Self.cleanupTempFiles([encoded])
+                            state.tempFiles.removeAll { $0 == encoded }
+                            throw error
+                        }
+                        // 单张 prefill 完就可以删 — 文件只在 cmtmd_prefill_image 同步调用内被读
+                        Self.cleanupTempFiles([encoded])
+                        state.tempFiles.removeAll { $0 == encoded }
+                    }
+
+                    // 3. user text (即使 prompt 为空也提交一个 user turn, 否则 startGeneration
+                    //    会因为 hasContent==false 报错; 给个占位空 user 让模型自由作答)
+                    try await w.addTextInBackground(
+                        userPrompt.isEmpty ? "请描述。" : userPrompt,
+                        role: "user"
+                    )
+
+                    // 4. start
+                    try await w.startGeneration()
+                } catch {
+                    continuation.finish(throwing: error)
+                    state.c?.cancel()
+                    self.isGenerating = false
+                    self.prefilledSegments = [
+                        PromptSegment(role: "__error__", content: "")
+                    ]
+                    Self.cleanupTempFiles(state.tempFiles)
+                }
+            }
+        }
+    }
+
+    // MARK: Multimodal helpers
+
+    /// CIImage → 临时 PNG 文件 (mtmd_ios_prefill_image 只吃文件路径)。
+    /// 文件名带 uuid + index, 避免并发请求互踩。调用方负责 unlink。
+    private static func writeCIImageToTempPNG(_ image: CIImage, index: Int) throws -> URL {
+        let dir = FileManager.default.temporaryDirectory
+        let filename = "mtmd-img-\(UUID().uuidString)-\(index).png"
+        let url = dir.appendingPathComponent(filename)
+
+        // 用主屏色彩空间 (sRGB) 就够了 — MiniCPM-V 训练时也是 sRGB 输入。
+        let cs = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+        let ctx = CIContext(options: nil)
+        guard let pngData = ctx.pngRepresentation(
+            of: image,
+            format: .RGBA8,
+            colorSpace: cs,
+            options: [:]
+        ) else {
+            throw MiniCPMVBackendError.imageEncodeFailed("CIContext.pngRepresentation returned nil")
+        }
+        try pngData.write(to: url, options: .atomic)
+        return url
+    }
+
+    /// 安静地删除一批临时文件, 失败忽略 (清理路径不让它再抛异常)。
+    private static func cleanupTempFiles(_ urls: [URL]) {
+        let fm = FileManager.default
+        for url in urls {
+            try? fm.removeItem(at: url)
+        }
     }
 
     func generateLive(
@@ -530,6 +741,7 @@ final class MiniCPMVBackend: InferenceService {
 public enum MiniCPMVBackendError: LocalizedError {
     case notImplemented(String)
     case bundleResolutionFailed(String)
+    case imageEncodeFailed(String)
 
     public var errorDescription: String? {
         switch self {
@@ -542,6 +754,11 @@ public enum MiniCPMVBackendError: LocalizedError {
             return tr(
                 "找不到 MiniCPM-V 模型 \(modelID) 的文件路径",
                 "Cannot resolve MiniCPM-V model \(modelID) file paths"
+            )
+        case .imageEncodeFailed(let reason):
+            return tr(
+                "图像编码失败 (CIImage → PNG): \(reason)",
+                "Image encode failed (CIImage → PNG): \(reason)"
             )
         }
     }
