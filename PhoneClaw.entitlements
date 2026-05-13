@@ -2,8 +2,22 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- 抬高 jetsam 杀进程阈值, 默认 ~3 GB → 最高 ~5 GB.
+	     Sideloadly 签名时被默默丢掉, paid Dev cert (Xcode 直签 / TestFlight /
+	     App Store) 才真正生效. -->
 	<key>com.apple.developer.kernel.increased-memory-limit</key>
 	<true/>
+
+	<!-- 扩展虚拟地址空间 4 GB → 18 GB. Paid Apple Dev 才能用。
+	     LLM 权重 + KV cache + Metal MTLHeap 全部 mmap 在同一个 4 GB VM
+	     空间里很挤, 即便 RAM 还有也会撞 VM 上限。上这个之后:
+	       - MiniCPM-V 4.6 可以放心把 nCtx 拉到 8192 (视频路径需要)
+	       - Gemma 4 E4B + GPU 不再卡 Sideloadly jetsam 边界
+	       - 将来上 Qwen-VL 7B / 更大模型不用担心 VM 不够 -->
+	<key>com.apple.developer.kernel.extended-virtual-addressing</key>
+	<true/>
+
+	<!-- HealthKit Skill: 步数 / 心率 / 睡眠等数据读取. -->
 	<key>com.apple.developer.healthkit</key>
 	<true/>
 </dict>
