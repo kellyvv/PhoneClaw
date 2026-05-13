@@ -45,15 +45,52 @@ let package = Package(
     ],
     targets: [
         // ───────────────────────────────────────────────────────────
-        // LiteRT-LM (Gemma 4) — 现有路径, 不动
+        // LiteRT-LM (Gemma 4) 主体
         // ───────────────────────────────────────────────────────────
         .binaryTarget(
             name: "CLiteRTLM",
             path: "Frameworks/LiteRTLM.xcframework"
         ),
+
+        // ───────────────────────────────────────────────────────────
+        // LiteRT-LM plugin dylibs — 单独 framework 化
+        // ───────────────────────────────────────────────────────────
+        // App Store / TestFlight 不允许 .framework 里塞 standalone .dylib
+        // (error 90171). 把三个 plugin dylib 各自包成独立 .framework, 再
+        // 各自塞进一个 xcframework, 通过 SPM binaryTarget 让 app 自动 embed。
+        //
+        //   GemmaModelConstraintProvider  — CLiteRTLM 主二进制 hard-link
+        //                                   (LC_LOAD_DYLIB), 必须 embed。
+        //   LiteRtMetalAccelerator        — dlopen at runtime (GPU 路径)。
+        //   LiteRtTopKMetalSampler        — dlopen at runtime (TopK sampler,
+        //                                   device-only, 没 simulator slice)。
+        //
+        // Do not list the runtime-dlopen plugins as target dependencies.
+        // SwiftPM turns binary target dependencies into LC_LOAD_DYLIB entries
+        // in the app binary. Their install names intentionally remain
+        // `@rpath/lib*.dylib` so LiteRT's basename dlopen can find them after
+        // preloading; a hard link would make dyld look for naked dylib files at
+        // launch, which is both absent from the framework layout and invalid
+        // for App Store packaging. Xcode copies those two companion frameworks
+        // with the "Copy LiteRT runtime plugin frameworks" build phase instead.
+        .binaryTarget(
+            name: "GemmaModelConstraintProvider",
+            path: "Frameworks/GemmaModelConstraintProvider.xcframework"
+        ),
+        .binaryTarget(
+            name: "LiteRtMetalAccelerator",
+            path: "Frameworks/LiteRtMetalAccelerator.xcframework"
+        ),
+        .binaryTarget(
+            name: "LiteRtTopKMetalSampler",
+            path: "Frameworks/LiteRtTopKMetalSampler.xcframework"
+        ),
         .target(
             name: "PhoneClawEngine",
-            dependencies: ["CLiteRTLM"],
+            dependencies: [
+                "CLiteRTLM",
+                "GemmaModelConstraintProvider",
+            ],
             path: "Sources/PhoneClawEngine"
             // 注意: 这里**没有** .interoperabilityMode(.Cxx),
             // 保持跟 v1.3.2 时一字不差。

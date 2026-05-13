@@ -10,19 +10,11 @@
 		</data>
 		<key>Info.plist</key>
 		<data>
-		4It6j6cgTefgN+PFmMjHeMKM+CA=
+		n5TT3i7VD6fFC5utOH6G1n5JTWw=
 		</data>
 		<key>Modules/module.modulemap</key>
 		<data>
 		V1NzPEqLrtyn3YcAATVkSgRbnMM=
-		</data>
-		<key>libGemmaModelConstraintProvider.dylib</key>
-		<data>
-		uEoXLGI/YGOF646MtQWIynCo+vs=
-		</data>
-		<key>libLiteRtMetalAccelerator.dylib</key>
-		<data>
-		K6rwkRH0xnZ73EjcAlC91oeACIM=
 		</data>
 	</dict>
 	<key>files2</key>
@@ -39,20 +31,6 @@
 			<key>hash2</key>
 			<data>
 			6+p8hUMjrBlqco/tt8gCqzieXnRSsXGol/B0+UIIP+Y=
-			</data>
-		</dict>
-		<key>libGemmaModelConstraintProvider.dylib</key>
-		<dict>
-			<key>hash2</key>
-			<data>
-			YnIfkjP7tonspBdQpuq1KOqCeKJnc+girD/DyfvM30g=
-			</data>
-		</dict>
-		<key>libLiteRtMetalAccelerator.dylib</key>
-		<dict>
-			<key>hash2</key>
-			<data>
-			7lev9B9l+SeK2Sw+WHbuZW4NYnriLdZcBRhZeB1HfVE=
 			</data>
 		</dict>
 	</dict>

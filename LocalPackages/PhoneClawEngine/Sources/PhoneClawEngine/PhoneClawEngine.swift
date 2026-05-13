@@ -6,57 +6,89 @@ import CLiteRTLM
 
 // MARK: - Companion dylib preloading
 //
-// iOS's bare-name `dlopen` does not reliably search @rpath, so any dylibs
-// the underlying runtime tries to load by short name may fail even when
-// they are bundled alongside the app. The workaround below preloads them
-// by absolute path from the app's Frameworks directory before any runtime
-// C API call, so that subsequent bare-name dlopens from the runtime
-// return the already-registered image.
+// LiteRT-LM's GPU registry looks up its plugin accelerators with a hard-coded
+// `dlopen("libLiteRtMetalAccelerator.dylib", ...)` (and similar for the TopK
+// Metal sampler) — bare basename, no path. On iOS that lookup will succeed iff
+// dyld already has a loaded image whose install_name's leaf matches the query.
+//
+// App Store layout requirements (TN2435): iOS apps may NOT contain naked
+// `.dylib` files. The only allowed dynamic-library packaging is a real
+// `.framework` directory whose binary has no `.dylib` extension and matches
+// the framework name. So we ship the three Google plugin dylibs as:
+//
+//   App.app/Frameworks/LiteRtMetalAccelerator.framework/LiteRtMetalAccelerator
+//   App.app/Frameworks/LiteRtTopKMetalSampler.framework/LiteRtTopKMetalSampler
+//   App.app/Frameworks/GemmaModelConstraintProvider.framework/GemmaModelConstraintProvider
+//
+// The Gemma framework's install_name is set to its actual framework path —
+// CLiteRTLM hard-links it via LC_LOAD_DYLIB, and dyld resolves that at app load
+// time by exact rpath match. CLiteRTLM's load command is rewritten to match.
+//
+// The Metal accelerator and TopK sampler frameworks are different: LiteRT
+// doesn't reference them at link time, it dlopens them by basename at runtime.
+// To make that match work we deliberately set their binaries' install_name to
+// `@rpath/libLiteRtMetalAccelerator.dylib` / `@rpath/libLiteRtTopKMetalSampler.dylib`
+// — these are install_name strings the binaries carry as their identity, but
+// they don't have to correspond to any file actually present on disk. When the
+// code below preloads each binary via its real framework path, dyld registers
+// the image under the libXxx.dylib identity; LiteRT's later basename dlopen
+// then finds it by leaf-name match.
+//
+// Apple's IPA validator (per TN2435) inspects the bundle's file layout (no
+// `.dylib` files outside Swift runtime/SwiftSupport) — it doesn't enforce
+// consistency between install_name and file path, so the mismatch is fine.
 
-/// Preload a companion dylib by basename from the app's Frameworks directory.
+/// Preload a companion plugin packaged as `<frameworkName>.framework`.
 /// Returns true if dyld registered the image, false otherwise.
 @discardableResult
-private func _preloadCompanionDylib(_ fileName: String, category: String) -> Bool {
+private func _preloadCompanionFramework(_ frameworkName: String, category: String) -> Bool {
     let log = Logger(subsystem: "PhoneClawEngine", category: category)
+    let legacyDylib = "lib\(frameworkName).dylib"  // pre-framework-wrap layout fallback
 
     var searchURLs: [URL] = []
     if let frameworksURL = Bundle.main.privateFrameworksURL {
-        searchURLs.append(frameworksURL.appendingPathComponent(fileName))
+        searchURLs.append(
+            frameworksURL
+                .appendingPathComponent("\(frameworkName).framework")
+                .appendingPathComponent(frameworkName)
+        )
+        searchURLs.append(frameworksURL.appendingPathComponent(legacyDylib))
         searchURLs.append(
             frameworksURL
                 .appendingPathComponent("CLiteRTLM.framework")
-                .appendingPathComponent(fileName)
+                .appendingPathComponent(legacyDylib)
         )
     }
     if let main = Bundle.main.executableURL?.deletingLastPathComponent() {
-        searchURLs.append(main.appendingPathComponent("Frameworks/\(fileName)"))
+        searchURLs.append(
+            main.appendingPathComponent("Frameworks/\(frameworkName).framework/\(frameworkName)")
+        )
+        searchURLs.append(main.appendingPathComponent("Frameworks/\(legacyDylib)"))
     }
 
     for url in searchURLs {
         guard FileManager.default.fileExists(atPath: url.path) else { continue }
         if dlopen(url.path, RTLD_NOW | RTLD_GLOBAL) != nil {
-            log.info("Preloaded \(fileName, privacy: .public) from \(url.path, privacy: .public)")
+            log.info("Preloaded \(frameworkName, privacy: .public) from \(url.path, privacy: .public)")
             return true
         } else if let err = dlerror() {
             log.error("dlopen failed for \(url.path, privacy: .public): \(String(cString: err), privacy: .public)")
         }
     }
 
-    log.warning("\(fileName, privacy: .public) not preloaded — the corresponding backend will fall back. Searched: \(searchURLs.map(\.path).joined(separator: ", "), privacy: .public)")
+    log.warning("\(frameworkName, privacy: .public) not preloaded — the corresponding backend will fall back. Searched: \(searchURLs.map(\.path).joined(separator: ", "), privacy: .public)")
     return false
 }
 
 private let _preloadGpuAcceleratorOnce: Void = {
-    _preloadCompanionDylib("libLiteRtMetalAccelerator.dylib",
-                           category: "Accelerator")
+    _preloadCompanionFramework("LiteRtMetalAccelerator", category: "Accelerator")
 }()
 
 /// The Metal TopK sampler is optional — its absence only costs ~1 % decode
 /// time (factory falls back to CPU sampling). We still try to preload it
 /// because the dylib is tiny (~2 MB) and avoids a 500 µs/token logits copy.
 private let _preloadMetalSamplerOnce: Void = {
-    _preloadCompanionDylib("libLiteRtTopKMetalSampler.dylib",
-                           category: "Sampler")
+    _preloadCompanionFramework("LiteRtTopKMetalSampler", category: "Sampler")
 }()
 
 /// Swift wrapper for Google's LiteRT-LM on-device inference engine.

@@ -18,6 +18,8 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
 	<key>NSCalendarsUsageDescription</key>
@@ -30,6 +32,8 @@
 	<string>PhoneClaw needs to store contact information</string>
 	<key>NSHealthShareUsageDescription</key>
 	<string>PhoneClaw reads Health data (steps, sleep, etc.) locally to generate summaries and insights. Nothing leaves your device.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>PhoneClaw can write workout and activity data back to Health when you ask it to log a session. Nothing leaves your device.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>PhoneClaw uses the microphone to record your voice and capture audio input</string>
 	<key>NSRemindersFullAccessUsageDescription</key>
@@ -44,9 +48,18 @@
 	<array>
 		<string>arm64</string>
 	</array>
+	<key>UIRequiresFullScreen</key>
+	<true/>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 </dict>
 </plist>

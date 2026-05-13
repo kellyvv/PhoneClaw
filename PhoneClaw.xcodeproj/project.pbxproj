@@ -668,6 +668,7 @@
 				479C4F7A038F48E691B8652F /* Sources */,
 				4B243621551C86F4B6922A8F /* Frameworks */,
 				E6F7081A2B3C4D5E6F708100 /* Resources */,
+				BB2000000000000000000021 /* Copy LiteRT runtime plugin frameworks */,
 				BB2000000000000000000020 /* Re-sign embedded dylibs */,
 			);
 			buildRules = (
@@ -784,7 +785,26 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "if [ \"${CODE_SIGNING_ALLOWED}\" != \"YES\" ]; then\n  exit 0\nfi\n\nFRAMEWORKS_DIR=\"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}\"\nif [ ! -d \"${FRAMEWORKS_DIR}\" ]; then\n  exit 0\nfi\n\nfind \"${FRAMEWORKS_DIR}\" -name '*.dylib' -exec codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" --timestamp=none --preserve-metadata=identifier,entitlements {} \\;\n";
+			shellScript = "if [ \"${CODE_SIGNING_ALLOWED}\" != \"YES\" ]; then\n  exit 0\nfi\n\nFRAMEWORKS_DIR=\"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}\"\nif [ ! -d \"${FRAMEWORKS_DIR}\" ]; then\n  exit 0\nfi\n\nfind \"${FRAMEWORKS_DIR}\" -name '*.dylib' ! -name 'libswift*.dylib' -exec codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" --timestamp=none --preserve-metadata=identifier,entitlements {} \\;\n";
+			showEnvVarsInLog = 0;
+		};
+		BB2000000000000000000021 /* Copy LiteRT runtime plugin frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Copy LiteRT runtime plugin frameworks";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -euo pipefail\n\nSRC_ROOT=\"${SRCROOT}/LocalPackages/PhoneClawEngine/Frameworks\"\nFRAMEWORKS_DIR=\"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}\"\nmkdir -p \"${FRAMEWORKS_DIR}\"\n\ncase \"${PLATFORM_NAME:-}\" in\n  iphoneos)\n    SLICE=\"ios-arm64\"\n    ;;\n  iphonesimulator)\n    SLICE=\"ios-arm64-simulator\"\n    ;;\n  *)\n    echo \"warning: Unknown platform '${PLATFORM_NAME:-}', skipping LiteRT runtime plugin frameworks\"\n    exit 0\n    ;;\nesac\n\ncopy_companion_framework() {\n  name=\"$1\"\n  src=\"${SRC_ROOT}/${name}.xcframework/${SLICE}/${name}.framework\"\n  dst=\"${FRAMEWORKS_DIR}/${name}.framework\"\n\n  if [ ! -d \"${src}\" ]; then\n    echo \"warning: LiteRT companion framework slice missing: ${src}; skipping\"\n    return 0\n  fi\n\n  rm -rf \"${dst}\"\n  ditto \"${src}\" \"${dst}\"\n\n  if [ \"${CODE_SIGNING_ALLOWED:-}\" = \"YES\" ]; then\n    sign_identity=\"${EXPANDED_CODE_SIGN_IDENTITY:-}\"\n    if [ -z \"${sign_identity}\" ]; then\n      sign_identity=\"-\"\n    fi\n    codesign --force --sign \"${sign_identity}\" --timestamp=none --preserve-metadata=identifier,entitlements \"${dst}\"\n  fi\n}\n\ncopy_companion_framework \"LiteRtMetalAccelerator\"\ncopy_companion_framework \"LiteRtTopKMetalSampler\"\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */
@@ -1101,11 +1121,12 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 098B30935B91CD0BEF3A5056 /* Pods-PhoneClaw.release.xcconfig */;
 			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = PhoneClaw.entitlements;
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = YES;
-				CURRENT_PROJECT_VERSION = 11;
-				DEVELOPMENT_TEAM = ZP4QNJ35TH;
+				CURRENT_PROJECT_VERSION = 17;
+				DEVELOPMENT_TEAM = 2K4BDCCL73;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
@@ -1139,11 +1160,12 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = A1AB7F250BEEFF938318AA75 /* Pods-PhoneClaw.debug.xcconfig */;
 			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = PhoneClaw.entitlements;
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = YES;
-				CURRENT_PROJECT_VERSION = 11;
-				DEVELOPMENT_TEAM = ZP4QNJ35TH;
+				CURRENT_PROJECT_VERSION = 17;
+				DEVELOPMENT_TEAM = 2K4BDCCL73;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
