@@ -490,7 +490,7 @@ struct ContentView: View {
             trailingDynamicButton
         }
         .padding(.horizontal, 8)
-        .padding(.vertical, 11)
+        .padding(.vertical, 20)  // chip 高 40pt + 2×20 = 总高 80pt
         .background(
             Theme.bgElevated,
             in: Capsule()
