@@ -215,31 +215,46 @@ public final class ModelRuntimeCoordinator {
     /// 取消当前生成。等待底层 stream 真正终止后才允许 reset KV。
     ///
     /// 安全保证: await 返回时，底层 stream 已完全停止，可以安全 reset KV session。
+    ///
+    /// 调用方式 (Phase 4):
+    ///   AgentEngine.cancelActiveGeneration() 先同步调 txn.cancel() + inference.cancel()
+    ///   以保证 UI 即时响应，然后 Task 调此方法做异步清理。因此此方法需要处理:
+    ///   - txn 已经是 .cancelling (AgentEngine 预先设置)
+    ///   - txn 已经是 terminal (onComplete 中 finishTurn() 先于本方法执行)
     public func cancelCurrentGeneration() async {
-        guard let txn = currentTransaction, !txn.isTerminal else { return }
+        guard let txn = currentTransaction else { return }
 
-        // Snapshot whether the stream ever started — if not, we can skip
-        // the heavyweight wait-for-stream-termination + KV reset path.
-        let wasStreaming = (txn.state == .streaming)
-
-        txn.cancel()
-
-        if wasStreaming {
-            inference.cancel()
-
-            // 关键：等待 stream 真正终止
-            await txn.termination
-
-            // stream 已终止，reset KV
+        if txn.isTerminal {
+            // onComplete → finishTurn() 已经 terminated 了 txn.
+            // 仍然 reset KV 以确保安全 — stream 此时必定已停止.
             await inference.resetKVSession()
         } else {
-            // Stream never started (txn was .created) — mark terminated directly.
-            txn.markTerminated(reason: .userCancelled)
+            // Snapshot: 是否有活跃 stream 需要等待?
+            // .streaming = begin() 已调用，stream 活跃中
+            // .cancelling = AgentEngine 已调 txn.cancel()，stream 可能还在跑
+            let needsStreamWait = (txn.state == .streaming || txn.state == .cancelling)
+
+            if txn.state != .cancelling {
+                txn.cancel()
+            }
+
+            if needsStreamWait {
+                inference.cancel()
+
+                // 关键：等待 stream 真正终止
+                // onComplete → finishTurn() 会 markTerminated(), 解除此 await
+                await txn.termination
+
+                // stream 已终止，reset KV
+                await inference.resetKVSession()
+            } else {
+                // Was .created — stream never started, mark terminated directly.
+                txn.markTerminated(reason: .userCancelled)
+            }
         }
 
         if case .generating(let modelID, _) = sessionState {
-            let backend = lastKnownBackend
-            transition(to: .ready(modelID: modelID, backend: backend))
+            transition(to: .ready(modelID: modelID, backend: lastKnownBackend))
         }
         log.info("cancelCurrentGeneration complete")
     }

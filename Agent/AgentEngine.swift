@@ -1347,6 +1347,7 @@ class AgentEngine {
         guard !isProcessing else { return }
         guard !normalizedText.isEmpty || !promptAttachments.isEmpty || audioInput != nil else { return }
         isProcessing = true
+        beginGenerationTracking()
 
         let currentUserMessage = ChatMessage(
             role: .user,
@@ -1480,6 +1481,7 @@ class AgentEngine {
             await prepareSessionGroupTransitionIfNeeded(for: multimodalPlan)
             var multimodalBuffer = ""
 
+            markStreamingStarted()
             inference.generateMultimodal(
                 images: promptImages,
                 audios: audioInput.map { [$0] } ?? [],
@@ -1493,8 +1495,10 @@ class AgentEngine {
                 self.messages[msgIndex].update(content: (cleaned.isEmpty ? "" : cleaned) + "▍")
             } onComplete: { [weak self] result in
                 guard let self = self else { return }
-                defer { self.isProcessing = false }
-                guard self.messages.indices.contains(msgIndex) else { return }
+                guard self.messages.indices.contains(msgIndex) else {
+                    self.finishTurn()
+                    return
+                }
                 switch result {
                 case .success(let fullText):
                     #if DEBUG
@@ -1509,6 +1513,7 @@ class AgentEngine {
                         assistantSummary: cleaned.isEmpty ? fullText : cleaned
                     )
                     self.recordCompletedObservation(plan: multimodalPlan)
+                    self.finishTurn()
                 case .failure(let error):
                     log("[Agent] multimodal failed: \(error.localizedDescription)")
                     self.messages[msgIndex].update(role: .system, content: "❌ \(error.localizedDescription)")
@@ -1517,6 +1522,7 @@ class AgentEngine {
                         tokenCapHit: self.classifyTokenCapHit(error),
                         memoryFloorHit: self.classifyMemoryFloorHit(error)
                     )
+                    self.finishTurn(error: error.localizedDescription)
                 }
             }
             return
@@ -1638,7 +1644,7 @@ class AgentEngine {
                         advancePromptPipelineState: false,
                         preflightHardReject: true
                     )
-                    isProcessing = false
+                    finishTurn()
                     return
                 }
 
@@ -1730,6 +1736,7 @@ class AgentEngine {
         var buffer = ""
         var bufferFlushed = false
 
+        markStreamingStarted()
         inference.generate(
             prompt: streamingPrompt,
             onToken: { [weak self] token in
@@ -1769,7 +1776,7 @@ class AgentEngine {
             onComplete: { [weak self] result in
                 guard let self = self else { return }
                 guard self.messages.indices.contains(msgIndex) else {
-                    self.isProcessing = false
+                    self.finishTurn()
                     return
                 }
                 switch result {
@@ -1781,6 +1788,8 @@ class AgentEngine {
                     if self.parseToolCall(fullText) != nil {
                         self.messages[msgIndex].update(content: "")
                         self.recordCompletedObservation(plan: textPromptPlan)
+                        // Tool chain continues the turn — txn stays .streaming,
+                        // finishTurn() will be called when the chain completes.
                         Task {
                             await self.executeToolChain(
                                 prompt: streamingPrompt,
@@ -1810,7 +1819,7 @@ class AgentEngine {
                                             content: repaired.isEmpty ? PromptLocale.current.emptyReplyPlaceholder : repaired
                                         )
                                     }
-                                    self.isProcessing = false
+                                    self.finishTurn()
                                 }
                             }
                             return
@@ -1818,7 +1827,7 @@ class AgentEngine {
                         self.messages[msgIndex].update(
                             content: cleaned.isEmpty ? PromptLocale.current.emptyReplyPlaceholder : cleaned
                         )
-                        self.isProcessing = false
+                        self.finishTurn()
                     }
                 case .failure(let error):
                     self.messages[msgIndex].update(role: .system, content: "❌ \(error.localizedDescription)")
@@ -1827,7 +1836,7 @@ class AgentEngine {
                         tokenCapHit: self.classifyTokenCapHit(error),
                         memoryFloorHit: self.classifyMemoryFloorHit(error)
                     )
-                    self.isProcessing = false
+                    self.finishTurn(error: error.localizedDescription)
                 }
             }
         )
@@ -1907,6 +1916,63 @@ class AgentEngine {
         }
     }
 
+    // MARK: - Generation Tracking (Phase 4)
+
+    /// Begin generation transaction tracking at the start of a user turn.
+    /// Creates a coordinator transaction if the runtime is ready.
+    /// Gracefully no-ops if coordinator is not in ready state (migration path).
+    ///
+    /// Uses `MainActor.assumeIsolated` because AgentEngine is not @MainActor
+    /// but processInput() always runs on MainActor (UI entry point).
+    private func beginGenerationTracking() {
+        MainActor.assumeIsolated {
+            guard self.coordinator.sessionState.canGenerate else { return }
+            _ = self.coordinator.beginGeneration()
+            // Don't call txn.begin() yet — that happens when inference actually starts streaming.
+        }
+    }
+
+    /// Signal that the inference stream has started for the current transaction.
+    /// Call immediately before `inference.generate()` or `inference.generateMultimodal()`.
+    private func markStreamingStarted() {
+        MainActor.assumeIsolated {
+            self.coordinator.currentTransaction?.begin()
+        }
+    }
+
+    /// Finish the current generation turn.
+    ///
+    /// Commits or terminates the active transaction based on its current state,
+    /// then clears `isProcessing`. Safe to call even if no transaction is active
+    /// (graceful no-op for the migration period).
+    ///
+    /// - Parameter error: If non-nil, the turn failed and the transaction is
+    ///   terminated with an error reason. If nil, the turn succeeded normally.
+    ///   If the transaction is in `.cancelling` state (user pressed stop),
+    ///   it's terminated as cancelled regardless of this parameter.
+    ///
+    /// Note: Uses `MainActor.assumeIsolated` because inference callbacks and
+    /// processInput() always run on MainActor, but AgentEngine class itself
+    /// is not annotated @MainActor (legacy design — Phase 5 will address).
+    func finishTurn(error: String? = nil) {
+        MainActor.assumeIsolated {
+            if let txn = self.coordinator.currentTransaction, !txn.isTerminal {
+                if txn.state == .cancelling {
+                    // Cancel flow in progress — mark terminated so coordinator's
+                    // async cancel can proceed with KV reset.
+                    txn.markTerminated(reason: .userCancelled)
+                } else if let error {
+                    txn.markTerminated(reason: .error(error))
+                    self.coordinator.completeGeneration()
+                } else {
+                    txn.commit()
+                    self.coordinator.completeGeneration()
+                }
+            }
+        }
+        isProcessing = false
+    }
+
     // MARK: - 工具
 
     func clearMessages() {
@@ -1915,12 +1981,30 @@ class AgentEngine {
 
     func cancelActiveGeneration() {
         guard isProcessing || inference.isGenerating else { return }
+
+        // 1. Mark transaction as cancelling BEFORE inference.cancel(),
+        //    so onComplete → finishTurn() sees .cancelling (not .streaming).
+        MainActor.assumeIsolated {
+            self.coordinator.currentTransaction?.cancel()
+        }
+
+        // 2. Signal inference to stop producing tokens.
         inference.cancel()
+
+        // 3. Immediate UI cleanup — isProcessing = false is NOT via finishTurn()
+        //    because the coordinator's async cancel manages the state transition.
         isProcessing = false
 
         if let lastAssistant = messages.lastIndex(where: { $0.role == .assistant }) {
             let content = messages[lastAssistant].content.replacingOccurrences(of: "▍", with: "")
             messages[lastAssistant].update(content: content.isEmpty ? PromptLocale.current.cancelledReplyPlaceholder : content)
+        }
+
+        // 4. Async: wait for stream termination → reset KV safely.
+        //    coordinator.cancelCurrentGeneration() handles the full cancel lifecycle:
+        //    await txn.termination → resetKVSession() → transition to .ready.
+        Task { @MainActor [weak self] in
+            await self?.coordinator.cancelCurrentGeneration()
         }
 
         log("[Agent] Generation cancelled")
