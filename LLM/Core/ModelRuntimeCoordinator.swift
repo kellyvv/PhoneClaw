@@ -230,10 +230,16 @@ public final class ModelRuntimeCoordinator {
             // 仍然 reset KV 以确保安全 — stream 此时必定已停止.
             await inference.resetKVSession()
         } else {
-            // Snapshot: 是否有活跃 stream 需要等待?
-            // .streaming = begin() 已调用，stream 活跃中
-            // .cancelling = AgentEngine 已调 txn.cancel()，stream 可能还在跑
-            let needsStreamWait = (txn.state == .streaming || txn.state == .cancelling)
+            // 判断是否有活跃 stream 需要等待。
+            //
+            // 关键：不能用 txn.state 判断，因为 AgentEngine 的 split-cancel 模式
+            // 会在此方法执行前同步调 txn.cancel()，把 .created/.streaming 都变成
+            // .cancelling。用 didBeginStreaming 区分：
+            //   - true:  begin() 曾被调用 → inference.generate() 已跑 → onComplete
+            //            最终会触发 finishTurn() → markTerminated() → 解除 await
+            //   - false: begin() 从未调用 → stream 从未开始 → 不会有 onComplete →
+            //            必须直接 markTerminated()，否则 await txn.termination 永远挂起
+            let needsStreamWait = txn.didBeginStreaming
 
             if txn.state != .cancelling {
                 txn.cancel()
@@ -249,7 +255,7 @@ public final class ModelRuntimeCoordinator {
                 // stream 已终止，reset KV
                 await inference.resetKVSession()
             } else {
-                // Was .created — stream never started, mark terminated directly.
+                // Stream never started — mark terminated directly.
                 txn.markTerminated(reason: .userCancelled)
             }
         }

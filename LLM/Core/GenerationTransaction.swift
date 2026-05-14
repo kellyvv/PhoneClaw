@@ -69,6 +69,18 @@ public final class GenerationTransaction: @unchecked Sendable {
         stateLock.withLock { $0 }
     }
 
+    /// Whether `begin()` was successfully called (stream was started).
+    ///
+    /// Used by `ModelRuntimeCoordinator.cancelCurrentGeneration()` to distinguish
+    /// "cancelled before stream started" (no one will call markTerminated, so
+    /// coordinator must do it directly) from "cancelled during active stream"
+    /// (onComplete → finishTurn() will call markTerminated, so coordinator
+    /// should await termination).
+    ///
+    /// Once cancel() changes state to .cancelling, the original pre-cancel
+    /// state (.created vs .streaming) is lost. This flag preserves that info.
+    public private(set) var didBeginStreaming: Bool = false
+
     // MARK: - Private
 
     /// Lock protecting the mutable state.
@@ -109,6 +121,7 @@ public final class GenerationTransaction: @unchecked Sendable {
             return true
         }
         if ok {
+            didBeginStreaming = true
             log.info("[\(self.id.uuidString.prefix(8), privacy: .public)] streaming started")
         } else {
             log.warning("[\(self.id.uuidString.prefix(8), privacy: .public)] begin() in wrong state: \(String(describing: self.state), privacy: .public)")

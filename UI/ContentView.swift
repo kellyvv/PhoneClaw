@@ -284,7 +284,7 @@ struct ContentView: View {
             // 中：模型状态
             HStack(spacing: 6) {
                 Circle()
-                    .fill(engine.isModelReady ? Theme.accentGreen : Theme.accent)
+                    .fill(engine.isModelReady || engine.isModelGenerating ? Theme.accentGreen : Theme.accent)
                     .frame(width: 6, height: 6)
                 Text(topModelStatusText)
                     .font(.system(size: 12, weight: .medium, design: .rounded))
@@ -346,7 +346,9 @@ struct ContentView: View {
     }
 
     private var topModelStatusText: String {
-        if engine.isModelReady {
+        // isModelReady = .ready; isModelGenerating = .generating.
+        // Both mean the model is loaded and active — show the model name.
+        if engine.isModelReady || engine.isModelGenerating {
             return engine.catalog.modelDisplayName
         }
 
