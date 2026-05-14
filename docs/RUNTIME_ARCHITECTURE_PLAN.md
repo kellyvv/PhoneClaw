@@ -13,25 +13,32 @@
 
 ## 实施状态(v1.3 落地 erratum)
 
-Phase 1-5 + 扫尾 (Phase 6) 完成后,plan 与代码的对照:
+Phase 1-6 + 二轮 review 修复完成后,plan 与代码的对照:
 
 | Plan 章节 | 状态 | 备注 |
 |---|---|---|
-| §3.2 LiteRTBootstrap | ✅ 完整 | `LLM/Core/LiteRTBootstrap.swift` + PhoneClawApp.init 第一行 |
-| §3.2 RuntimeSessionState | ✅ 完整 | 含 LoadPhase / BackendSwitch / RuntimeError 全部 case |
-| §3.2 GenerationTransaction | ✅ 加强 | 加 `didBeginStreaming` 修正 cancel-before-stream 路径 |
+| §3.2 LiteRTBootstrap | ✅ 完整 | `LLM/Core/LiteRTBootstrap.swift` + PhoneClawApp.init 第一行;Mac CLI 路径 `#if canImport(PhoneClawEngine)` 守护 |
+| §3.2 RuntimeSessionState | ✅ 完整 | 含 LoadPhase / BackendSwitch / RuntimeError 全部 case;9 个 unit test 覆盖转移白名单 |
+| §3.2 GenerationTransaction | ✅ 加强 | 加 `didBeginStreaming` 修正 cancel-before-stream 路径;13 个 unit test 覆盖状态机 + await termination |
 | §3.2 ModelRuntimeCoordinator | ✅ 完整 | load / switchBackend / beginGeneration / cancel / unload / recover |
-| §3.2 InferenceService 协议演进 | ✅ 完整 | unloadAsync (LiteRT 显式实现) + activeCapabilities |
-| §3.2 ModelInstallManager | ⚠️ 部分 | InstallState enum 已定义(type 蓝图),但 LiteRTModelStore 仍用 legacy ModelInstallState。SHA256 校验未做,因为 ModelDescriptor 还没 hash 字段 |
-| §3.2 ChatSessionController | ✅ 形态调整 | 拆成 ChatSessionStore (持久化) + AgentEngine.messages (运行时数据)。façade ChatViewModel 暴露派生属性 |
-| §3.2 AgentOrchestrator | ✅ 形态调整 | façade 形式 (`Agent/Engine/AgentOrchestrator.swift`),底层仍用 extension AgentEngine。重组成独立 class 边际收益低 |
-| §3.2 DiagnosticsLogger | ✅ 复用 | Shared/PCLog 已有结构化 logging,加 PCLog.debug() + exportDiagnosticsBundle() |
-| §3.1 ViewModel 层 | ✅ 形态调整 | ChatViewModel / ConfigViewModel façade 类型存在,UI 维持直接绑 engine (SwiftUI @Observable 让中间层 boilerplate 收益低) |
+| §3.2 InferenceService 协议演进 | ✅ 完整 | LiteRT 显式实现 `unloadAsync` (BackendDispatcher 转发);`activeCapabilities` 默认实现 |
+| §3.2 ModelInstallManager | ⚠️ 待 SHA256 | InstallState enum 已定义(type 蓝图),但 LiteRTModelStore 仍用 legacy ModelInstallState。`verifying` / `corrupt` 状态需要 ModelDescriptor 加 hash 字段才有真实价值 |
+| §3.2 ChatSessionController | ✅ 形态调整 | 拆成 ChatSessionStore (持久化) + AgentEngine.messages (运行时)。原 plan 的 ViewModel façade 二轮 review 证伪后删除 |
+| §3.2 AgentOrchestrator | ❌ 取消 | 二轮 review 发现 façade 形式 0 caller (UI 和 unit-test 都不用),作为死代码删除。真要时直接重建,无沉默死代码 |
+| §3.2 DiagnosticsLogger | ✅ 完整 | Shared/PCLog 覆盖 [Model/Turn/Perf/Warn/Event/Debug] 六个分类 + `exportDiagnosticsBundle()`。Agent + LLM 层 0 stray print() |
+| §3.1 ViewModel 层 | ❌ 取消 | 同 AgentOrchestrator 决策:façade 形式删除。UI 通过 AgentEngine boundary 拿数据 (新增 statusMessage/setStatusMessage/resetKVSession bridge),不直访 inference 协议 |
 | §八 IPA 验证脚本 | ✅ 完整 | `scripts/validate-ipa.sh` |
-| §10.3 红线检查 | ✅ 完整 | LiteRTModelStore.assertNoNativeBinaryDownloads() |
-| §九 Phase 3 PromptBudgeter | ✅ 完整 | PromptTokenEstimator (CJK 1.5 / Latin 4.0 chars/token) |
+| §10.3 红线检查 | ✅ 完整(双路径) | LiteRTModelStore.assertNoNativeBinaryDownloads() + LiveDownloadPlanner.assertNoNativeBinaryDownloads() — 静态配置和 HF tree 动态发现两条下载链路都守 |
+| §九 Phase 3 PromptBudgeter | ✅ 完整 | PromptTokenEstimator (CJK 1.5 / Latin 4.0 chars/token) + 14 个 unit test |
+| §九 Phase 5 unit tests | ✅ 完整 | Tests/ SPM package + 36 个 XCTest,80ms 跑完 |
 
-AgentEngine: **2071 → 215 行** (89.6% 削减,远超 plan §九 Phase 5 的 < 600 行目标)。
+AgentEngine: **2071 → 237 行** (88.5% 削减,远超 plan §九 Phase 5 的 < 600 行目标)。
+
+**架构形态决策**:plan §3.1/§3.2 画的 AgentOrchestrator 和 Chat/Config ViewModel 中间层,
+在 SwiftUI + @Observable 时代价值边际。AgentEngine 已经瘦身到 237 行 (wiring hub) 后,UI
+直接绑 engine 工作得很好;真正的复杂逻辑(processInput / Planner / ToolChain / ImageFollowUp)
+已经按 `extension AgentEngine` 形式分布在独立文件中,可以单独 reasoning 和单独修改。
+二轮 review 把"为做而做"的 façade 类删了 — plan checklist 不再全绿,但代码诚实。
 
 ---
 
