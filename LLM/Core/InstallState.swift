@@ -1,21 +1,23 @@
 import Foundation
 
-// MARK: - InstallState
+// MARK: - InstallState (v2 type — not yet wired)
 //
-// Per-model 安装状态。每个模型独立状态，互不干扰。
-// 用户可以一边用 E2B 聊天一边下载 E4B。
+// Per-model 安装状态。每个模型独立状态,互不干扰。
 //
-// 与现有 ModelInstallState 的关系:
-//   这是 ModelInstallState 的演化版本，增加了:
-//   1. verifying 状态（下载完做完整性检查）
-//   2. corrupt 状态（区别于 notInstalled — 文件存在但损坏）
-//   3. 结构化的 DownloadProgress（替代 completedFiles/totalFiles 元组）
-//   4. installed 带 fileSize（方便 UI 显示）
+// 与现有 ModelInstallState 的关系 (v1.3 现状):
+//   - LiteRTModelStore 仍用 legacy `ModelInstallState`(见 LLM/MLX/Installation/)
+//   - UI 直接读 `installer.installStates: [String: ModelInstallState]`
+//   - 本 enum 是 plan §3.2 设计的演化目标,定义先行,接入待 v2
 //
-// 迁移策略:
-//   - 现有 LiteRTModelStore 内部先用 InstallState，对外还暴露 ModelInstallState
-//   - 消费端逐步从 ModelInstallState 迁移到 InstallState
-//   - 完成后删除旧 ModelInstallState enum
+// v2 触发条件:
+//   - ModelDescriptor 加 SHA256 字段 → `verifying` 状态有真实工作量
+//   - 否则当前 `failed(reason)` 已经能覆盖 corrupt 语义
+//
+// 演化时切换路径:
+//   1. ModelInstaller protocol 改返回 InstallState
+//   2. LiteRTModelStore 内部存储改 InstallState
+//   3. UI ConfigurationsView/ContentView switch case 改 case 名
+//   4. 删除 LLM/MLX/Installation/ModelInstallState.swift 里的旧 enum
 
 /// Per-model 安装状态。
 public enum InstallState: Equatable, Sendable {

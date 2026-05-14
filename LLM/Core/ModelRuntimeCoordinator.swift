@@ -30,9 +30,11 @@ import os
 public final class ModelRuntimeCoordinator {
 
     // MARK: - Three State Lines
-
-    /// Per-model 安装状态 (managed by external ModelInstaller, observed here)
-    public private(set) var installStates: [String: InstallState] = [:]
+    //
+    // 注:InstallState (per-model) 在 plan §3.2 中是 Coordinator 的一条主线,
+    // 但 v1.3 LiteRTModelStore 内部仍用 legacy `ModelInstallState` 维护安装状态,
+    // UI 也直接读 `installer.installStates`。Coordinator 这里不重复持有,避免
+    // 双源数据漂移。如果 v2 引入 SHA256 校验/verifying 中间态,会从这里收回。
 
     /// Active session 运行时状态
     public private(set) var sessionState: RuntimeSessionState = .idle
@@ -321,19 +323,6 @@ public final class ModelRuntimeCoordinator {
         _ = error // suppress unused warning
     }
 
-    // MARK: - Install State Sync
-
-    /// 从 ModelInstaller 同步安装状态快照。
-    /// 调用时机: app 启动、下载完成、磁盘扫描后。
-    public func syncInstallStates() {
-        var newStates: [String: InstallState] = [:]
-        for model in ModelDescriptor.allModels {
-            let legacy = installer.installState(for: model.id)
-            newStates[model.id] = InstallState.from(legacy: legacy)
-        }
-        installStates = newStates
-    }
-
     // MARK: - Private
 
     private func transition(to newState: RuntimeSessionState) {
@@ -408,24 +397,3 @@ public extension RuntimeError {
     }
 }
 
-// MARK: - InstallState Legacy Bridge
-
-public extension InstallState {
-    /// Convert from legacy ModelInstallState to new InstallState.
-    static func from(legacy: ModelInstallState) -> InstallState {
-        switch legacy {
-        case .notInstalled:
-            return .notInstalled
-        case .checkingSource:
-            return .downloading(progress: DownloadProgress(bytesReceived: 0, totalBytes: nil, currentFile: "checking"))
-        case .downloading(_, _, let currentFile):
-            return .downloading(progress: DownloadProgress(bytesReceived: 0, totalBytes: nil, currentFile: currentFile))
-        case .downloaded:
-            return .installed(info: InstalledModelInfo(fileSize: 0, source: .downloaded))
-        case .bundled:
-            return .installed(info: InstalledModelInfo(fileSize: 0, source: .bundled))
-        case .failed(let reason):
-            return .corrupt(reason: reason)
-        }
-    }
-}
