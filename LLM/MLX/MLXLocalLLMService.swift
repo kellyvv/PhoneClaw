@@ -216,7 +216,7 @@ public class MLXLocalLLMService: LLMEngine, InferenceService {
                 return true
             }
             guard admitted else {
-                print("[MLX] loadModel: capability switch pending, aborting")
+                PCLog.debug("[MLX] loadModel: capability switch pending, aborting")
                 return
             }
             defer {
@@ -245,7 +245,7 @@ public class MLXLocalLLMService: LLMEngine, InferenceService {
                 self.isLoaded = false
                 self.loadedModel = nil
                 self.refreshModelInstallStates()
-                print("[MLX] Load failed: \(error.localizedDescription)")
+                PCLog.debug("[MLX] Load failed: \(error.localizedDescription)")
             }
         }
     }
@@ -359,14 +359,14 @@ public class MLXLocalLLMService: LLMEngine, InferenceService {
 
         statusMessage = "正在加载 \(model.displayName)..."
         let loadStart = CFAbsoluteTimeGetCurrent()
-        print("[MLX] load capability — audio=\(audioCapabilityEnabled ? 1 : 0)")
+        PCLog.debug("[MLX] load capability — audio=\(audioCapabilityEnabled ? 1 : 0)")
 
         // ── Memory diagnostics (read before load) ──────────────────────────────
         let physMB = Double(ProcessInfo.processInfo.physicalMemory) / 1_048_576
         let (footprintBefore, limitBefore) = MemoryStats.footprintMB()
-        print("[MEM] Physical RAM: \(Int(physMB)) MB")
-        print("[MEM] Before load — footprint: \(Int(footprintBefore)) MB, jetsam limit: \(Int(limitBefore)) MB")
-        print("[MEM] MLX before — \(Self.mlxMemoryDiagnostics())")
+        PCLog.debug("[MEM] Physical RAM: \(Int(physMB)) MB")
+        PCLog.debug("[MEM] Before load — footprint: \(Int(footprintBefore)) MB, jetsam limit: \(Int(limitBefore)) MB")
+        PCLog.debug("[MEM] MLX before — \(Self.mlxMemoryDiagnostics())")
 
         let container = try await VLMModelFactory.shared.loadContainer(
             from: path,
@@ -380,14 +380,14 @@ public class MLXLocalLLMService: LLMEngine, InferenceService {
 
         // ── Memory diagnostics (read after load) ───────────────────────────────
         let (footprintAfter, _) = MemoryStats.footprintMB()
-        print("[MEM] After load  — footprint: \(Int(footprintAfter)) MB")
-        print("[MEM] MLX after   — \(Self.mlxMemoryDiagnostics())")
+        PCLog.debug("[MEM] After load  — footprint: \(Int(footprintAfter)) MB")
+        PCLog.debug("[MEM] MLX after   — \(Self.mlxMemoryDiagnostics())")
 
         let elapsed = (CFAbsoluteTimeGetCurrent() - loadStart) * 1000
         stats.loadTimeMs = elapsed
         statusMessage = "模型已就绪 ✅ (\(Int(elapsed))ms)"
 
-        print("[MLX] Model loaded in \(Int(elapsed))ms — backend: mlx-gpu — model: \(model.displayName)")
+        PCLog.debug("[MLX] Model loaded in \(Int(elapsed))ms — backend: mlx-gpu — model: \(model.displayName)")
     }
 
     private func ensureAudioCapability(hasAudio: Bool) async throws {
@@ -396,7 +396,7 @@ public class MLXLocalLLMService: LLMEngine, InferenceService {
         }
 
         audioCapabilityEnabled = hasAudio
-        print("[MLX] capability switch requested — audio=\(hasAudio ? 1 : 0)")
+        PCLog.debug("[MLX] capability switch requested — audio=\(hasAudio ? 1 : 0)")
 
         if isLoaded || modelContainer != nil {
             await prepareForReload(cancelCurrentGeneration: false, cancelCurrentLoad: false)
@@ -418,7 +418,7 @@ public class MLXLocalLLMService: LLMEngine, InferenceService {
         for attempt in 1...maxAttempts {
             // Wait for in-flight work to finish
             while isLoading || isGenerating {
-                print("[MLX] prepareForLiveMode: waiting... (attempt \(attempt))")
+                PCLog.debug("[MLX] prepareForLiveMode: waiting... (attempt \(attempt))")
                 try await Task.sleep(nanoseconds: 100_000_000)
             }
             if audioCapabilityEnabled && isLoaded { return }
@@ -448,7 +448,7 @@ public class MLXLocalLLMService: LLMEngine, InferenceService {
         }
 
         capabilitySwitchLock.withLock { capabilitySwitchPending = false }
-        print("[MLX] prepareForLiveMode: could not reach stable idle")
+        PCLog.debug("[MLX] prepareForLiveMode: could not reach stable idle")
         throw MLXError.modelBusy
     }
 
@@ -479,7 +479,7 @@ public class MLXLocalLLMService: LLMEngine, InferenceService {
         //
         // Skipping warmup means the first user inference compiles shaders lazily
         // (first response is ~2-3s slower) but avoids the OOM kill on startup.
-        print("[MLX] Warmup skipped — shaders will compile on first inference")
+        PCLog.debug("[MLX] Warmup skipped — shaders will compile on first inference")
         statusMessage = "模型已就绪 ✅"
 
         #if DEBUG && canImport(UIKit)
@@ -652,7 +652,7 @@ public class MLXLocalLLMService: LLMEngine, InferenceService {
                     return true
                 }
                 guard admitted else {
-                    print("[MLX] generateStream: capability switch pending, aborting")
+                    PCLog.debug("[MLX] generateStream: capability switch pending, aborting")
                     continuation.finish(throwing: CancellationError())
                     return
                 }
@@ -716,7 +716,7 @@ public class MLXLocalLLMService: LLMEngine, InferenceService {
                 let thinkingBudget = RuntimeBudgets.thinking(profile: profile, headroom: headroom, enabled: thinkingEnabled)
 
                 if let runtimeBudget {
-                    print(
+                    PCLog.debug(
                         "[MEM] multimodal runtime budget — model=\(currentModel.displayName), "
                             + "headroom=\(headroom) MB, "
                             + "imageSoftTokenCap=\(runtimeBudget.imageSoftTokenCap.map(String.init) ?? "n/a"), "
@@ -725,10 +725,10 @@ public class MLXLocalLLMService: LLMEngine, InferenceService {
                     )
                 }
                 if let thinkingBudget {
-                    print("[MEM] thinking runtime budget — model=\(currentModel.displayName), headroom=\(headroom) MB, maxOutputTokens=\(thinkingBudget.maxOutputTokens)")
+                    PCLog.debug("[MEM] thinking runtime budget — model=\(currentModel.displayName), headroom=\(headroom) MB, maxOutputTokens=\(thinkingBudget.maxOutputTokens)")
                 }
                 if let textBudget {
-                    print("[MEM] text runtime budget — model=\(currentModel.displayName), headroom=\(headroom) MB, maxOutputTokens=\(textBudget.maxOutputTokens)")
+                    PCLog.debug("[MEM] text runtime budget — model=\(currentModel.displayName), headroom=\(headroom) MB, maxOutputTokens=\(textBudget.maxOutputTokens)")
                 }
 
                 // TODO: 抽出 ModelAdapter 协议后移除 Gemma 专属耦合
@@ -756,27 +756,27 @@ public class MLXLocalLLMService: LLMEngine, InferenceService {
 
                 let (fp, _) = MemoryStats.footprintMB()
                 let mlxMemory = Self.isSimulatorRuntime ? "simulator-skip" : "\(MLX.GPU.activeMemory / 1_048_576) MB"
-                print("[MEM] generateStream start — footprint: \(Int(fp)) MB, MLX active: \(mlxMemory)")
+                PCLog.debug("[MEM] generateStream start — footprint: \(Int(fp)) MB, MLX active: \(mlxMemory)")
 
                 do {
                     try await self.ensureForegroundGPUExecution()
                     _ = try await container.perform { (context) -> Void in
                         try await self.ensureForegroundGPUExecution()
                         if isMultimodal {
-                            print("[VLM] multimodal budget — maxOutputTokens=\(resolvedMaxOutputTokens)")
+                            PCLog.debug("[VLM] multimodal budget — maxOutputTokens=\(resolvedMaxOutputTokens)")
                         } else if thinkingEnabled {
-                            print("[LLM] thinking budget — baseMaxOutputTokens=\(resolvedMaxOutputTokens)")
+                            PCLog.debug("[LLM] thinking budget — baseMaxOutputTokens=\(resolvedMaxOutputTokens)")
                         }
                         let preparedInput = try await context.processor.prepare(input: input)
                         let preparedSequenceLength = preparedInput.text.tokens.dim(1)
                         if isMultimodal {
-                            print("[VLM] prepared sequence length=\(preparedSequenceLength)")
+                            PCLog.debug("[VLM] prepared sequence length=\(preparedSequenceLength)")
                         } else {
                             // 不再基于 prepared 长度二次扣减 output 上限。
                             // chunked prefill 让 prepared 长度对峰值内存几乎无影响,
                             // resolvedMaxOutputTokens 已由 textOutputBudget(headroom)
                             // 决定, 直接使用即可。
-                            print(
+                            PCLog.debug(
                                 "[LLM] prepared sequence length=\(preparedSequenceLength), "
                                     + "outputCap=\(resolvedMaxOutputTokens)"
                             )
@@ -870,7 +870,7 @@ public class MLXLocalLLMService: LLMEngine, InferenceService {
                             if tokens.count % 32 == 0 {
                                 let currentHeadroom = MemoryStats.headroomMB
                                 if currentHeadroom < headroomFloor {
-                                    print("[MEM] ⚠️ headroom \(currentHeadroom) MB < floor \(headroomFloor) MB at token \(tokens.count), stopping")
+                                    PCLog.debug("[MEM] ⚠️ headroom \(currentHeadroom) MB < floor \(headroomFloor) MB at token \(tokens.count), stopping")
                                     hitMemoryFloor = true
                                     return .stop
                                 }
@@ -895,10 +895,10 @@ public class MLXLocalLLMService: LLMEngine, InferenceService {
                         ? Double(tokenCount) / elapsed : 0
                     self.stats.totalChunks = tokenCount
 
-                    print(
+                    PCLog.debug(
                         "[MLX] Generated \(tokenCount) tokens in \(String(format: "%.1f", elapsed))s"
                     )
-                    print(
+                    PCLog.debug(
                         "[MLX] TTFT: \(String(format: "%.0f", self.stats.ttftMs))ms, "
                             + "Speed: \(String(format: "%.1f", self.stats.chunksPerSec)) tok/s")
 
@@ -906,8 +906,8 @@ public class MLXLocalLLMService: LLMEngine, InferenceService {
                     // 确保下一轮有最大可用 headroom。
                     MLX.GPU.clearCache()
                     let (fpEnd, _) = MemoryStats.footprintMB()
-                    print("[MEM] generateStream end  — footprint: \(Int(fpEnd)) MB, headroom: \(self.availableHeadroomMB) MB")
-                    print("[MEM] MLX post-clear — \(Self.mlxMemoryDiagnostics())")
+                    PCLog.debug("[MEM] generateStream end  — footprint: \(Int(fpEnd)) MB, headroom: \(self.availableHeadroomMB) MB")
+                    PCLog.debug("[MEM] MLX post-clear — \(Self.mlxMemoryDiagnostics())")
 
                     // If we hit the token cap mid-sentence, append a visible notice.
                     // This makes truncation explicit rather than silently dropping content.
@@ -1001,6 +1001,6 @@ public class MLXLocalLLMService: LLMEngine, InferenceService {
         invalidateKVReuseCache()
         MLX.GPU.clearCache()
         statusMessage = "模型已卸载"
-        print("[MLX] Model unloaded")
+        PCLog.debug("[MLX] Model unloaded")
     }
 }

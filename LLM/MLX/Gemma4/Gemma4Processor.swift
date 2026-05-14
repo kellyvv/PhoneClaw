@@ -318,7 +318,7 @@ public struct Gemma4Processor: UserInputProcessor {
                 let frameLength = Int(
                     round(Double(featureExtractor.samplingRate) * 20 / 1000.0)
                 )
-                print(
+                PCLog.debug(
                     "[AUDIO] prompt prepared — samples=\(processedAudio!.sampleCount), "
                         + "sampleRate=\(featureExtractor.samplingRate), "
                         + "mel=\(featureExtractor.numMelFilters), "
@@ -327,7 +327,7 @@ public struct Gemma4Processor: UserInputProcessor {
                         + "chunk=\(featureExtractor.chunkDuration)s"
                 )
             } else {
-                print(
+                PCLog.debug(
                     "[AUDIO] prompt prepared — samples=\(processedAudio!.sampleCount), "
                         + "sampleRate=\(Int(processedAudio!.sampleRate))"
                 )
@@ -370,7 +370,7 @@ public struct Gemma4Processor: UserInputProcessor {
                     if token == id { count += 1 }
                 }
             } ?? 0
-            print(
+            PCLog.debug(
                 "[AUDIO] token expansion — "
                     + "boa=\(boaTokenId.map(String.init) ?? "nil"), "
                     + "audio=\(audioTokenId.map(String.init) ?? "nil"), "
@@ -389,7 +389,7 @@ public struct Gemma4Processor: UserInputProcessor {
                     if token == id { count += 1 }
                 }
             } ?? 0
-            print(
+            PCLog.debug(
                 "[VLM] image prompt prepared — "
                     + "boi=\(boiTokenId.map(String.init) ?? "nil"), "
                     + "image=\(imageTokenId.map(String.init) ?? "nil"), "

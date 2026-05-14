@@ -80,7 +80,7 @@ enum LiveDownloadPlanner {
                     )
                 }
 
-                print("[LiveDL] \(host): \(asset.id) planned \(downloadFiles.count) files")
+                PCLog.debug("[LiveDL] \(host): \(asset.id) planned \(downloadFiles.count) files")
                 return LiveAssetDownloadPlan(
                     liveAsset: asset,
                     files: downloadFiles,
@@ -88,7 +88,7 @@ enum LiveDownloadPlanner {
                 )
             } catch {
                 lastError = error
-                print("[LiveDL] \(host) tree API failed for \(asset.id): \(error.localizedDescription)")
+                PCLog.debug("[LiveDL] \(host) tree API failed for \(asset.id): \(error.localizedDescription)")
             }
         }
 
@@ -154,7 +154,7 @@ enum LiveDownloadPlanner {
                 return files
             }
         } catch {
-            print("[LiveDL] \(host) recursive tree API unavailable for \(repo): \(error.localizedDescription)")
+            PCLog.debug("[LiveDL] \(host) recursive tree API unavailable for \(repo): \(error.localizedDescription)")
         }
         return try await fetchTreeByWalkingDirectories(host: host, repo: repo, path: "")
     }

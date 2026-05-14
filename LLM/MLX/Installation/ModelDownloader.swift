@@ -230,12 +230,12 @@ extension MLXLocalLLMService {
                             // 某个 source 返回 404 会直接 throw, 永远不会试下一个 source。
                             guard let http = result.1 as? HTTPURLResponse else {
                                 lastError = DownloadError.invalidResponse
-                                print("[Downloader] \(source.label) \(file): invalid response, trying next source")
+                                PCLog.debug("[Downloader] \(source.label) \(file): invalid response, trying next source")
                                 continue
                             }
                             guard (200...299).contains(http.statusCode) else {
                                 lastError = DownloadError.httpStatus(http.statusCode)
-                                print("[Downloader] \(source.label) \(file): HTTP \(http.statusCode), trying next source")
+                                PCLog.debug("[Downloader] \(source.label) \(file): HTTP \(http.statusCode), trying next source")
                                 continue
                             }
                             downloadedResult = result
@@ -244,7 +244,7 @@ extension MLXLocalLLMService {
                             throw CancellationError()
                         } catch {
                             lastError = error
-                            print("[Downloader] \(source.label) \(file): \(error.localizedDescription), trying next source")
+                            PCLog.debug("[Downloader] \(source.label) \(file): \(error.localizedDescription), trying next source")
                         }
                     }
 

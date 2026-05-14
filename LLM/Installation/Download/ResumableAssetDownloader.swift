@@ -423,7 +423,7 @@ actor ResumableAssetDownloader {
         // 就信任下载字节数 — 比删了刚下完的文件再换源好得多。
         if let authBytes = serverAuthoritativeBytes,
            let sizeMismatch = finalSizeMismatch(bytesReceived, expectedBytes: authBytes) {
-            print("[ResumableAssetDownloader] file-size mismatch — deleting partial. " +
+            PCLog.debug("[ResumableAssetDownloader] file-size mismatch — deleting partial. " +
                   "source=\(source.label) actual=\(bytesReceived) expected=\(authBytes) " +
                   "tolerance_band=\(sizeMismatch.expected)")
             try? fileManager.removeItem(at: partialURL)
@@ -447,7 +447,7 @@ actor ResumableAssetDownloader {
                 field: "file-size"
             )
         } else if serverAuthoritativeBytes == nil {
-            print("[ResumableAssetDownloader] no Content-Length from \(source.label) — " +
+            PCLog.debug("[ResumableAssetDownloader] no Content-Length from \(source.label) — " +
                   "skipping size validation, trusting received \(bytesReceived) bytes")
         }
 
@@ -723,7 +723,7 @@ actor ResumableAssetDownloader {
             return try await manifestStore.readManifest(for: assetID)
         } catch let failure as DownloadFailure {
             if case .manifestCorrupt = failure {
-                print("[Download] Manifest corrupt for \(assetID); restarting asset download from 0")
+                PCLog.debug("[Download] Manifest corrupt for \(assetID); restarting asset download from 0")
                 try await manifestStore.purge(assetID: assetID)
                 return nil
             }

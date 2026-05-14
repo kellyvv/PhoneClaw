@@ -94,9 +94,9 @@ public class Gemma4Model: Module, VLMModel, KVCacheDimensionProvider {
             let imageMask = batchedIds .== MLXArray(config.imageTokenId ?? 258880)
             let imageTokenPositions = imageMask.asArray(Bool.self).filter { $0 }.count
             if imageTokenPositions == 0 {
-                print("[VLM] warning — prompt 中没有图片 soft token，当前图片 embedding 不会被注入。")
+                PCLog.debug("[VLM] warning — prompt 中没有图片 soft token，当前图片 embedding 不会被注入。")
             } else if imageTokenPositions != imageFeatures.dim(0) * imageFeatures.dim(1) {
-                print(
+                PCLog.debug(
                     "[VLM] warning — 图片 token 数与编码输出长度不一致。"
                         + " positions=\(imageTokenPositions), "
                         + "encodings=\(imageFeatures.dim(0) * imageFeatures.dim(1))"
@@ -121,7 +121,7 @@ public class Gemma4Model: Module, VLMModel, KVCacheDimensionProvider {
 
             let audioMask = batchedIds .== MLXArray(config.audioTokenId ?? 258881)
             let audioTokenPositions = audioMask.asArray(Bool.self).filter { $0 }.count
-            print(
+            PCLog.debug(
                 "[AUDIO] encoder output — "
                     + "features=\(audioFeatures.shape), "
                     + "invalidMask=\(invalidMask.shape), "
@@ -129,9 +129,9 @@ public class Gemma4Model: Module, VLMModel, KVCacheDimensionProvider {
                     + "tokenPositions=\(audioTokenPositions)"
             )
             if audioTokenPositions == 0 {
-                print("[AUDIO] warning — prompt 中没有音频 soft token，当前音频 embedding 不会被注入。")
+                PCLog.debug("[AUDIO] warning — prompt 中没有音频 soft token，当前音频 embedding 不会被注入。")
             } else if audioTokenPositions != audioEncodings.dim(0) * audioEncodings.dim(1) {
-                print(
+                PCLog.debug(
                     "[AUDIO] warning — 音频 token 数与编码输出长度不一致。"
                         + " positions=\(audioTokenPositions), "
                         + "encodings=\(audioEncodings.dim(0) * audioEncodings.dim(1))"

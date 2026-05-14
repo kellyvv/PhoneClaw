@@ -182,7 +182,7 @@ final class LiteRTModelStore: ModelInstaller {
                 if companion.isRequired {
                     throw error
                 } else {
-                    print("[LiteRTModelStore] WARN: optional companion \(companion.fileName) extract failed: \(error.localizedDescription) — model will load without it (fallback path may be slower)")
+                    PCLog.debug("[LiteRTModelStore] WARN: optional companion \(companion.fileName) extract failed: \(error.localizedDescription) — model will load without it (fallback path may be slower)")
                     // 失败的 .zip 留着不删, 用户下次 retry 可能能成功
                 }
             }
@@ -343,7 +343,7 @@ final class LiteRTModelStore: ModelInstaller {
         if model.expectedFileSize > 0, actualSize < model.expectedFileSize * 9 / 10 {
             let expectedMB = model.expectedFileSize / 1_000_000
             let actualMB = actualSize / 1_000_000
-            print("[Download] ❌ 文件大小异常: 期望 ~\(expectedMB)MB, 实际 \(actualMB)MB")
+            PCLog.debug("[Download] ❌ 文件大小异常: 期望 ~\(expectedMB)MB, 实际 \(actualMB)MB")
             try? FileManager.default.removeItem(at: url)
             try? await downloadCoordinator().purge(assetID: model.id)
             throw LiteRTDownloadError.invalidResponse
@@ -486,7 +486,7 @@ final class LiteRTModelStore: ModelInstaller {
                    size < model.expectedFileSize * 9 / 10 {
                     let expectedMB = model.expectedFileSize / 1_000_000
                     let actualMB = size / 1_000_000
-                    print("[ModelStore] ⚠️ \(model.fileName) 文件不完整 (\(actualMB)MB/\(expectedMB)MB)，已自动清理")
+                    PCLog.debug("[ModelStore] ⚠️ \(model.fileName) 文件不完整 (\(actualMB)MB/\(expectedMB)MB)，已自动清理")
                     try? FileManager.default.removeItem(at: path)
                     Task { try? await downloadCoordinator().purge(assetID: model.id) }
                     installStates[model.id] = .notInstalled
@@ -597,7 +597,7 @@ private actor LiteRTDownloadObserver: DownloadObserver {
         attempt: Int,
         error: DownloadFailure
     ) async {
-        print("[Download] ❌ \(source.label) attempt \(attempt) failed for \(filePath): \(error)")
+        PCLog.debug("[Download] ❌ \(source.label) attempt \(attempt) failed for \(filePath): \(error)")
     }
 
     func onSourceSwitch(
@@ -609,14 +609,14 @@ private actor LiteRTDownloadObserver: DownloadObserver {
     ) async {
         let fromLabel = from?.label ?? "none"
         if let reason {
-            print("[Download] Switching source for \(filePath): \(fromLabel) → \(to.label), reason=\(reason)")
+            PCLog.debug("[Download] Switching source for \(filePath): \(fromLabel) → \(to.label), reason=\(reason)")
         } else {
-            print("[Download] Switching source for \(filePath): \(fromLabel) → \(to.label)")
+            PCLog.debug("[Download] Switching source for \(filePath): \(fromLabel) → \(to.label)")
         }
     }
 
     func onFailure(assetID: String, failure: DownloadFailure) async {
-        print("[Download] ❌ asset \(assetID) failed: \(failure)")
+        PCLog.debug("[Download] ❌ asset \(assetID) failed: \(failure)")
     }
 }
 

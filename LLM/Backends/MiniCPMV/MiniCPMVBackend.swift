@@ -229,7 +229,7 @@ final class MiniCPMVBackend: InferenceService {
     /// 预热结束后清 KV + 还原 slice=9 给 chat 路径用。
     private func warmupVision(_ w: MTMDWrapper) async {
         let t0 = CFAbsoluteTimeGetCurrent()
-        print("[MiniCPMV] vision warmup (slice=1, 448x448 dummy)...")
+        PCLog.debug("[MiniCPMV] vision warmup (slice=1, 448x448 dummy)...")
 
         // slice=1: 让 ANE 编译 1-slice 形状; chat 路径之后会自己再编 9-slice 形状,
         // 但 merger CoreML model load (13s 那个) 是 shape-agnostic 的, 那部分已经吃掉。
@@ -247,13 +247,13 @@ final class MiniCPMVBackend: InferenceService {
                 try await w.addFrameInBackground(warmupURL.path)
             } catch {
                 // 失败不致命 — 下次真实 vision 调用会重试 (并承担那 13s)
-                print("[MiniCPMV] vision warmup addFrame failed: \(error.localizedDescription) — continuing without warm cache")
+                PCLog.debug("[MiniCPMV] vision warmup addFrame failed: \(error.localizedDescription) — continuing without warm cache")
             }
 
             // 不论成功失败都清掉临时文件
             Self.cleanupTempFiles([warmupURL])
         } catch {
-            print("[MiniCPMV] vision warmup file write failed: \(error.localizedDescription)")
+            PCLog.debug("[MiniCPMV] vision warmup file write failed: \(error.localizedDescription)")
         }
 
         // 清掉预热产生的 KV; 还原 slice=9 默认 (chat 路径用)
@@ -263,7 +263,7 @@ final class MiniCPMVBackend: InferenceService {
         }
 
         let ms = Int((CFAbsoluteTimeGetCurrent() - t0) * 1000)
-        print("[MiniCPMV] vision warmup done in \(ms) ms")
+        PCLog.debug("[MiniCPMV] vision warmup done in \(ms) ms")
     }
 
     func unload() {
@@ -349,7 +349,7 @@ final class MiniCPMVBackend: InferenceService {
         }
 
         isLiveMode = true
-        print("[MiniCPMV] enterLiveMode: KV reset + slice=4, system prompt \(systemPrompt?.isEmpty == false ? "injected" : "skipped")")
+        PCLog.debug("[MiniCPMV] enterLiveMode: KV reset + slice=4, system prompt \(systemPrompt?.isEmpty == false ? "injected" : "skipped")")
     }
 
     func exitLiveMode() async {
@@ -363,7 +363,7 @@ final class MiniCPMVBackend: InferenceService {
             }
         }
         prefilledSegments = []
-        print("[MiniCPMV] exitLiveMode: KV cleared, slice=9 restored")
+        PCLog.debug("[MiniCPMV] exitLiveMode: KV cleared, slice=9 restored")
     }
 
     // MARK: - Gemma → Qwen prompt translation
@@ -479,7 +479,7 @@ final class MiniCPMVBackend: InferenceService {
                 // Live KV 跟 chat tracker 不兼容, 强制 reset 把 isLiveMode 撇清,
                 // 让 chat 路径走干净的 full re-prefill。
                 if self.isLiveMode {
-                    print("[MiniCPMV] ⚠️ generate(prompt:) called while isLiveMode=true — auto-exitLiveMode + KV reset")
+                    PCLog.debug("[MiniCPMV] ⚠️ generate(prompt:) called while isLiveMode=true — auto-exitLiveMode + KV reset")
                     self.isLiveMode = false
                     w.setImageMaxSliceNums(9)
                     w.cleanKVCache()
@@ -653,7 +653,7 @@ final class MiniCPMVBackend: InferenceService {
         systemPrompt: String
     ) -> AsyncThrowingStream<String, Error> {
         if !audios.isEmpty {
-            print("[MiniCPMV] generateMultimodal: ignoring \(audios.count) audio input(s) — v4.6 has no audio encoder")
+            PCLog.debug("[MiniCPMV] generateMultimodal: ignoring \(audios.count) audio input(s) — v4.6 has no audio encoder")
         }
         return _runMultimodalStream(systemPrompt: systemPrompt, userPrompt: prompt, images: images)
     }
@@ -919,7 +919,7 @@ final class MiniCPMVBackend: InferenceService {
         audios: [AudioInput]
     ) -> AsyncThrowingStream<String, Error> {
         if !audios.isEmpty {
-            print("[MiniCPMV] generateLive: ignoring \(audios.count) audio input(s) — v4.6 has no audio encoder")
+            PCLog.debug("[MiniCPMV] generateLive: ignoring \(audios.count) audio input(s) — v4.6 has no audio encoder")
         }
         return _runLiveStream(userPrompt: prompt, frames: images)
     }
@@ -946,7 +946,7 @@ final class MiniCPMVBackend: InferenceService {
                 if !self.isLiveMode {
                     // 防御: 调用方没 enterLiveMode 就直接调 generateLive。我们不
                     // hard-fail (LiveModeEngine 的契约会保证顺序), 但打 warn 提醒。
-                    print("[MiniCPMV] ⚠️ generateLive called before enterLiveMode — KV may be in unexpected state")
+                    PCLog.debug("[MiniCPMV] ⚠️ generateLive called before enterLiveMode — KV may be in unexpected state")
                 }
 
                 self.isGenerating = true

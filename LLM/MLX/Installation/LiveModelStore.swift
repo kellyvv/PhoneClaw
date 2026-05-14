@@ -397,7 +397,7 @@ private actor LiveDownloadObserver: DownloadObserver {
         attempt: Int,
         error: DownloadFailure
     ) async {
-        print("[LiveDL] \(source.label) attempt \(attempt) failed for \(assetID)/\(filePath): \(error)")
+        PCLog.debug("[LiveDL] \(source.label) attempt \(attempt) failed for \(assetID)/\(filePath): \(error)")
     }
 
     func onSourceSwitch(
@@ -409,13 +409,13 @@ private actor LiveDownloadObserver: DownloadObserver {
     ) async {
         let fromLabel = from?.label ?? "none"
         if let reason {
-            print("[LiveDL] Switching source for \(assetID)/\(filePath): \(fromLabel) -> \(to.label), reason=\(reason)")
+            PCLog.debug("[LiveDL] Switching source for \(assetID)/\(filePath): \(fromLabel) -> \(to.label), reason=\(reason)")
         } else {
-            print("[LiveDL] Switching source for \(assetID)/\(filePath): \(fromLabel) -> \(to.label)")
+            PCLog.debug("[LiveDL] Switching source for \(assetID)/\(filePath): \(fromLabel) -> \(to.label)")
         }
     }
 
     func onFailure(assetID: String, failure: DownloadFailure) async {
-        print("[LiveDL] asset \(assetID) failed: \(failure)")
+        PCLog.debug("[LiveDL] asset \(assetID) failed: \(failure)")
     }
 }

@@ -32,7 +32,7 @@ func gemma4MaskedScatter(
     }
 
     if sourceSize != scatterIndices.shape[0] {
-        print(
+        PCLog.debug(
             "[Gemma4] maskedScatter 自动对齐：source=\(sourceSize), positions=\(scatterIndices.shape[0])"
         )
     }
@@ -542,7 +542,7 @@ final class Gemma4VisionModel: Module {
                 * MLXArray.ones([config.hiddenSize])
         }
         let validPooledTokens = poolMask.asType(.int32).sum().item(Int.self)
-        print(
+        PCLog.debug(
             "[VLM] vision encoded — realPatches=\(numRealPatches), "
                 + "pooledTokens=\(hiddenStates.dim(1)), "
                 + "validPooledTokens=\(validPooledTokens), "

@@ -121,7 +121,7 @@ extension MLXLocalLLMService {
                 // 跨 turn 之间变化大 (例如不同 SKILL body / system 块换 lean 等),
                 // 应该回查 PromptBuilder 是不是没保持结构稳定.
             let hitRate = flatTokens.isEmpty ? 0 : Int(round(Double(commonPrefix) * 100 / Double(flatTokens.count)))
-            print(
+            PCLog.debug(
                 "[MLX] KV reuse — cached=\(cachedPromptTokens.count)t "
                     + "new=\(flatTokens.count)t common=\(commonPrefix)t "
                     + "delta=\(deltaIds.count)t hit=\(hitRate)%"
@@ -150,7 +150,7 @@ extension MLXLocalLLMService {
     ) -> KVReusePlan {
         let newCache = model.newCache(parameters: parameters)
         let fullInput = makeLMInput(fromTokens: flatTokens)
-        print("[MLX] KV reuse — fresh cache, prompt=\(flatTokens.count)t")
+        PCLog.debug("[MLX] KV reuse — fresh cache, prompt=\(flatTokens.count)t")
         KVReuseBenchmark.record(promptTokens: flatTokens.count, commonPrefix: 0, deltaTokens: flatTokens.count, isFresh: true)
         return KVReusePlan(
             cache: newCache,
@@ -191,14 +191,14 @@ extension MLXLocalLLMService {
         }
         let kb = totalBytes / 1024
         let tag = quantLayers > 0 ? "quant=\(quantLayers)/\(caches.count)" : "fp16"
-        print("[MLX] KV cache bytes — \(kb) KB across \(caches.count) layers (\(tag), prompt=\(promptTokens)t)")
+        PCLog.debug("[MLX] KV cache bytes — \(kb) KB across \(caches.count) layers (\(tag), prompt=\(promptTokens)t)")
     }
 
     /// Drop any cached state. Call on model reload, cancellation, multimodal
     /// entry, or any error path where cache correctness is uncertain.
     func invalidateKVReuseCache() {
         if activeCache != nil {
-            print("[MLX] KV reuse — cache invalidated")
+            PCLog.debug("[MLX] KV reuse — cache invalidated")
         }
         activeCache = nil
         cachedPromptTokens = []

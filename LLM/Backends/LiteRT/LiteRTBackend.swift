@@ -122,19 +122,19 @@ final class LiteRTBackend: InferenceService {
     /// (通常通过 `AgentEngine.reloadModel()`).
     func setPreferredBackend(_ backend: String) {
         guard backend == "gpu" || backend == "cpu" else {
-            print("[LiteRT] Ignoring invalid backend preference: \(backend)")
+            PCLog.debug("[LiteRT] Ignoring invalid backend preference: \(backend)")
             return
         }
         guard self.preferredBackend != backend else { return }
         self.preferredBackend = backend
         self.stats.backend = "litert-\(backend)"
-        print("[LiteRT] Preferred backend set to \(backend) (takes effect on next load)")
+        PCLog.debug("[LiteRT] Preferred backend set to \(backend) (takes effect on next load)")
     }
 
     func setEnableSpeculativeDecoding(_ enabled: Bool) {
         guard self.enableSpeculativeDecoding != enabled else { return }
         self.enableSpeculativeDecoding = enabled
-        print("[LiteRT] MTP speculative decoding \(enabled ? "enabled" : "disabled") (takes effect on next load)")
+        PCLog.debug("[LiteRT] MTP speculative decoding \(enabled ? "enabled" : "disabled") (takes effect on next load)")
     }
 
     /// 便捷 init: 使用默认路径 (Documents/models/<fileName>)
@@ -232,7 +232,7 @@ final class LiteRTBackend: InferenceService {
             // 定位 V2 shader 该用什么 stride / 索引公式。
             let useSpeculativeDecoding = enableSpeculativeDecoding && mode == .textOnly
             let backendLabel = "litert-\(preferredBackend)\(useSpeculativeDecoding ? "+mtp" : "")"
-            print("[LiteRT] Loading model=\(modelID) backend=\(preferredBackend) mode=\(mode) mtp=\(useSpeculativeDecoding ? "on" : "off")")
+            PCLog.debug("[LiteRT] Loading model=\(modelID) backend=\(preferredBackend) mode=\(mode) mtp=\(useSpeculativeDecoding ? "on" : "off")")
             let newEngine = LiteRTLMEngine(
                 modelPath: modelPath,
                 backend: preferredBackend,    // "gpu" 或 "cpu", 从 ConfigurationsView 选择驱动
@@ -260,7 +260,7 @@ final class LiteRTBackend: InferenceService {
         self.lastKVPrefillTokens = 0
         self.pendingTextSessionRestore = false
         self.sessionGroupManagedMultimodal = false
-        print("[LiteRT] Persistent session opened for KV cache reuse (mode=\(mode))")
+        PCLog.debug("[LiteRT] Persistent session opened for KV cache reuse (mode=\(mode))")
 
             let elapsed = (CFAbsoluteTimeGetCurrent() - loadStart) * 1000
             self.stats.loadTimeMs = elapsed
@@ -279,7 +279,7 @@ final class LiteRTBackend: InferenceService {
 
             let descriptor = ModelDescriptor.allModels.first { $0.id == modelID }
             let displayName = descriptor?.displayName ?? modelID
-            print("[LiteRT] ❌ 加载 \(displayName) 失败: \(error.localizedDescription)")
+            PCLog.debug("[LiteRT] ❌ 加载 \(displayName) 失败: \(error.localizedDescription)")
 
             // 判断是否真的是文件问题 — 只有文件大小明显不对 (< 90% expectedFileSize)
             // 时才删除。GPU 引擎创建失败 (内存不足、Metal 初始化错误等) 不应该删除
@@ -290,13 +290,13 @@ final class LiteRTBackend: InferenceService {
                 let actualSize = (attrs?[.size] as? Int64) ?? 0
                 if actualSize < expected * 9 / 10 {
                     shouldDeleteFile = true
-                    print("[LiteRT] 文件大小异常 (\(actualSize)/\(expected)), 判定为损坏, 自动清理")
+                    PCLog.debug("[LiteRT] 文件大小异常 (\(actualSize)/\(expected)), 判定为损坏, 自动清理")
                 }
             }
 
             if shouldDeleteFile {
                 try? FileManager.default.removeItem(at: modelPath)
-                print("[LiteRT] 已删除: \(modelPath.lastPathComponent)")
+                PCLog.debug("[LiteRT] 已删除: \(modelPath.lastPathComponent)")
                 NotificationCenter.default.post(
                     name: Notification.Name("LiteRTModelCorrupt"),
                     object: nil,
@@ -309,7 +309,7 @@ final class LiteRTBackend: InferenceService {
             } else {
                 // 文件完好但引擎加载失败 — 可能是 GPU 不支持、内存不足等运行时问题,
                 // 保留文件, 用户可以换回 CPU 或释放内存后重试。
-                print("[LiteRT] 文件完好 (\(modelPath.lastPathComponent)), 保留不删除")
+                PCLog.debug("[LiteRT] 文件完好 (\(modelPath.lastPathComponent)), 保留不删除")
                 let reason = error.localizedDescription
                 if preferredBackend == "gpu" {
                     // GPU-specific guidance: the most common failure is Metal
@@ -390,11 +390,11 @@ final class LiteRTBackend: InferenceService {
         }
         guard currentEngineMode != target else { return }
 
-        print("[LiteRT] Engine mode switch: \(currentEngineMode) → \(target) (reloading engine…)")
+        PCLog.debug("[LiteRT] Engine mode switch: \(currentEngineMode) → \(target) (reloading engine…)")
         let reloadStart = CFAbsoluteTimeGetCurrent()
         try await load(modelID: modelID, mode: target)
         let elapsed = (CFAbsoluteTimeGetCurrent() - reloadStart) * 1000
-        print("[LiteRT] Engine mode switched to \(target) in \(Int(elapsed))ms")
+        PCLog.debug("[LiteRT] Engine mode switched to \(target) in \(Int(elapsed))ms")
     }
 
     /// 显式降级回 text-only. 省 ~800 MB pinned memory (SigLIP + USM encoder).
@@ -405,7 +405,7 @@ final class LiteRTBackend: InferenceService {
         do {
             try await ensureEngineMode(.textOnly)
         } catch {
-            print("[LiteRT] revertToTextOnly failed: \(error.localizedDescription)")
+            PCLog.debug("[LiteRT] revertToTextOnly failed: \(error.localizedDescription)")
         }
     }
 
@@ -426,9 +426,9 @@ final class LiteRTBackend: InferenceService {
                 maxTokens: Int(maxOutputTokens)
             )
             kvSessionActive = true
-            print("[LiteRT] KV session reset")
+            PCLog.debug("[LiteRT] KV session reset")
         } catch {
-            print("[LiteRT] KV session reset failed: \(error)")
+            PCLog.debug("[LiteRT] KV session reset failed: \(error)")
         }
     }
 
@@ -457,14 +457,14 @@ final class LiteRTBackend: InferenceService {
         pendingTextSessionRestore = false
         sessionGroupManagedMultimodal = false
 
-        print("[LiteRT] 📋 Live system prompt (\(systemPrompt?.count ?? 0) chars): \"\(systemPrompt?.prefix(200) ?? "nil")\"")
+        PCLog.debug("[LiteRT] 📋 Live system prompt (\(systemPrompt?.count ?? 0) chars): \"\(systemPrompt?.prefix(200) ?? "nil")\"")
         try await engine.openConversation(
             systemMessage: systemPrompt,
             temperature: samplingTemperature,
             maxTokens: Int(maxOutputTokens)
         )
         liveModeActive = true
-        print("[LiteRT] Persistent Live conversation opened")
+        PCLog.debug("[LiteRT] Persistent Live conversation opened")
     }
 
     func exitLiveMode() async {
@@ -494,9 +494,9 @@ final class LiteRTBackend: InferenceService {
                 maxTokens: Int(maxOutputTokens)
             )
             kvSessionActive = true
-            print("[LiteRT] Persistent text session restored after Live")
+            PCLog.debug("[LiteRT] Persistent text session restored after Live")
         } catch {
-            print("[LiteRT] Failed to restore text session after Live: \(error)")
+            PCLog.debug("[LiteRT] Failed to restore text session after Live: \(error)")
         }
     }
 
@@ -531,11 +531,11 @@ final class LiteRTBackend: InferenceService {
                 sessionHasContext = false
                 lastModelOutput = ""
                 lastKVPrefillTokens = 0
-                print("[LiteRT] Closed text session for multimodal group transition")
+                PCLog.debug("[LiteRT] Closed text session for multimodal group transition")
             }
         case (.multimodal, .text):
             if pendingTextSessionRestore {
-                print("[LiteRT] Text session lazy reopen pending after multimodal")
+                PCLog.debug("[LiteRT] Text session lazy reopen pending after multimodal")
             }
         default:
             break
@@ -562,9 +562,9 @@ final class LiteRTBackend: InferenceService {
             )
             kvSessionActive = true
             pendingTextSessionRestore = false
-            print("[LiteRT] Text session restored after multimodal")
+            PCLog.debug("[LiteRT] Text session restored after multimodal")
         } catch {
-            print("[LiteRT] Failed to restore text session: \(error)")
+            PCLog.debug("[LiteRT] Failed to restore text session: \(error)")
             // 下次 generate() 检测到 !kvSessionActive 会自动重建
         }
     }
@@ -599,14 +599,14 @@ final class LiteRTBackend: InferenceService {
 
                 do {
                     if self.pendingTextSessionRestore {
-                        print("[LiteRT] Lazy reopening text session after multimodal group transition")
+                        PCLog.debug("[LiteRT] Lazy reopening text session after multimodal group transition")
                     }
 
                     if self.pendingTextSessionRestore || !self.kvSessionActive {
                         await self.resetKVSession()
                     } else if self.sessionHasContext,
                               Self.promptRequiresFreshKVSession(prompt) {
-                        print("[LiteRT] Full prompt with active KV session detected — resetting session before generation")
+                        PCLog.debug("[LiteRT] Full prompt with active KV session detected — resetting session before generation")
                         await self.resetKVSession()
                     }
 
@@ -746,7 +746,7 @@ final class LiteRTBackend: InferenceService {
             sessionHasContext = false
             lastModelOutput = ""
             lastKVPrefillTokens = 0
-            print("[LiteRT] Closed text session for multimodal inference")
+            PCLog.debug("[LiteRT] Closed text session for multimodal inference")
         }
 
         isGenerating = true
@@ -788,9 +788,9 @@ final class LiteRTBackend: InferenceService {
                         let durationSec = audio.rawFileData != nil
                             ? Double(audiosData[i].count) / (16000 * 2 + 44) * (Double(audiosData[i].count - 44) / (16000 * 2))
                             : Double(audio.samples.count) / max(audio.sampleRate, 1)
-                        print("[LiteRT] audio[\(i)] source=\(isRaw ? "rawFile" : "pcmEncode") wavBytes=\(audiosData[i].count) dur=\(String(format: "%.2f", audio.sampleRate > 0 ? Double(max(audio.samples.count, audiosData[i].count / 2)) / audio.sampleRate : 0))s")
+                        PCLog.debug("[LiteRT] audio[\(i)] source=\(isRaw ? "rawFile" : "pcmEncode") wavBytes=\(audiosData[i].count) dur=\(String(format: "%.2f", audio.sampleRate > 0 ? Double(max(audio.samples.count, audiosData[i].count / 2)) / audio.sampleRate : 0))s")
                     }
-                    print("[LiteRT] images=\(imagesData.count) audios=\(audios.count) promptChars=\(fullPrompt.count) prompt=\"\(fullPrompt.prefix(120))\"")
+                    PCLog.debug("[LiteRT] images=\(imagesData.count) audios=\(audios.count) promptChars=\(fullPrompt.count) prompt=\"\(fullPrompt.prefix(120))\"")
                     #endif
 
                     // audio-only → engine.audio(format:.wav) 专用 API
@@ -884,7 +884,7 @@ final class LiteRTBackend: InferenceService {
                     }
                     let audiosData = audios.map(\.wavData)
 
-                    print("[LiteRT] 📩 Live turn: prompt=\"\(prompt.prefix(300))\" images=\(imagesData.count) audios=\(audiosData.count)")
+                    PCLog.debug("[LiteRT] 📩 Live turn: prompt=\"\(prompt.prefix(300))\" images=\(imagesData.count) audios=\(audiosData.count)")
                     let stream = engine.conversationSendStreaming(
                         audioData: audiosData,
                         imagesData: imagesData,

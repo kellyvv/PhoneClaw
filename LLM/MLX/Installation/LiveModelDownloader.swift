@@ -153,7 +153,7 @@ class LiveModelDownloader {
                                 }
                                 guard (200...299).contains(http.statusCode) else {
                                     lastError = DownloadError.httpStatus(http.statusCode)
-                                    print("[LiveDL] \(source.label) \(file): HTTP \(http.statusCode), trying next")
+                                    PCLog.debug("[LiveDL] \(source.label) \(file): HTTP \(http.statusCode), trying next")
                                     continue
                                 }
                                 downloadedResult = result
@@ -162,7 +162,7 @@ class LiveModelDownloader {
                                 throw CancellationError()
                             } catch {
                                 lastError = error
-                                print("[LiveDL] \(source.label) \(file): \(error.localizedDescription), trying next")
+                                PCLog.debug("[LiveDL] \(source.label) \(file): \(error.localizedDescription), trying next")
                             }
                         }
 
@@ -237,11 +237,11 @@ class LiveModelDownloader {
             do {
                 let files = try await fetchTreeRecursive(host: host, repo: asset.repositoryID, path: "")
                 let filtered = files.filter { LiveModelDefinition.shouldDownload($0, for: asset) }
-                print("[LiveDL] \(host): \(asset.id) found \(filtered.count) files (excluded \(files.count - filtered.count))")
+                PCLog.debug("[LiveDL] \(host): \(asset.id) found \(filtered.count) files (excluded \(files.count - filtered.count))")
                 return filtered
             } catch {
                 lastError = error
-                print("[LiveDL] \(host) tree API failed: \(error.localizedDescription)")
+                PCLog.debug("[LiveDL] \(host) tree API failed: \(error.localizedDescription)")
             }
         }
         throw lastError ?? DownloadError.invalidResponse

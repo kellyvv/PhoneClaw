@@ -295,7 +295,7 @@ public class Gemma4LanguageModel: Module, KVCacheDimensionProvider {
         }
         if let bits = quantBits {
             let fullCount = concreteLayers.filter { $0 == "full_attention" }.count
-            print("[MLX] KV cache: quantized \(fullCount) full_attention layers at \(bits)-bit (sliding unchanged)")
+            PCLog.debug("[MLX] KV cache: quantized \(fullCount) full_attention layers at \(bits)-bit (sliding unchanged)")
         }
         return caches
     }
