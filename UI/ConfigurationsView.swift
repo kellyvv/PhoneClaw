@@ -523,9 +523,9 @@ struct ConfigurationsView: View {
                             if !engine.isModelReady {
                                 if let selectedModel = engine.availableModels.first(where: { $0.id == selectedModelID }),
                                    engine.installer.artifactPath(for: selectedModel) == nil {
-                                    engine.inference.statusMessage = tr("请先下载模型", "Download a model first")
+                                    engine.setStatusMessage(tr("请先下载模型", "Download a model first"))
                                 } else {
-                                    engine.inference.statusMessage = tr("等待加载模型...", "Waiting to load model...")
+                                    engine.setStatusMessage(tr("等待加载模型...", "Waiting to load model..."))
                                 }
                             }
                         }
@@ -1111,7 +1111,7 @@ struct ConfigurationsView: View {
 
         guard let selectedModel = engine.availableModels.first(where: { $0.id == selectedModelID }),
               engine.installer.artifactPath(for: selectedModel) != nil else {
-            engine.inference.statusMessage = tr("请先下载模型", "Download a model first")
+            engine.setStatusMessage(tr("请先下载模型", "Download a model first"))
             return false
         }
 

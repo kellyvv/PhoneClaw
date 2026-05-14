@@ -109,6 +109,28 @@ class AgentEngine {
         coordinator.sessionState.isGenerating
     }
 
+    // MARK: - UI Status Bridge
+    //
+    // UI 通过这几个 wrapper 读/写状态消息和触发 KV reset, 不再直接碰 inference
+    // 协议. Plan §3.1 想要的"单向数据流"在这里兑现 —— UI 只透过 AgentEngine
+    // 接口操作运行时, AgentEngine 自己路由到 inference/coordinator。
+
+    /// 当前底层后端的状态消息 (用于 UI 显示 "加载中" / "推理中" 之类的提示文案)。
+    var statusMessage: String {
+        inference.statusMessage
+    }
+
+    /// 设置状态消息文案。供 UI 在用户操作 (e.g. 取消下载) 时给出即时反馈。
+    func setStatusMessage(_ message: String) {
+        inference.statusMessage = message
+    }
+
+    /// 重置 KV session — 用户主动 (e.g. ContentView 长按重置) 触发的清理入口。
+    /// 内部转发到 inference。
+    func resetKVSession() async {
+        await inference.resetKVSession()
+    }
+
     // MARK: - Init
 
     init(

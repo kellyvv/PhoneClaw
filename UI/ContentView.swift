@@ -251,7 +251,7 @@ struct ContentView: View {
         // 若当前会话已有 context, 下一轮走 delta prompt 路径会**复用**旧
         // system prompt, 模型继续按旧设置 reasoning. reset 强制下一轮重新
         // prefill, 新 enableThinking 才能真正生效。
-        Task { await engine.inference.resetKVSession() }
+        Task { await engine.resetKVSession() }
     }
 
     private func canRetry(item: DisplayItem, block: ResponseBlock) -> Bool {
@@ -361,7 +361,7 @@ struct ContentView: View {
             if engine.installer.artifactPath(for: selectedModel) == nil {
                 return tr("请先下载模型", "Download a model first")
             }
-            return engine.inference.statusMessage
+            return engine.statusMessage
         case .checkingSource:
             return tr("正在准备下载...", "Preparing download...")
         case .downloading:
