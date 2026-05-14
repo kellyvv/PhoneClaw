@@ -127,6 +127,8 @@
 		5D1A2B3C4E5F607180905678 /* HotfixFeatureFlags.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D1A2B3C4E5F607180901234 /* HotfixFeatureFlags.swift */; };
 		6E2B3C4D5F607182A0B56789 /* ConversationMemoryPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E2B3C4D5F607182A0B12345 /* ConversationMemoryPolicy.swift */; };
 		7F3C4D5E6071839BC5678901 /* PromptObservation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F3C4D5E6071839BC1234567 /* PromptObservation.swift */; };
+		8A4D5E6F7182940CD6789012 /* ImageFollowUp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A4D5E6F7182940CD2345678 /* ImageFollowUp.swift */; };
+		9B5E6F708293A51DE7890123 /* PromptPipelineHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B5E6F708293A51DE3456789 /* PromptPipelineHelpers.swift */; };
 		B8A84E4D0DDDE011B5929DA2 /* AgentEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = E18A47114A10132E25E220F8 /* AgentEngine.swift */; };
 		BB2000000000000000000001 /* LLMTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000001 /* LLMTypes.swift */; };
 		BB2000000000000000000002 /* InferenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000002 /* InferenceService.swift */; };
@@ -319,6 +321,8 @@
 		5D1A2B3C4E5F607180901234 /* HotfixFeatureFlags.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotfixFeatureFlags.swift; sourceTree = "<group>"; };
 		6E2B3C4D5F607182A0B12345 /* ConversationMemoryPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationMemoryPolicy.swift; sourceTree = "<group>"; };
 		7F3C4D5E6071839BC1234567 /* PromptObservation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptObservation.swift; sourceTree = "<group>"; };
+		8A4D5E6F7182940CD2345678 /* ImageFollowUp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageFollowUp.swift; sourceTree = "<group>"; };
+		9B5E6F708293A51DE3456789 /* PromptPipelineHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptPipelineHelpers.swift; sourceTree = "<group>"; };
 		E18A47114A10132E25E220F8 /* AgentEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentEngine.swift; sourceTree = "<group>"; };
 		E1E383F793CD103FF368037A /* LiveHistoryMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveHistoryMessage.swift; path = Live/Turn/Types/LiveHistoryMessage.swift; sourceTree = SOURCE_ROOT; };
 		E62C3CEFC7AE63873D751E75 /* ConfigurationsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigurationsView.swift; sourceTree = "<group>"; };
@@ -405,6 +409,8 @@
 				A31476F22F85741500318978 /* ChatSessionStore.swift */,
 				6E2B3C4D5F607182A0B12345 /* ConversationMemoryPolicy.swift */,
 				7F3C4D5E6071839BC1234567 /* PromptObservation.swift */,
+				8A4D5E6F7182940CD2345678 /* ImageFollowUp.swift */,
+				9B5E6F708293A51DE3456789 /* PromptPipelineHelpers.swift */,
 				A31476F32F85741500318978 /* ToolCallParser.swift */,
 				A31476F42F85741500318978 /* ToolChain.swift */,
 				A31476E82F856FD700318978 /* ChatAttachments.swift */,
@@ -847,6 +853,8 @@
 				5D1A2B3C4E5F607180905678 /* HotfixFeatureFlags.swift in Sources */,
 				6E2B3C4D5F607182A0B56789 /* ConversationMemoryPolicy.swift in Sources */,
 				7F3C4D5E6071839BC5678901 /* PromptObservation.swift in Sources */,
+				8A4D5E6F7182940CD6789012 /* ImageFollowUp.swift in Sources */,
+				9B5E6F708293A51DE7890123 /* PromptPipelineHelpers.swift in Sources */,
 				C3C4D5E6F7081A2B3C52D3E4 /* ChatModels.swift in Sources */,
 				97E96A2FBFFAF609F276A896 /* ConfigurationsView.swift in Sources */,
 				9412304167DACB86E5D60D49 /* ContentView.swift in Sources */,
