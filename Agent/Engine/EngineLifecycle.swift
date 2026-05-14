@@ -146,22 +146,22 @@ extension AgentEngine {
                 try? fm.moveItem(at: file, to: backup)
                 try? current.write(to: file, atomically: true, encoding: .utf8)
                 config.systemPrompt = current
-                print("[Agent] SYSPROMPT migrated: 旧模板已备份到 SYSPROMPT.md.bak, 新默认已写入")
+                log("[Agent] SYSPROMPT migrated: 旧模板已备份到 SYSPROMPT.md.bak, 新默认已写入")
             } else if localeMismatch {
                 let backup = dir.appendingPathComponent("SYSPROMPT.md.bak")
                 try? fm.removeItem(at: backup)
                 try? fm.moveItem(at: file, to: backup)
                 try? current.write(to: file, atomically: true, encoding: .utf8)
                 config.systemPrompt = current
-                print("[Agent] SYSPROMPT locale migrated to \(LanguageService.shared.current.resolved.rawValue), 旧文件备份到 SYSPROMPT.md.bak")
+                log("[Agent] SYSPROMPT locale migrated to \(LanguageService.shared.current.resolved.rawValue), 旧文件备份到 SYSPROMPT.md.bak")
             } else {
                 config.systemPrompt = content
-                print("[Agent] SYSPROMPT loaded (\(content.count) chars)")
+                log("[Agent] SYSPROMPT loaded (\(content.count) chars)")
             }
         } else {
             try? kDefaultSystemPrompt.write(to: file, atomically: true, encoding: .utf8)
             config.systemPrompt = kDefaultSystemPrompt
-            print("[Agent] SYSPROMPT not found — default written to \(file.path)")
+            log("[Agent] SYSPROMPT not found — default written to \(file.path)")
         }
     }
 

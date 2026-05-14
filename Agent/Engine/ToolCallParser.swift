@@ -167,7 +167,7 @@ extension AgentEngine {
             let canonical = canonicalToolName(call.name, arguments: call.arguments)
             if canonical == "load_skill" {
                 guard let normalizedArguments = normalizeLoadSkillArguments(call.arguments) else {
-                    print("[Parser] dropped invalid load_skill request: \(call.arguments)")
+                    log("[Parser] dropped invalid load_skill request: \(call.arguments)")
                     return nil
                 }
                 return (canonical, normalizedArguments)
@@ -178,7 +178,7 @@ extension AgentEngine {
             if toolRegistry.find(name: canonical) != nil {
                 return (canonical, call.arguments)
             }
-            print("[Parser] dropped invalid tool_call: \(call.name) (canonical: \(canonical))")
+            log("[Parser] dropped invalid tool_call: \(call.name) (canonical: \(canonical))")
             return nil
         }
     }
