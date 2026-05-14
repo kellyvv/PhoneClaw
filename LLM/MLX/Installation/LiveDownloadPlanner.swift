@@ -66,6 +66,7 @@ enum LiveDownloadPlanner {
                     .sorted { $0.local < $1.local }
 
                 try validateRequiredLocalFiles(asset, scoped: scoped)
+                try assertNoNativeBinaryDownloads(asset: asset, scoped: scoped)
 
                 guard !scoped.isEmpty else {
                     throw DownloadFailure.invalidResponse("\(asset.id) has no downloadable files")
@@ -117,6 +118,33 @@ enum LiveDownloadPlanner {
         }
         let directoryPrefix = requiredPath.hasSuffix("/") ? requiredPath : "\(requiredPath)/"
         return paths.contains { $0.hasPrefix(directoryPrefix) }
+    }
+
+    // MARK: - App Store 红线防御
+    //
+    // App Store Review Guidelines 2.5.2 禁止下载并执行可执行代码 (native binary)。
+    // Live 模型清单从 HF tree API 动态发现 — 如果 repo 里夹带 .framework / .dylib / .so 等,
+    // 这里 fail-fast,避免被下到本地后试图加载导致拒包。
+    // 见 docs/RUNTIME_ARCHITECTURE_PLAN.md §10.3。
+
+    private static let forbiddenDownloadExtensions: [String] = [
+        ".framework", ".xcframework", ".dylib", ".so", ".a", ".bundle"
+    ]
+
+    private static func assertNoNativeBinaryDownloads(
+        asset: LiveModelAsset,
+        scoped: [(remote: String, local: String, size: Int64?)]
+    ) throws {
+        for entry in scoped {
+            let lowered = entry.local.lowercased()
+            for ext in forbiddenDownloadExtensions where lowered.hasSuffix(ext) {
+                let detail = "LiveModelAsset[\(asset.id)] HF tree returned native binary '\(entry.remote)'. " +
+                             "Native runtime (frameworks/dylibs) must ship with the App, not be downloaded. " +
+                             "See App Store Review Guidelines 2.5.2 / RUNTIME_ARCHITECTURE_PLAN.md §10.3."
+                assertionFailure(detail)
+                throw DownloadFailure.invalidResponse(detail)
+            }
+        }
     }
 
     private static func fetchTree(host: String, repo: String) async throws -> [RepositoryFile] {
