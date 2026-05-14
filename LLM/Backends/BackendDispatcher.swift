@@ -68,6 +68,12 @@ final class BackendDispatcher: InferenceService {
         active.unload()
     }
 
+    /// 异步卸载 — 转发到 active backend 的 unloadAsync。
+    /// Coordinator.switchBackend() 调此方法获得 "teardown 完成" 信号。
+    func unloadAsync() async {
+        await active.unloadAsync()
+    }
+
     func cancel() {
         active.cancel()
     }

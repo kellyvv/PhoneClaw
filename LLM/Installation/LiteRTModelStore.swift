@@ -54,6 +54,11 @@ final class LiteRTModelStore: ModelInstaller {
     // MARK: - ModelInstaller
 
     func install(model: ModelDescriptor) async throws {
+        // App Store Review Guidelines 2.5.2 红线: 禁止下载并执行可执行代码。
+        // 见 docs/RUNTIME_ARCHITECTURE_PLAN.md §10.3 — Native runtime 升级必须走 App 更新。
+        // ModelDescriptor 配错时 (e.g. 把 LiteRT framework 写成下载项) 在这里 fail-fast。
+        try Self.assertNoNativeBinaryDownloads(in: model)
+
         let modelID = model.id
 
         // 已安装
@@ -535,6 +540,42 @@ final class LiteRTModelStore: ModelInstaller {
             bytesPerSecond: nil,
             currentFile: model.fileName
         )
+    }
+
+    // MARK: - App Store 合规防御
+
+    /// 禁止下载的文件后缀 — 任何 Mach-O / 动态库 / framework 都不能走下载链路。
+    /// 这些必须随 App 二进制 ship,见 App Store Review Guidelines 2.5.2。
+    private static let forbiddenDownloadExtensions: [String] = [
+        ".framework", ".xcframework", ".dylib", ".so", ".a", ".bundle"
+    ]
+
+    /// 检查 ModelDescriptor 及其 companion files,确保没有 native binary。
+    /// 配错就抛 fatalError — 这是架构约束,运行时拒绝绕过。
+    static func assertNoNativeBinaryDownloads(in model: ModelDescriptor) throws {
+        let allFileNames = [model.fileName] + model.companionFiles.map(\.fileName)
+        for fileName in allFileNames {
+            let lowered = fileName.lowercased()
+            for ext in forbiddenDownloadExtensions where lowered.hasSuffix(ext) {
+                let detail = "ModelDescriptor[\(model.id)] declares download of native binary '\(fileName)'. " +
+                             "Native runtime (frameworks/dylibs) must ship with the App, not be downloaded. " +
+                             "See App Store Review Guidelines 2.5.2 / RUNTIME_ARCHITECTURE_PLAN.md §10.3."
+                assertionFailure(detail)
+                throw InstallerError.forbiddenNativeBinaryDownload(detail)
+            }
+        }
+    }
+}
+
+/// Installer-level structured errors.
+enum InstallerError: LocalizedError {
+    case forbiddenNativeBinaryDownload(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .forbiddenNativeBinaryDownload(let detail):
+            return detail
+        }
     }
 }
 
