@@ -48,3 +48,24 @@ struct PorcelainOrbView: View {
         PorcelainOrbView()
     }
 }
+
+// MARK: - EntryPortalButtonStyle
+//
+// "进入 LIVE" 等入口的按压反馈 — 不走 iOS 系统默认 plain (没有 visual feedback),
+// 也不走 capsule fill (会"掉价" 成普通互联网按钮).
+//
+// 走 "器物按压" 逻辑:
+//   idle:    opacity 0.88 — 微弱存在感, 方向性符号 (chevron) 暗示可点
+//   pressed: opacity 1.00 + scale 0.985 — 触感反馈, 像按下一块陶瓷按钮
+//   duration: 120ms — 比 iOS 默认 200ms 快, 显精致
+//
+// 参考: Apple Music onboarding CTA, VisionOS setup, Arc 移动端启动页.
+
+struct EntryPortalButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 1.0 : 0.88)
+            .scaleEffect(configuration.isPressed ? 0.985 : 1.0)
+            .animation(.easeInOut(duration: 0.12), value: configuration.isPressed)
+    }
+}

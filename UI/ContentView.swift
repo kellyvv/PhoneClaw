@@ -354,13 +354,16 @@ struct ContentView: View {
             // 用更多空气换高级感. 见 UIScale.swift 详释.
             PorcelainOrbView(size: UIScale.orbSize)
 
-            // "进入 LIVE" 入口 — 设计稿是 dot + 文字,无 capsule 背景。
-            // dot 用 brand muted gold #C39660,避开 iOS 通知红语义。
+            // "进入 LIVE" entry portal — 不是 capsule button, 是 "方向性符号".
+            //   dot + text + chevron.right
+            // chevron 是关键 — 它把"label"语义改成"entry/可触发"语义,
+            // 跟 Apple Music onboarding / VisionOS setup / Apple TV 同款手法.
+            // 整组 idle opacity 0.88, pressed 1.0 + scale 0.985, 120ms — 像器物按压反馈.
             Button(action: enterLiveMode) {
                 HStack(spacing: 10) {
                     Circle()
                         .fill(canEnterLiveMode
-                              ? Color(hex: "C39660")
+                              ? Theme.accentMuted
                               : Theme.textTertiary)
                         .frame(width: 6, height: 6)
                     Text(tr("进入 LIVE", "Enter LIVE"))
@@ -368,10 +371,14 @@ struct ContentView: View {
                         .foregroundStyle(canEnterLiveMode
                                          ? Theme.textPrimary
                                          : Theme.textTertiary)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundStyle(Theme.accentMuted)
+                        .opacity(canEnterLiveMode ? 0.55 : 0.3)
                 }
-                .contentShape(Rectangle())  // 整个 HStack 都可点
+                .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(EntryPortalButtonStyle())
             .disabled(!canEnterLiveMode)
             .padding(.top, UIScale.orbToEntryTextGap)
 
