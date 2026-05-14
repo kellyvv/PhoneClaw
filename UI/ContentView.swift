@@ -341,8 +341,9 @@ struct ContentView: View {
         VStack(spacing: 0) {
             Spacer()
 
-            // 中央陶瓷球 — 主屏视觉 hero
-            PorcelainOrbView(size: 280)
+            // 中央陶瓷球 — 占屏宽 48% (标准) / 44% (大屏),大屏反而 缩,
+            // 用更多空气换高级感. 见 UIScale.swift 详释.
+            PorcelainOrbView(size: UIScale.orbSize)
 
             // "进入 LIVE" 入口 — 设计稿是 dot + 文字,无 capsule 背景。
             // dot 用 brand muted gold #C39660,避开 iOS 通知红语义。
@@ -363,9 +364,9 @@ struct ContentView: View {
             }
             .buttonStyle(.plain)
             .disabled(!canEnterLiveMode)
-            .padding(.top, 48)
+            .padding(.top, UIScale.orbToEntryTextGap)
 
-            Spacer()
+            Spacer(minLength: UIScale.entryToInputMinGap)
         }
     }
 
@@ -425,7 +426,7 @@ struct ContentView: View {
     // 三个子元素都"贴着"胶囊内壁,而不是各自独立按钮并排。左右按钮 chip 形
     // (圆形浅底),输入框无自身背景。
     private var inputBar: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: UIScale.chipTextSpacing) {
             // 左:+ 附件菜单 — 圆形 chip
             Menu {
                 #if canImport(PhotosUI)
@@ -448,9 +449,9 @@ struct ContentView: View {
                 }
             } label: {
                 Image(systemName: "plus")
-                    .font(.system(size: 22, weight: .regular))
+                    .font(.system(size: UIScale.chipIconSize, weight: .regular))
                     .foregroundStyle(Theme.textSecondary)
-                    .frame(width: 40, height: 40)
+                    .frame(width: UIScale.chipDiameter, height: UIScale.chipDiameter)
                     .background(Theme.bgHover, in: Circle())
             }
             .buttonStyle(.plain)
@@ -472,13 +473,13 @@ struct ContentView: View {
                 #if os(macOS)
                 TextField(tr("Ask anything...", "Ask anything..."), text: $inputText)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 17))
+                    .font(.system(size: UIScale.pillTextSize))
                     .foregroundStyle(Theme.textPrimary)
                     .onSubmit { Task { await send() } }
                 #else
                 TextField(tr("Ask anything...", "Ask anything..."), text: $inputText, axis: .vertical)
                     .lineLimit(1...5)
-                    .font(.system(size: 17))
+                    .font(.system(size: UIScale.pillTextSize))
                     .foregroundStyle(Theme.textPrimary)
                     .focused($isInputFocused)
                     .onSubmit { Task { await send() } }
@@ -489,22 +490,21 @@ struct ContentView: View {
             //         语音模式 → keyboard).
             trailingDynamicButton
         }
-        // Spec (per master mockup, "floating" Arc/Linear/Vision Pro idiom,
-        // 不走标准 iOS HIG):
-        //   外部屏幕边距:  16pt
-        //   胶囊总高度:    54pt  (chip 40 + 上下 padding 7 × 2)
+        // Spec (per master mockup, "floating" Arc/Linear/Vision Pro idiom).
+        // 大屏 (Pro Max) 不等比放大 — 组件微增、空气大增, 见 UIScale.swift.
+        //   胶囊总高度:    54 / 56pt
         //   chip 距胶囊左/右内距: 12pt
-        //   阴影:          0 / 4 / 16 / rgba(0,0,0,0.05) — 更松、更高级
-        //   Capsule 自动用 height/2 圆角 → 27pt
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
+        //   阴影 blur:     16 / 18pt, offsetY 4pt, opacity 0.05
+        //   Capsule 自动用 height/2 圆角
+        .padding(.horizontal, UIScale.chipInnerMargin)
+        .padding(.vertical, (UIScale.pillHeight - UIScale.chipDiameter) / 2)
         .background(
             Theme.bgElevated,
             in: Capsule()
         )
-        .shadow(color: Color.black.opacity(0.05), radius: 16, x: 0, y: 4)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
+        .shadow(color: Color.black.opacity(0.05), radius: UIScale.pillShadowBlur, x: 0, y: 4)
+        .padding(.horizontal, UIScale.pillHorizontalMargin)
+        .padding(.vertical, UIScale.inputBarBottomGap)
     }
 
     // MARK: - 动态尾部按钮 (mic / send / stop / keyboard 四态合一)
@@ -557,9 +557,9 @@ struct ContentView: View {
         let needsBorder = !canSend && !canCancelGeneration
         return Button(action: style.action) {
             Image(systemName: style.icon)
-                .font(.system(size: 22, weight: .regular))
+                .font(.system(size: UIScale.chipIconSize, weight: .regular))
                 .foregroundStyle(style.fgColor)
-                .frame(width: 40, height: 40)
+                .frame(width: UIScale.chipDiameter, height: UIScale.chipDiameter)
                 .background(style.bgColor, in: Circle())
         }
         .buttonStyle(.plain)
