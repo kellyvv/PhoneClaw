@@ -70,7 +70,7 @@
 		A31476EB2F856FD700318978 /* ChatMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31476E92F856FD700318978 /* ChatMessage.swift */; };
 		A31476F62F85741500318978 /* Planner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31476F02F85741500318978 /* Planner.swift */; };
 		A31476F82F85741500318978 /* Router.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31476F12F85741500318978 /* Router.swift */; };
-		A31476F92F85741500318978 /* SessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31476F22F85741500318978 /* SessionStore.swift */; };
+		A31476F92F85741500318978 /* ChatSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31476F22F85741500318978 /* ChatSessionStore.swift */; };
 		A31476FA2F85741500318978 /* ToolChain.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31476F42F85741500318978 /* ToolChain.swift */; };
 		A31476FB2F85741500318978 /* OutputCleaner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31476EF2F85741500318978 /* OutputCleaner.swift */; };
 		A31476FC2F85741500318978 /* ToolCallParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31476F32F85741500318978 /* ToolCallParser.swift */; };
@@ -228,7 +228,7 @@
 		A31476EF2F85741500318978 /* OutputCleaner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutputCleaner.swift; sourceTree = "<group>"; };
 		A31476F02F85741500318978 /* Planner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Planner.swift; sourceTree = "<group>"; };
 		A31476F12F85741500318978 /* Router.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Router.swift; sourceTree = "<group>"; };
-		A31476F22F85741500318978 /* SessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStore.swift; sourceTree = "<group>"; };
+		A31476F22F85741500318978 /* ChatSessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSessionStore.swift; sourceTree = "<group>"; };
 		A31476F32F85741500318978 /* ToolCallParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolCallParser.swift; sourceTree = "<group>"; };
 		A31476F42F85741500318978 /* ToolChain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolChain.swift; sourceTree = "<group>"; };
 		AA2000000000000000000001 /* LLMEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMEngine.swift; sourceTree = "<group>"; };
@@ -394,7 +394,7 @@
 				A31476EF2F85741500318978 /* OutputCleaner.swift */,
 				A31476F02F85741500318978 /* Planner.swift */,
 				A31476F12F85741500318978 /* Router.swift */,
-				A31476F22F85741500318978 /* SessionStore.swift */,
+				A31476F22F85741500318978 /* ChatSessionStore.swift */,
 				A31476F32F85741500318978 /* ToolCallParser.swift */,
 				A31476F42F85741500318978 /* ToolChain.swift */,
 				A31476E82F856FD700318978 /* ChatAttachments.swift */,
@@ -840,7 +840,7 @@
 				AA1000000000000000000021 /* Gemma4AudioModel.swift in Sources */,
 				A31476F62F85741500318978 /* Planner.swift in Sources */,
 				A31476F82F85741500318978 /* Router.swift in Sources */,
-				A31476F92F85741500318978 /* SessionStore.swift in Sources */,
+				A31476F92F85741500318978 /* ChatSessionStore.swift in Sources */,
 				A31476FA2F85741500318978 /* ToolChain.swift in Sources */,
 				A31476FB2F85741500318978 /* OutputCleaner.swift in Sources */,
 				5E3245AC20D4A5365C4A84E8 /* LiveLocale.swift in Sources */,

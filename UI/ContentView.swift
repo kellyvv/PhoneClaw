@@ -1103,11 +1103,11 @@ private struct SessionHistorySheet: View {
     var body: some View {
         NavigationStack {
             Group {
-                if engine.sessionSummaries.isEmpty {
+                if engine.sessionStore.sessionSummaries.isEmpty {
                     emptyState
                 } else {
                     List {
-                        ForEach(engine.sessionSummaries) { session in
+                        ForEach(engine.sessionStore.sessionSummaries) { session in
                             Button {
                                 engine.loadSession(id: session.id)
                                 dismiss()
@@ -1119,7 +1119,7 @@ private struct SessionHistorySheet: View {
                                                 .font(.system(size: 16, weight: .semibold))
                                                 .foregroundStyle(Theme.textPrimary)
                                                 .lineLimit(1)
-                                            if session.id == engine.currentSessionID {
+                                            if session.id == engine.sessionStore.currentSessionID {
                                                 Text(tr("当前", "Current"))
                                                     .font(.system(size: 11, weight: .semibold))
                                                     .foregroundStyle(Theme.bg)
@@ -1149,7 +1149,7 @@ private struct SessionHistorySheet: View {
                         }
                         .onDelete { offsets in
                             for index in offsets {
-                                engine.deleteSession(id: engine.sessionSummaries[index].id)
+                                engine.deleteSession(id: engine.sessionStore.sessionSummaries[index].id)
                             }
                         }
                     }

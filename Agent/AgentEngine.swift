@@ -382,22 +382,19 @@ private extension HotfixTurnObservation {
 @MainActor
 class AgentEngine {
 
-    static let currentSessionDefaultsKey = "PhoneClaw.currentSessionID"
-
     let inference: InferenceService
     let catalog: ModelCatalog
     let installer: ModelInstaller
     let coordinator: ModelRuntimeCoordinator
+    let sessionStore: ChatSessionStore
     var messages: [ChatMessage] = [] {
         didSet {
-            scheduleSessionSave()
+            sessionStore.scheduleSave(messages: messages)
         }
     }
     var isProcessing = false
     private var didSetup = false
     var config = ModelConfig()
-    var sessionSummaries: [ChatSessionSummary] = []
-    var currentSessionID = UUID()
 
     // 文件驱动的 Skill 系统
     let skillRegistry = SkillRegistry()
@@ -407,10 +404,7 @@ class AgentEngine {
     // Skill 条目（给 UI 管理用，可开关）
     var skillEntries: [SkillEntry] = []
 
-    let sessionsDirectoryName = "Sessions"
-    let sessionsIndexFileName = "sessions_index.json"
     let plannerRevision = "planner-v3-local-selection"
-    var sessionSaveTask: Task<Void, Never>?
 
     // 暴露给 CLI ScenarioRunner — 它需要知道每轮 Router 实际匹配到了哪些 skill
     // (含 sticky), 才能对 YAML scenario 的 `skills:` 断言. iOS UI 完全不读这个,
@@ -572,11 +566,9 @@ class AgentEngine {
             inference: self.inference,
             installer: resolvedInstaller
         )
+        self.sessionStore = ChatSessionStore()
 
         loadSkillEntries()
-        currentSessionID =
-            UUID(uuidString: UserDefaults.standard.string(forKey: Self.currentSessionDefaultsKey) ?? "")
-            ?? UUID()
     }
 
     func loadSkillEntries() {
@@ -651,7 +643,8 @@ class AgentEngine {
         applyModelSelection()
         installer.refreshInstallStates()
         loadSystemPrompt()       // 从 SYSPROMPT.md 注入 system prompt
-        loadPersistedSessions()
+        resetPromptPipelineState()
+        messages = sessionStore.loadPersistedSessions()
         applySamplingConfig()
         // MTP 偏好需要在 coordinator.load() 之前同步 — coordinator 内部不管 MTP,
         // 但 inference.load() 读取这个设置来构造 engine.
@@ -2024,14 +2017,13 @@ class AgentEngine {
     }
 
     func startNewSession() {
-        flushPendingSessionSave()
+        sessionStore.flushPendingSave(messages: messages)
         if isProcessing || inference.isGenerating {
             cancelActiveGeneration()
         }
         resetPromptPipelineState()
         clearRecentImageFollowUpContexts()
-        currentSessionID = UUID()
-        UserDefaults.standard.set(currentSessionID.uuidString, forKey: Self.currentSessionDefaultsKey)
+        _ = sessionStore.newSession()
         messages = []
         // Reset KV cache for new conversation.
         // 若 engine 带了多模态 encoder (上一个会话发过图/音频导致 sticky
@@ -2044,17 +2036,15 @@ class AgentEngine {
     }
 
     func loadSession(id: UUID) {
-        guard id != currentSessionID || messages.isEmpty else { return }
-        flushPendingSessionSave()
+        guard id != sessionStore.currentSessionID || messages.isEmpty else { return }
+        sessionStore.flushPendingSave(messages: messages)
         if isProcessing || inference.isGenerating {
             cancelActiveGeneration()
         }
-        guard let record = loadSessionRecord(id: id) else { return }
+        guard let restoredMessages = sessionStore.switchToSession(id: id) else { return }
         resetPromptPipelineState()
         clearRecentImageFollowUpContexts()
-        currentSessionID = id
-        UserDefaults.standard.set(currentSessionID.uuidString, forKey: Self.currentSessionDefaultsKey)
-        messages = record.messages
+        messages = restoredMessages
         // Reset KV cache — loaded session has no cached context.
         // 切到其他会话时也顺便回 text-only — 被切出来的会话之前可能 sticky
         // 在 multimodal, 现在进的会话有没有图待定, 先释放 800 MB, 进来若发图再升级.
@@ -2062,51 +2052,20 @@ class AgentEngine {
             await inference.revertToTextOnly()
             await inference.resetKVSession()
         }
-        updateSessionSummary(
-            .init(
-                id: record.id,
-                title: record.title,
-                preview: record.preview,
-                updatedAt: record.updatedAt
-            )
-        )
     }
 
     func deleteSession(id: UUID) {
-        flushPendingSessionSave()
-        do {
-            try FileManager.default.removeItem(at: sessionFileURL(for: id))
-        } catch {
-            log("[History] delete failed: \(error.localizedDescription)")
-        }
-        sessionSummaries.removeAll { $0.id == id }
-        persistSessionsIndex()
-
-        if currentSessionID == id {
-            sessionSaveTask?.cancel()
-            sessionSaveTask = nil
-
-            if let next = sessionSummaries.first,
-               let record = loadSessionRecord(id: next.id) {
-                resetPromptPipelineState()
-                clearRecentImageFollowUpContexts()
-                currentSessionID = next.id
-                UserDefaults.standard.set(currentSessionID.uuidString, forKey: Self.currentSessionDefaultsKey)
-                messages = record.messages
-            } else {
-                resetPromptPipelineState()
-                clearRecentImageFollowUpContexts()
-                currentSessionID = UUID()
-                UserDefaults.standard.set(currentSessionID.uuidString, forKey: Self.currentSessionDefaultsKey)
-                messages = []
-            }
+        sessionStore.flushPendingSave(messages: messages)
+        if let switchResult = sessionStore.deleteSession(id: id) {
+            // Deleted the current session — need to switch
+            resetPromptPipelineState()
+            clearRecentImageFollowUpContexts()
+            messages = switchResult
         }
     }
 
     func flushPendingSessionSave() {
-        sessionSaveTask?.cancel()
-        sessionSaveTask = nil
-        saveCurrentSession()
+        sessionStore.flushPendingSave(messages: messages)
     }
 
     func setAllSkills(enabled: Bool) {
