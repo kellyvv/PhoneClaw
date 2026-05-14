@@ -11,6 +11,28 @@
 > 4. InferenceService 协议需要演进（async unload、结构化错误）
 > 5. IPA 验证脚本覆盖 framework 内嵌 dylib
 
+## 实施状态(v1.3 落地 erratum)
+
+Phase 1-5 + 扫尾 (Phase 6) 完成后,plan 与代码的对照:
+
+| Plan 章节 | 状态 | 备注 |
+|---|---|---|
+| §3.2 LiteRTBootstrap | ✅ 完整 | `LLM/Core/LiteRTBootstrap.swift` + PhoneClawApp.init 第一行 |
+| §3.2 RuntimeSessionState | ✅ 完整 | 含 LoadPhase / BackendSwitch / RuntimeError 全部 case |
+| §3.2 GenerationTransaction | ✅ 加强 | 加 `didBeginStreaming` 修正 cancel-before-stream 路径 |
+| §3.2 ModelRuntimeCoordinator | ✅ 完整 | load / switchBackend / beginGeneration / cancel / unload / recover |
+| §3.2 InferenceService 协议演进 | ✅ 完整 | unloadAsync (LiteRT 显式实现) + activeCapabilities |
+| §3.2 ModelInstallManager | ⚠️ 部分 | InstallState enum 已定义(type 蓝图),但 LiteRTModelStore 仍用 legacy ModelInstallState。SHA256 校验未做,因为 ModelDescriptor 还没 hash 字段 |
+| §3.2 ChatSessionController | ✅ 形态调整 | 拆成 ChatSessionStore (持久化) + AgentEngine.messages (运行时数据)。façade ChatViewModel 暴露派生属性 |
+| §3.2 AgentOrchestrator | ✅ 形态调整 | façade 形式 (`Agent/Engine/AgentOrchestrator.swift`),底层仍用 extension AgentEngine。重组成独立 class 边际收益低 |
+| §3.2 DiagnosticsLogger | ✅ 复用 | Shared/PCLog 已有结构化 logging,加 PCLog.debug() + exportDiagnosticsBundle() |
+| §3.1 ViewModel 层 | ✅ 形态调整 | ChatViewModel / ConfigViewModel façade 类型存在,UI 维持直接绑 engine (SwiftUI @Observable 让中间层 boilerplate 收益低) |
+| §八 IPA 验证脚本 | ✅ 完整 | `scripts/validate-ipa.sh` |
+| §10.3 红线检查 | ✅ 完整 | LiteRTModelStore.assertNoNativeBinaryDownloads() |
+| §九 Phase 3 PromptBudgeter | ✅ 完整 | PromptTokenEstimator (CJK 1.5 / Latin 4.0 chars/token) |
+
+AgentEngine: **2071 → 215 行** (89.6% 削减,远超 plan §九 Phase 5 的 < 600 行目标)。
+
 ---
 
 ## 一、现状诊断
