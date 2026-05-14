@@ -51,10 +51,13 @@ enum UIScale {
     static var pillShadowBlur: CGFloat { isLargeScreen ? 18 : 16 }
 
     /// chip (+ 按钮 / waveform 按钮) 直径.
-    static var chipDiameter: CGFloat { isLargeScreen ? 42 : 40 }
+    /// 真机 PPI 下 40pt 偏大, 调到 38pt — Apple Music / Linear chip 大致这个量级.
+    static var chipDiameter: CGFloat { isLargeScreen ? 40 : 38 }
 
     /// chip icon 字号 (SF Symbols).
-    static var chipIconSize: CGFloat { 22 }  // 两档相同,符合 "只放大空气" 原则
+    /// 22pt 在真机偏粗, 改 18pt regular — 跟 Apple Music nav icon 同档,
+    /// 配 38pt chip 留出居中呼吸空间, 更精致.
+    static var chipIconSize: CGFloat { 18 }
 
     /// chip 到胶囊内壁的距离.
     static var chipInnerMargin: CGFloat { 12 }

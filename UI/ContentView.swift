@@ -276,6 +276,7 @@ struct ContentView: View {
     private var topBar: some View {
         HStack(spacing: 0) {
             // 左:历史 chip — 圆形浅底,内嵌状态点(muted gold = capable)
+            // 30pt chip + 6pt 内点 — 跟底部 chip 视觉一档,精致克制.
             Button(action: {
                 engine.flushPendingSessionSave()
                 showHistory = true
@@ -283,10 +284,10 @@ struct ContentView: View {
                 ZStack {
                     Circle()
                         .fill(Theme.bgHover)
-                        .frame(width: 32, height: 32)
+                        .frame(width: 30, height: 30)
                     Circle()
                         .fill(engine.isModelReady ? Theme.accentMuted : Theme.textTertiary)
-                        .frame(width: 8, height: 8)
+                        .frame(width: 6, height: 6)
                 }
             }
             .buttonStyle(.plain)
@@ -296,7 +297,7 @@ struct ContentView: View {
             // 右:settings gear — 裸 icon,无背景圆
             Button(action: { showConfigurations = true }) {
                 Image(systemName: "gearshape")
-                    .font(.system(size: 22, weight: .regular))
+                    .font(.system(size: 18, weight: .regular))
                     .foregroundStyle(Theme.textSecondary)
             }
             .buttonStyle(.plain)
