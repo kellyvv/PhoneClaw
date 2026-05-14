@@ -100,9 +100,11 @@ struct ContentView: View {
 
                 composerAttachmentsPanel
 
-                if engine.messages.isEmpty {
-                    skillChips.padding(.bottom, 8)
-                }
+                // v2 UI:空状态 skill chips 暂时不展示,后续会换位置/形态 (TBD)。
+                // 函数 `skillChips` 保留供后续恢复 / 重新挂载。
+                // if engine.messages.isEmpty {
+                //     skillChips.padding(.bottom, 8)
+                // }
 
                 inputBar
             }
@@ -264,82 +266,40 @@ struct ContentView: View {
 
     // MARK: - 顶部栏
 
+    // MARK: - topBar (v2: 极简两元素)
+    //
+    // 设计稿:左 chip (历史会话入口 + 状态指示) + 右 gear (设置)
+    // 移除项 (跟用户当面讨论确认):
+    //   - Gemma 4 E2B 模型名 → 进 settings 看
+    //   - LIVE 按钮 → 中央 orb 已有 "进入 LIVE" 入口
+    //   - 思考模式 toggle → 暂存,后续放到别处 (待定)
     private var topBar: some View {
         HStack(spacing: 0) {
-            // 左：历史/新会话
+            // 左:历史 chip — 圆形浅底,内嵌状态点(muted gold = capable)
             Button(action: {
                 engine.flushPendingSessionSave()
                 showHistory = true
             }) {
-                Image(systemName: "clock.arrow.circlepath")
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(Theme.textSecondary)
-                    .frame(width: 34, height: 34)
-                    .background(Theme.bgElevated, in: RoundedRectangle(cornerRadius: 9))
+                ZStack {
+                    Circle()
+                        .fill(Theme.bgHover)
+                        .frame(width: 32, height: 32)
+                    Circle()
+                        .fill(engine.isModelReady ? Theme.accentMuted : Theme.textTertiary)
+                        .frame(width: 8, height: 8)
+                }
             }
             .buttonStyle(.plain)
 
             Spacer()
 
-            // 中：模型状态
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(engine.isModelReady || engine.isModelGenerating ? Theme.accentGreen : Theme.accent)
-                    .frame(width: 6, height: 6)
-                Text(topModelStatusText)
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
+            // 右:settings gear — 裸 icon,无背景圆
+            Button(action: { showConfigurations = true }) {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 22, weight: .regular))
                     .foregroundStyle(Theme.textSecondary)
             }
-
-            Spacer()
-
-            // 右：LIVE + 思考 + 设置
-            HStack(spacing: 6) {
-                Button(action: enterLiveMode) {
-                    Text("LIVE")
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
-                    .foregroundStyle(canEnterLiveMode ? Theme.textSecondary : Theme.textTertiary)
-                    .padding(.horizontal, 10)
-                    .frame(height: 34)
-                    .background(
-                        Theme.bgElevated,
-                        in: RoundedRectangle(cornerRadius: 9)
-                    )
-                }
-                .buttonStyle(.plain)
-                .disabled(!canEnterLiveMode)
-
-                // 思考按钮: 只对 supportsThinking 模型显示 (Gemma 4)。
-                // MiniCPM-V 4.6 没思考模式 (要切到 4.6-Thinking 变体), 整个按钮藏掉
-                // 避免点了没反应的哑按钮 UX。
-                if showThinkingButton {
-                    Button(action: toggleThinkingMode) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "sparkles")
-                                .font(.system(size: 11, weight: .semibold))
-                            Text(tr("思考", "Think"))
-                                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                        }
-                        .foregroundStyle(engine.config.enableThinking ? Theme.bg : Theme.textSecondary)
-                        .padding(.horizontal, 10)
-                        .frame(height: 34)
-                        .background(
-                            engine.config.enableThinking ? Theme.accent : Theme.bgElevated,
-                            in: RoundedRectangle(cornerRadius: 9)
-                        )
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                Button(action: { showConfigurations = true }) {
-                    Image(systemName: "gearshape")
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(Theme.textSecondary)
-                        .frame(width: 34, height: 34)
-                        .background(Theme.bgElevated, in: RoundedRectangle(cornerRadius: 9))
-                }
-                .buttonStyle(.plain)
-            }
+            .buttonStyle(.plain)
         }
         .padding(.horizontal, Theme.inputPadH)
         .padding(.vertical, 10)
@@ -529,96 +489,121 @@ struct ContentView: View {
                     #endif
                 }
 
-                // 右侧：mic/keyboard 切换 + send/stop
-                Button {
-                    // 切到语音模式前先检查 Whisper 模型有没有下载. 没有就弹提示让用户去
-                    // 配置页 LIVE 语音模型下载, 不要切到语音模式让用户白按住一下才发现没用。
-                    let isEnteringVoice = !isVoiceInputMode
-                    if isEnteringVoice,
-                       LiveModelDefinition.resolve(for: LiveModelDefinition.activeASR) == nil {
-                        showASRMissingAlert = true
-                        return
-                    }
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        isVoiceInputMode.toggle()
-                    }
-                    if isVoiceInputMode {
-                        // 进入语音模式立即预热 ASR. 加载期间 asrIsWarming = true 让按住说话
-                        // 按钮灰显 + 禁用点击, 加载完恢复正常. WhisperKit 首次冷启动 ~6-15s
-                        // (Core ML 编译 + tokenizer 拉取), 没这反馈用户会以为按钮坏了。
-                        let alreadyLoaded = holdToTalkASR.isAvailable
-                        print("[UI] Mic button tapped → enter voice mode (ASR \(alreadyLoaded ? "already loaded" : "starting warmup"))")
-                        holdASRWarmupTask?.cancel()
-                        if !alreadyLoaded {
-                            asrIsWarming = true
-                        }
-                        // 顺便 prepare haptic engine, 第一次按住时不会有冷启动延迟.
-                        #if canImport(UIKit)
-                        holdHaptic.prepare()
-                        #endif
-                        let asr = holdToTalkASR
-                        holdASRWarmupTask = Task.detached {
-                            await asr.initialize()
-                            await MainActor.run { asrIsWarming = false }
-                        }
-                    } else {
-                        // 切回键盘模式: 立即卸载 ASR 释放内存 (zh ~160MB / en ~180MB)。
-                        // 之前的策略是"保留, 用户可能秒切回来" — 但用户反馈期望
-                        // 显式 cancel 行为, 不要默默占内存。需要再用语音时点 mic
-                        // 重新加载 (Core ML 系统层 cache 命中, 0.5s 即可恢复)。
-                        print("[UI] Exit voice mode → unloading ASR")
-                        isInputFocused = true
-                        holdASRWarmupTask?.cancel()
-                        holdASRWarmupTask = nil
-                        asrIsWarming = false
-                        holdToTalkASR.unload()
-                    }
-                } label: {
-                    Image(systemName: isVoiceInputMode ? "keyboard" : "mic.fill")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(Theme.textSecondary)
-                        .frame(width: 34, height: 34)
-                        .background(Theme.bgElevated, in: RoundedRectangle(cornerRadius: 9))
-                }
-                .buttonStyle(.plain)
-
-                Button {
-                    if canCancelGeneration {
-                        engine.cancelActiveGeneration()
-                    } else {
-                        Task { await send() }
-                    }
-                } label: {
-                    Image(systemName: canCancelGeneration ? "stop.fill" : "arrow.up")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(
-                            canCancelGeneration || canSend
-                                ? Theme.bg
-                                : Theme.textTertiary
-                        )
-                        .frame(width: 34, height: 34)
-                        .background(
-                            canCancelGeneration
-                                ? Color.red.opacity(0.92)
-                                : (canSend ? Theme.accent : Theme.bgElevated),
-                            in: Circle()
-                        )
-                        .overlay(
-                            Circle().strokeBorder(
-                                canCancelGeneration || canSend ? .clear : Theme.border,
-                                lineWidth: 1
-                            )
-                        )
-                }
-                .buttonStyle(.plain)
-                .disabled(!canSend && !canCancelGeneration)
-                .animation(.easeInOut(duration: 0.15), value: canSend)
-                .animation(.easeInOut(duration: 0.15), value: canCancelGeneration)
+                // 右侧:动态按钮 (idle → waveform / 有文字 → send / 生成中 → stop /
+                //              语音模式 → keyboard). 跟用户讨论确认的"4 状态合 1"模式,
+                //              类似 WhatsApp/iMessage 的输入框尾部按钮。
+                trailingDynamicButton
             }
             .padding(.horizontal, Theme.inputPadH)
             .padding(.vertical, 14)
             .background(Theme.bg)
         }
+    }
+
+    // MARK: - 动态尾部按钮 (mic / send / stop / keyboard 四态合一)
+
+    private struct DynamicButtonStyle {
+        let icon: String
+        let bgColor: Color
+        let fgColor: Color
+        let action: () -> Void
+    }
+
+    private var trailingButtonStyle: DynamicButtonStyle {
+        if canCancelGeneration {
+            return .init(
+                icon: "stop.fill",
+                bgColor: Color.red.opacity(0.92),
+                fgColor: Theme.bg,
+                action: { engine.cancelActiveGeneration() }
+            )
+        }
+        if canSend {
+            return .init(
+                icon: "arrow.up",
+                bgColor: Theme.accent,
+                fgColor: Theme.bg,
+                action: { Task { await send() } }
+            )
+        }
+        if isVoiceInputMode {
+            return .init(
+                icon: "keyboard",
+                bgColor: Theme.bgElevated,
+                fgColor: Theme.textSecondary,
+                action: { exitVoiceInputMode() }
+            )
+        }
+        // idle: 输入框空 + 键盘模式 → waveform, 点击进语音模式
+        return .init(
+            icon: "waveform",
+            bgColor: Theme.bgElevated,
+            fgColor: Theme.textSecondary,
+            action: { enterVoiceInputMode() }
+        )
+    }
+
+    private var trailingDynamicButton: some View {
+        let style = trailingButtonStyle
+        return Button(action: style.action) {
+            Image(systemName: style.icon)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(style.fgColor)
+                .frame(width: 34, height: 34)
+                .background(style.bgColor, in: Circle())
+        }
+        .buttonStyle(.plain)
+        .animation(.easeInOut(duration: 0.15), value: canSend)
+        .animation(.easeInOut(duration: 0.15), value: canCancelGeneration)
+        .animation(.easeInOut(duration: 0.15), value: isVoiceInputMode)
+    }
+
+    /// 进入语音模式:检查 ASR 模型, 预热, 切换 UI 状态.
+    private func enterVoiceInputMode() {
+        // 切到语音模式前先检查 Whisper 模型有没有下载. 没有就弹提示让用户去
+        // 配置页 LIVE 语音模型下载, 不要切到语音模式让用户白按住一下才发现没用。
+        if LiveModelDefinition.resolve(for: LiveModelDefinition.activeASR) == nil {
+            showASRMissingAlert = true
+            return
+        }
+        withAnimation(.easeInOut(duration: 0.2)) {
+            isVoiceInputMode = true
+        }
+        // 进入语音模式立即预热 ASR. 加载期间 asrIsWarming = true 让按住说话
+        // 按钮灰显 + 禁用点击, 加载完恢复正常. WhisperKit 首次冷启动 ~6-15s
+        // (Core ML 编译 + tokenizer 拉取), 没这反馈用户会以为按钮坏了。
+        let alreadyLoaded = holdToTalkASR.isAvailable
+        log("[UI] Mic button tapped → enter voice mode (ASR \(alreadyLoaded ? "already loaded" : "starting warmup"))")
+        holdASRWarmupTask?.cancel()
+        if !alreadyLoaded {
+            asrIsWarming = true
+        }
+        // 顺便 prepare haptic engine, 第一次按住时不会有冷启动延迟.
+        #if canImport(UIKit)
+        holdHaptic.prepare()
+        #endif
+        let asr = holdToTalkASR
+        holdASRWarmupTask = Task.detached {
+            await asr.initialize()
+            await MainActor.run { asrIsWarming = false }
+        }
+    }
+
+    /// 退出语音模式:卸载 ASR 释放内存, 切回键盘.
+    private func exitVoiceInputMode() {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            isVoiceInputMode = false
+        }
+        // 切回键盘模式: 立即卸载 ASR 释放内存 (zh ~160MB / en ~180MB)。
+        // 之前的策略是"保留, 用户可能秒切回来" — 但用户反馈期望
+        // 显式 cancel 行为, 不要默默占内存。需要再用语音时点 mic
+        // 重新加载 (Core ML 系统层 cache 命中, 0.5s 即可恢复)。
+        log("[UI] Exit voice mode → unloading ASR")
+        isInputFocused = true
+        holdASRWarmupTask?.cancel()
+        holdASRWarmupTask = nil
+        asrIsWarming = false
+        holdToTalkASR.unload()
     }
 
     // MARK: - 按住说话
