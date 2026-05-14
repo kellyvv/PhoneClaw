@@ -123,6 +123,7 @@
 		B4BDA4D032800AFB9764956A /* LiveHistoryMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E383F793CD103FF368037A /* LiveHistoryMessage.swift */; };
 		B85F211303561796B93E9575 /* (null) in Sources */ = {isa = PBXBuildFile; };
 		B881A2E7F9483D5ED2AC206B /* SkillsManagerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D269F8BFCAB68D82440F704B /* SkillsManagerView.swift */; };
+		137C43C64332571D07B4D532 /* ModelConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F0E463E3C7A27CA8DBEE333 /* ModelConfig.swift */; };
 		B8A84E4D0DDDE011B5929DA2 /* AgentEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = E18A47114A10132E25E220F8 /* AgentEngine.swift */; };
 		BB2000000000000000000001 /* LLMTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000001 /* LLMTypes.swift */; };
 		BB2000000000000000000002 /* InferenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000002 /* InferenceService.swift */; };
@@ -311,6 +312,7 @@
 		D5E6F7081A2B3C4D5E6F7096 /* studio_env.hdr */ = {isa = PBXFileReference; lastKnownFileType = text; name = studio_env.hdr; path = App/studio_env.hdr; sourceTree = SOURCE_ROOT; };
 		DAF684F9A04FAEE76440F69C /* OrbAudioAnalyser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OrbAudioAnalyser.swift; path = Live/Audio/OrbAudioAnalyser.swift; sourceTree = SOURCE_ROOT; };
 		DISPATCHER000000000101 /* BackendDispatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendDispatcher.swift; sourceTree = "<group>"; };
+		9F0E463E3C7A27CA8DBEE333 /* ModelConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelConfig.swift; sourceTree = "<group>"; };
 		E18A47114A10132E25E220F8 /* AgentEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentEngine.swift; sourceTree = "<group>"; };
 		E1E383F793CD103FF368037A /* LiveHistoryMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveHistoryMessage.swift; path = Live/Turn/Types/LiveHistoryMessage.swift; sourceTree = SOURCE_ROOT; };
 		E62C3CEFC7AE63873D751E75 /* ConfigurationsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigurationsView.swift; sourceTree = "<group>"; };
@@ -638,6 +640,7 @@
 				A31476ED2F85741500318978 /* Engine */,
 				2F4A6C8E0A1B2C3D4E5F6070 /* AudioCaptureService.swift */,
 				E18A47114A10132E25E220F8 /* AgentEngine.swift */,
+				9F0E463E3C7A27CA8DBEE333 /* ModelConfig.swift */,
 			);
 			path = Agent;
 			sourceTree = "<group>";
@@ -831,6 +834,7 @@
 			files = (
 				2F4A6C8E0A1B2C3D4E5F6071 /* AudioCaptureService.swift in Sources */,
 				B8A84E4D0DDDE011B5929DA2 /* AgentEngine.swift in Sources */,
+				137C43C64332571D07B4D532 /* ModelConfig.swift in Sources */,
 				C3C4D5E6F7081A2B3C52D3E4 /* ChatModels.swift in Sources */,
 				97E96A2FBFFAF609F276A896 /* ConfigurationsView.swift in Sources */,
 				9412304167DACB86E5D60D49 /* ContentView.swift in Sources */,
