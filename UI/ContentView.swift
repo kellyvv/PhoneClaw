@@ -346,9 +346,23 @@ struct ContentView: View {
 
     // MARK: - 欢迎页
 
+    // MARK: - welcomeView (vertical rhythm: 上轻 / 中聚焦 / 下承托)
+    //
+    // 节奏设计:
+    //   topBar
+    //     ↓ 60pt (fixed, 上轻)
+    //   orb
+    //     ↓ 28pt (orb 跟 LIVE 是同一组, 距离必须近)
+    //   • 进入 LIVE ›
+    //     ↓ flexible (Spacer, 下承托空气)
+    //   inputBar
+    //
+    // 不是几何居中 — orb 中心在屏幕 38-40% 高度, 视觉重心偏上.
+    // 输入框很重 (白胶囊+阴影+chip), 主视觉必须更高才能视觉平衡.
     private var welcomeView: some View {
         VStack(spacing: 0) {
-            Spacer()
+            // 顶部固定 spacer — 让 orb 整组上移
+            Spacer().frame(height: UIScale.topToOrbGap)
 
             // 中央陶瓷球 — 占屏宽 48% (标准) / 44% (大屏),大屏反而 缩,
             // 用更多空气换高级感. 见 UIScale.swift 详释.

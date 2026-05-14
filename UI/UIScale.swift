@@ -100,10 +100,17 @@ enum UIScale {
     static var orbSize: CGFloat { screenWidth * orbWidthRatio }
 
     /// Orb 跟下方 "进入 LIVE" 文字的距离.
-    static var orbToEntryTextGap: CGFloat { isLargeScreen ? 64 : 48 }
+    /// 必须 ≤ 56pt — orb + LIVE 是一个整体, 距离太大会让 LIVE 读作 "说明文字"
+    /// 而不是 "orb 的交互入口". (注: PorcelainOrbView image 自带涟漪占下方 ~24pt,
+    /// 所以实际 visual gap = 这个值 + 24pt.)
+    static var orbToEntryTextGap: CGFloat { isLargeScreen ? 32 : 28 }
 
-    /// "进入 LIVE" 跟底部输入框的间距 (由 Spacer 主导, 这只是 minLength 兜底).
-    static var entryToInputMinGap: CGFloat { isLargeScreen ? 120 : 96 }
+    /// 顶部固定留白 (topBar 下方 → orb image 开始) — 让 orb 整组视觉重心
+    /// 上移到屏幕 38-40% 高度. iOS Onboarding 风格: 主体偏上, 不几何居中.
+    static var topToOrbGap: CGFloat { isLargeScreen ? 80 : 60 }
+
+    /// "进入 LIVE" 跟底部输入框的间距 — 流动 Spacer 占满,下方承托空间最大.
+    static var entryToInputMinGap: CGFloat { isLargeScreen ? 160 : 140 }
 
     /// 输入框到屏幕底部 (home indicator 之上) 的间距.
     static var inputBarBottomGap: CGFloat { isLargeScreen ? 18 : 14 }
