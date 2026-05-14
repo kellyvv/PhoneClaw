@@ -1965,6 +1965,12 @@ class AgentEngine {
                     txn.markTerminated(reason: .error(error))
                     self.coordinator.completeGeneration()
                 } else {
+                    // Normal completion. If txn is still .created (e.g. planner
+                    // path where streamLLM() ran but markStreamingStarted() was
+                    // never called explicitly), transition through begin→commit.
+                    if txn.state == .created {
+                        txn.begin()
+                    }
                     txn.commit()
                     self.coordinator.completeGeneration()
                 }
