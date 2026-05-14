@@ -55,7 +55,9 @@ public final class ModelRuntimeCoordinator {
 
     // MARK: - Init
 
-    public init(inference: InferenceService, installer: ModelInstaller) {
+    /// Nonisolated so AgentEngine (not @MainActor) can create this in its init.
+    /// Only stores references — no MainActor-bound work happens here.
+    nonisolated public init(inference: InferenceService, installer: ModelInstaller) {
         self.inference = inference
         self.installer = installer
     }

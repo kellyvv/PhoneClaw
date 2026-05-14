@@ -386,6 +386,7 @@ class AgentEngine {
     let inference: InferenceService
     let catalog: ModelCatalog
     let installer: ModelInstaller
+    let coordinator: ModelRuntimeCoordinator
     var messages: [ChatMessage] = [] {
         didSet {
             scheduleSessionSave()
@@ -551,6 +552,11 @@ class AgentEngine {
             #endif
         }
 
+        self.coordinator = ModelRuntimeCoordinator(
+            inference: self.inference,
+            installer: resolvedInstaller
+        )
+
         loadSkillEntries()
         currentSessionID =
             UUID(uuidString: UserDefaults.standard.string(forKey: Self.currentSessionDefaultsKey) ?? "")
@@ -631,11 +637,16 @@ class AgentEngine {
         loadSystemPrompt()       // 从 SYSPROMPT.md 注入 system prompt
         loadPersistedSessions()
         applySamplingConfig()
-        // 同步用户选的推理 backend 偏好到 inference service, 首次 load 生效.
-        inference.setPreferredBackend(config.preferredBackend)
+        // MTP 偏好需要在 coordinator.load() 之前同步 — coordinator 内部不管 MTP,
+        // 但 inference.load() 读取这个设置来构造 engine.
         inference.setEnableSpeculativeDecoding(config.enableSpeculativeDecoding)
         Task {
-            try? await inference.load(modelID: config.selectedModelID)
+            // Coordinator handles: setPreferredBackend → inference.load
+            // 同时维护 RuntimeSessionState: idle → loading → ready | failed
+            try? await coordinator.load(
+                modelID: config.selectedModelID,
+                backend: config.preferredBackend
+            )
         }
     }
 
@@ -746,12 +757,15 @@ class AgentEngine {
             guard let self else { return }
             self.isProcessing = false
             _ = self.catalog.select(modelID: selectedModelID)
-            self.inference.unload()
-            // 在 load 前同步 backend / MTP 偏好, 这样 LiteRTBackend.load
-            // 会用新设置构造 LiteRTLMEngine.
-            self.inference.setPreferredBackend(backend)
+            // MTP 偏好需要在 coordinator.load() 之前同步 — coordinator 内部不管 MTP,
+            // 但 inference.load() 读取这个设置来构造 engine.
             self.inference.setEnableSpeculativeDecoding(speculative)
-            try? await self.inference.load(modelID: selectedModelID)
+            // Coordinator handles: unload (if needed) → setPreferredBackend → load
+            // 同时维护 RuntimeSessionState 状态机转移.
+            try? await self.coordinator.load(
+                modelID: selectedModelID,
+                backend: backend
+            )
         }
     }
 
