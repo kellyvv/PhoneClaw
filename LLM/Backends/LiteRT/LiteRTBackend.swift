@@ -204,11 +204,11 @@ final class LiteRTBackend: InferenceService {
             //
             // 2026-04-25: E4B 从 2048 提到 4096. 之前 2048 是为了卡 Sideloadly
             // 免费签名 jetsam 阈值 (~3-4 GB), 但代价是英文 SKILL 触发首轮
-            // hard-reject ("Context is too long"), 因为英文 system prompt
-            // 比中文长 ~300 token + contacts 等厚 schema 工具就把 1300 总
-            // 预算推爆. Sideloadly 用户 E4B 本来内存就紧 (推荐用 E2B), 这
-            // 次接受 Sideloadly E4B 不能用换 Xcode 直装 / 正式签用户的英
-            // 文 skill 体验. Sideloadly 用户改用 E2B (4096 KV 一直能用).
+            // hard-reject. Sideloadly 用户 E4B 本来内存就紧 (推荐用 E2B).
+            //
+            // GPU 也用 4096: Gemma 4 E2B .litertlm 的 compiled shape 按
+            // magic_number=32003 → target=4096 配置, GPU compiled model 路径
+            // 下 KV 维度必须匹配此值, 否则 CompiledModel::Create 直接失败。
             let maxKVTokens: Int = 4096
             let (visionBackend, audioBackend): (String?, String?) = {
                 switch mode {
@@ -277,42 +277,82 @@ final class LiteRTBackend: InferenceService {
             isLoading = false
             isLoaded = false
 
-            // 模型加载失败 → 文件可能损坏，自动清理并恢复下载按钮
             let descriptor = ModelDescriptor.allModels.first { $0.id == modelID }
             let displayName = descriptor?.displayName ?? modelID
             print("[LiteRT] ❌ 加载 \(displayName) 失败: \(error.localizedDescription)")
-            print("[LiteRT] 自动清理可能损坏的模型文件...")
-            try? FileManager.default.removeItem(at: modelPath)
-            print("[LiteRT] 已删除: \(modelPath.lastPathComponent)")
-            // 通知外部 store 刷新状态 (下次 refreshInstallStates 时会标记为 notInstalled)
-            NotificationCenter.default.post(
-                name: Notification.Name("LiteRTModelCorrupt"),
-                object: nil,
-                userInfo: ["modelID": modelID]
-            )
 
-            statusMessage = tr(
-                "❌ \(displayName) 文件损坏，请重新下载",
-                "❌ \(displayName) file is corrupt. Please download it again."
-            )
+            // 判断是否真的是文件问题 — 只有文件大小明显不对 (< 90% expectedFileSize)
+            // 时才删除。GPU 引擎创建失败 (内存不足、Metal 初始化错误等) 不应该删除
+            // 完好的模型文件, 否则用户切换 CPU↔GPU 失败后会被迫重新下载几 GB 模型。
+            var shouldDeleteFile = false
+            if let expected = descriptor?.expectedFileSize, expected > 0 {
+                let attrs = try? FileManager.default.attributesOfItem(atPath: modelPath.path)
+                let actualSize = (attrs?[.size] as? Int64) ?? 0
+                if actualSize < expected * 9 / 10 {
+                    shouldDeleteFile = true
+                    print("[LiteRT] 文件大小异常 (\(actualSize)/\(expected)), 判定为损坏, 自动清理")
+                }
+            }
+
+            if shouldDeleteFile {
+                try? FileManager.default.removeItem(at: modelPath)
+                print("[LiteRT] 已删除: \(modelPath.lastPathComponent)")
+                NotificationCenter.default.post(
+                    name: Notification.Name("LiteRTModelCorrupt"),
+                    object: nil,
+                    userInfo: ["modelID": modelID]
+                )
+                statusMessage = tr(
+                    "❌ \(displayName) 文件损坏，请重新下载",
+                    "❌ \(displayName) file is corrupt. Please download it again."
+                )
+            } else {
+                // 文件完好但引擎加载失败 — 可能是 GPU 不支持、内存不足等运行时问题,
+                // 保留文件, 用户可以换回 CPU 或释放内存后重试。
+                print("[LiteRT] 文件完好 (\(modelPath.lastPathComponent)), 保留不删除")
+                let reason = error.localizedDescription
+                if preferredBackend == "gpu" {
+                    // GPU-specific guidance: the most common failure is Metal
+                    // engine init failing due to memory or shader issues.
+                    statusMessage = tr(
+                        "❌ \(displayName) GPU 加载失败\nMetal 引擎初始化未成功，可能是设备内存不足。\n请切换到 CPU 模式重试。",
+                        "❌ \(displayName) GPU load failed\nMetal engine init failed — likely insufficient memory.\nPlease switch to CPU mode."
+                    )
+                } else {
+                    statusMessage = tr(
+                        "❌ \(displayName) 加载失败: \(reason)\n模型文件已保留，可尝试切换到 CPU 重试。",
+                        "❌ \(displayName) failed to load: \(reason)\nModel file kept. Try switching to CPU."
+                    )
+                }
+            }
+
             PCLog.modelLoadFailed(modelID: modelID, reason: error.localizedDescription)
             throw error
         }
     }
 
     func unload() {
-        engine?.closeSession()
-        engine?.closeConversation()
+        // Synchronously destroy the C engine and all its Metal/GPU resources.
+        // This MUST complete before we return, because the caller (reloadModel)
+        // immediately creates a new engine afterwards. If the old engine's
+        // resources are still alive, litert_lm_engine_create will fail —
+        // this was the root cause of CPU→GPU switch failures ("engine_create
+        // returned NULL" on hot switch, but works on cold start).
+        //
+        // Previously this used `Task { @MainActor in engine?.unload() }` +
+        // `engine = nil` — but the Task was fire-and-forget, and engine was
+        // niled before the Task ran, making the unload a no-op. The actual
+        // cleanup only happened in deinit (async, on a DIFFERENT serial queue
+        // than the new engine), creating a race condition.
+        engine?.destroySynchronously()
+        engine = nil
+
         kvSessionActive = false
         liveModeActive = false
         lastModelOutput = ""
         pendingTextSessionRestore = false
         sessionGroupManagedMultimodal = false
         currentEngineMode = .textOnly  // reset 到默认, 下次 load 会重新设置
-        Task { @MainActor in
-            engine?.unload()
-        }
-        engine = nil
         loadedModelID = nil
         isLoaded = false
         isGenerating = false

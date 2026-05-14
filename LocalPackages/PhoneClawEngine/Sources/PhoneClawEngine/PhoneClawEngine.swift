@@ -274,13 +274,25 @@ public final class LiteRTLMEngine: @unchecked Sendable {
             throw LiteRTLMError.modelNotFound
         }
 
-        // Force companion dylib preloads before any runtime C API call.
-        // CPU backend: no-ops. GPU backend: registers the Metal backend and
-        // the sampler dylib so subsequent runtime-side dlopens resolve.
-        if backendStr == "gpu" {
-            _ = _preloadGpuAcceleratorOnce
-            _ = _preloadMetalSamplerOnce
-        }
+        // ALWAYS preload the GPU Metal accelerator — even when creating a
+        // CPU engine. LiteRT's internal Environment / accelerator registry is
+        // a process-level singleton that gets sealed on the FIRST
+        // litert_lm_engine_create call. If GPU accelerator isn't registered
+        // before that first call, switching to GPU later will fail because
+        // the registry no longer accepts new backends.
+        //
+        // This matches the observed behavior: cold-start GPU works (accelerator
+        // loaded before first engine_create), but CPU-then-GPU fails (first
+        // engine_create was CPU-only, registry sealed without GPU).
+        //
+        // Cost: one dlopen of ~5 MB framework on CPU-only paths. The Metal
+        // accelerator is dormant (no GPU buffers allocated) until a GPU engine
+        // is actually created.
+        //
+        // TopK Metal sampler is still deferred to after GPU engine creation
+        // to avoid 30+ duplicate ObjC class warnings (both frameworks share
+        // Google internal classes like SRLRegistry, GTMLogger, etc.).
+        _ = _preloadGpuAcceleratorOnce
 
         do {
             let createdEngine = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<OpaquePointer, any Error>) in
@@ -354,11 +366,21 @@ public final class LiteRTLMEngine: @unchecked Sendable {
                             settings, speculativeEnabled
                         )
 
+                        Self.log.info("Creating engine: backend=\(backendStr, privacy: .public) maxTokens=\(maxTokensValue) cache=\(cacheDir, privacy: .public)")
                         guard let createdEngine = litert_lm_engine_create(settings) else {
                             litert_lm_engine_settings_delete(settings)
-                            throw LiteRTLMError.engineCreationFailed("litert_lm_engine_create returned NULL")
+                            throw LiteRTLMError.engineCreationFailed("litert_lm_engine_create returned NULL — Metal engine init failed (check memory / shader compilation logs above)")
                         }
                         litert_lm_engine_settings_delete(settings)
+
+                        // Engine created successfully — now safe to preload
+                        // the optional TopK Metal sampler. Its duplicate ObjC
+                        // classes with the accelerator are harmless post-init
+                        // because the SRLRegistry already has the Metal
+                        // accelerator registered.
+                        if backendStr == "gpu" {
+                            _ = _preloadMetalSamplerOnce
+                        }
 
                         continuation.resume(returning: createdEngine)
                     } catch {
@@ -383,7 +405,26 @@ public final class LiteRTLMEngine: @unchecked Sendable {
     /// Unload the model to free memory.
     @MainActor
     public func unload() {
-        inferenceQueue.sync {
+        destroySynchronously()
+        status = .notLoaded
+        Self.log.info("Model unloaded")
+    }
+
+    /// Synchronously release all C resources on the inference queue.
+    ///
+    /// Unlike `unload()` (which is `@MainActor`), this can be called from
+    /// **any** context. Blocks the caller until `litert_lm_engine_delete`
+    /// completes, guaranteeing that Metal buffers, mmap regions, and GPU
+    /// command queues are fully torn down before the method returns.
+    ///
+    /// This is critical for CPU↔GPU backend switching: the old engine's
+    /// resources MUST be released before a new engine is created, otherwise
+    /// `litert_lm_engine_create` fails because the GPU finds stale Metal
+    /// allocations from the previous engine.
+    ///
+    /// Safe to call multiple times — subsequent calls are no-ops.
+    public func destroySynchronously() {
+        inferenceQueue.sync { [self] in
             if let s = chatSession {
                 litert_lm_session_delete(s)
                 chatSession = nil
@@ -405,8 +446,6 @@ public final class LiteRTLMEngine: @unchecked Sendable {
             if let eng = engine { litert_lm_engine_delete(eng) }
             engine = nil
         }
-        status = .notLoaded
-        Self.log.info("Model unloaded")
     }
 
     // MARK: - Text Generation (Session API)
