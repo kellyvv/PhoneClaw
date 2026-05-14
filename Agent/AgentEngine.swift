@@ -379,6 +379,7 @@ private extension HotfixTurnObservation {
 // MARK: - Agent Engine
 
 @Observable
+@MainActor
 class AgentEngine {
 
     static let currentSessionDefaultsKey = "PhoneClaw.currentSessionID"
@@ -443,22 +444,14 @@ class AgentEngine {
     /// Model is loaded and ready to accept generation requests.
     /// Replaces UI reads of `inference.isLoaded` — driven by coordinator's
     /// validated state machine rather than raw inference-layer booleans.
-    ///
-    /// Uses `MainActor.assumeIsolated` because SwiftUI body evaluation (the
-    /// only consumer) always runs on MainActor. Phase 5 will add `@MainActor`
-    /// to AgentEngine itself, eliminating the need for this wrapper.
     var isModelReady: Bool {
-        MainActor.assumeIsolated {
-            self.coordinator.sessionState.canGenerate
-        }
+        coordinator.sessionState.canGenerate
     }
 
     /// A generation is in progress (coordinator has an active transaction).
     /// Replaces UI reads of `inference.isGenerating`.
     var isModelGenerating: Bool {
-        MainActor.assumeIsolated {
-            self.coordinator.sessionState.isGenerating
-        }
+        coordinator.sessionState.isGenerating
     }
 
     init(
@@ -1836,14 +1829,12 @@ class AgentEngine {
                                     userQuestion: normalizedText,
                                     msgIndex: msgIndex
                                 )
-                                await MainActor.run {
-                                    if self.messages.indices.contains(msgIndex) {
-                                        self.messages[msgIndex].update(
-                                            content: repaired.isEmpty ? PromptLocale.current.emptyReplyPlaceholder : repaired
-                                        )
-                                    }
-                                    self.finishTurn()
+                                if self.messages.indices.contains(msgIndex) {
+                                    self.messages[msgIndex].update(
+                                        content: repaired.isEmpty ? PromptLocale.current.emptyReplyPlaceholder : repaired
+                                    )
                                 }
+                                self.finishTurn()
                             }
                             return
                         }
@@ -1944,23 +1935,16 @@ class AgentEngine {
     /// Begin generation transaction tracking at the start of a user turn.
     /// Creates a coordinator transaction if the runtime is ready.
     /// Gracefully no-ops if coordinator is not in ready state (migration path).
-    ///
-    /// Uses `MainActor.assumeIsolated` because AgentEngine is not @MainActor
-    /// but processInput() always runs on MainActor (UI entry point).
     private func beginGenerationTracking() {
-        MainActor.assumeIsolated {
-            guard self.coordinator.sessionState.canGenerate else { return }
-            _ = self.coordinator.beginGeneration()
-            // Don't call txn.begin() yet — that happens when inference actually starts streaming.
-        }
+        guard coordinator.sessionState.canGenerate else { return }
+        _ = coordinator.beginGeneration()
+        // Don't call txn.begin() yet — that happens when inference actually starts streaming.
     }
 
     /// Signal that the inference stream has started for the current transaction.
     /// Call immediately before `inference.generate()` or `inference.generateMultimodal()`.
     private func markStreamingStarted() {
-        MainActor.assumeIsolated {
-            self.coordinator.currentTransaction?.begin()
-        }
+        coordinator.currentTransaction?.begin()
     }
 
     /// Finish the current generation turn.
@@ -1973,30 +1957,24 @@ class AgentEngine {
     ///   terminated with an error reason. If nil, the turn succeeded normally.
     ///   If the transaction is in `.cancelling` state (user pressed stop),
     ///   it's terminated as cancelled regardless of this parameter.
-    ///
-    /// Note: Uses `MainActor.assumeIsolated` because inference callbacks and
-    /// processInput() always run on MainActor, but AgentEngine class itself
-    /// is not annotated @MainActor (legacy design — Phase 5 will address).
     func finishTurn(error: String? = nil) {
-        MainActor.assumeIsolated {
-            if let txn = self.coordinator.currentTransaction, !txn.isTerminal {
-                if txn.state == .cancelling {
-                    // Cancel flow in progress — mark terminated so coordinator's
-                    // async cancel can proceed with KV reset.
-                    txn.markTerminated(reason: .userCancelled)
-                } else if let error {
-                    txn.markTerminated(reason: .error(error))
-                    self.coordinator.completeGeneration()
-                } else {
-                    // Normal completion. If txn is still .created (e.g. planner
-                    // path where streamLLM() ran but markStreamingStarted() was
-                    // never called explicitly), transition through begin→commit.
-                    if txn.state == .created {
-                        txn.begin()
-                    }
-                    txn.commit()
-                    self.coordinator.completeGeneration()
+        if let txn = coordinator.currentTransaction, !txn.isTerminal {
+            if txn.state == .cancelling {
+                // Cancel flow in progress — mark terminated so coordinator's
+                // async cancel can proceed with KV reset.
+                txn.markTerminated(reason: .userCancelled)
+            } else if let error {
+                txn.markTerminated(reason: .error(error))
+                coordinator.completeGeneration()
+            } else {
+                // Normal completion. If txn is still .created (e.g. planner
+                // path where streamLLM() ran but markStreamingStarted() was
+                // never called explicitly), transition through begin→commit.
+                if txn.state == .created {
+                    txn.begin()
                 }
+                txn.commit()
+                coordinator.completeGeneration()
             }
         }
         isProcessing = false
@@ -2013,9 +1991,7 @@ class AgentEngine {
 
         // 1. Mark transaction as cancelling BEFORE inference.cancel(),
         //    so onComplete → finishTurn() sees .cancelling (not .streaming).
-        MainActor.assumeIsolated {
-            self.coordinator.currentTransaction?.cancel()
-        }
+        coordinator.currentTransaction?.cancel()
 
         // 2. Signal inference to stop producing tokens.
         inference.cancel()
@@ -2032,7 +2008,7 @@ class AgentEngine {
         // 4. Async: wait for stream termination → reset KV safely.
         //    coordinator.cancelCurrentGeneration() handles the full cancel lifecycle:
         //    await txn.termination → resetKVSession() → transition to .ready.
-        Task { @MainActor [weak self] in
+        Task { [weak self] in
             await self?.coordinator.cancelCurrentGeneration()
         }
 

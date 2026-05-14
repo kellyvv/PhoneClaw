@@ -278,8 +278,8 @@ private func shouldFlushCallbackBuffer(
 
 private func streamWithBatchedCallbacks(
     source: AsyncThrowingStream<String, Error>,
-    onToken: @escaping @Sendable (String) -> Void,
-    onComplete: @escaping @Sendable (Result<String, Error>) -> Void
+    onToken: @escaping @MainActor @Sendable (String) -> Void,
+    onComplete: @escaping @MainActor @Sendable (Result<String, Error>) -> Void
 ) {
     Task {
         var fullResponse = ""
@@ -337,8 +337,8 @@ public extension InferenceService {
 
     func generate(
         prompt: String,
-        onToken: @escaping @Sendable (String) -> Void,
-        onComplete: @escaping @Sendable (Result<String, Error>) -> Void
+        onToken: @escaping @MainActor @Sendable (String) -> Void,
+        onComplete: @escaping @MainActor @Sendable (Result<String, Error>) -> Void
     ) {
         streamWithBatchedCallbacks(
             source: generate(prompt: prompt),
@@ -352,8 +352,8 @@ public extension InferenceService {
         audios: [AudioInput] = [],
         prompt: String,
         systemPrompt: String = "",
-        onToken: @escaping @Sendable (String) -> Void,
-        onComplete: @escaping @Sendable (Result<String, Error>) -> Void
+        onToken: @escaping @MainActor @Sendable (String) -> Void,
+        onComplete: @escaping @MainActor @Sendable (Result<String, Error>) -> Void
     ) {
         streamWithBatchedCallbacks(
             source: generateMultimodal(
