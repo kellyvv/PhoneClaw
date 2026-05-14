@@ -535,10 +535,13 @@ struct ContentView: View {
             )
         }
         if canSend {
+            // chip 保持中性灰, 只 icon 从 waveform 变成 arrow.up.
+            // 形态变化驱动状态语义, 不靠 brand color — Arc/Linear/Apple Music 同款逻辑.
+            // brand color 只留给 hero element (orb), chip 永远克制.
             return .init(
                 icon: "arrow.up",
-                bgColor: Theme.accent,
-                fgColor: Theme.bg,
+                bgColor: Theme.bgHover,
+                fgColor: Theme.textSecondary,
                 action: { Task { await send() } }
             )
         }
