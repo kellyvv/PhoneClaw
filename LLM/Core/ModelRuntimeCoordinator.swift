@@ -13,9 +13,10 @@ import os
 //   - 线程安全：所有状态变更在 @MainActor 上
 //
 // 迁移策略:
-//   Phase 3a: 创建 Coordinator，AgentEngine 持有它但不用它
-//   Phase 3b: AgentEngine.reloadModel() 开始委托给 Coordinator
-//   Phase 3c: UI 层从 inference.isLoaded 迁移到 coordinator.sessionState
+//   Phase 3a: 创建 Coordinator，AgentEngine 持有它但不用它          ✅
+//   Phase 3b: AgentEngine.reloadModel() 开始委托给 Coordinator       ✅
+//   Phase 3c: UI 层从 inference.isLoaded 迁移到 coordinator.sessionState ✅
+//   Phase 4:  GenerationTransaction 接入生成流 + 取消安全             ✅
 //
 // 与 AgentEngine 的关系:
 //   AgentEngine 当前是 God Class (2051行)。Coordinator 从中抽出:

@@ -256,7 +256,7 @@ struct ContentView: View {
 
     private func canRetry(item: DisplayItem, block: ResponseBlock) -> Bool {
         guard item.id == displayItems.last?.id else { return false }
-        guard !engine.isProcessing, engine.inference.isLoaded else { return false }
+        guard !engine.isProcessing, engine.isModelReady else { return false }
         guard block.responseText != nil else { return false }
         guard let lastUser = engine.messages.last(where: { $0.role == .user }) else { return false }
         return lastUser.audios.isEmpty
@@ -284,7 +284,7 @@ struct ContentView: View {
             // 中：模型状态
             HStack(spacing: 6) {
                 Circle()
-                    .fill(engine.inference.isLoaded ? Theme.accentGreen : Theme.accent)
+                    .fill(engine.isModelReady ? Theme.accentGreen : Theme.accent)
                     .frame(width: 6, height: 6)
                 Text(topModelStatusText)
                     .font(.system(size: 12, weight: .medium, design: .rounded))
@@ -346,7 +346,7 @@ struct ContentView: View {
     }
 
     private var topModelStatusText: String {
-        if engine.inference.isLoaded {
+        if engine.isModelReady {
             return engine.catalog.modelDisplayName
         }
 
@@ -861,7 +861,7 @@ struct ContentView: View {
                 || hasCompletedDraft
                 || importedAudioSnapshot != nil
         )
-        && !engine.isProcessing && engine.inference.isLoaded
+        && !engine.isProcessing && engine.isModelReady
     }
 
     /// 当前选中模型的能力声明。UI 按它 gate Live / 思考 / MTP 等按钮显示。
@@ -875,7 +875,7 @@ struct ContentView: View {
     }
 
     private var canEnterLiveMode: Bool {
-        engine.inference.isLoaded && currentModelCapabilities.supportsLive
+        engine.isModelReady && currentModelCapabilities.supportsLive
     }
 
     /// 顶部 "思考" 按钮是否显示。只有声明 supportsThinking=true 的模型才显示, 否则
@@ -886,7 +886,7 @@ struct ContentView: View {
     }
 
     private var canCancelGeneration: Bool {
-        engine.isProcessing || engine.inference.isGenerating
+        engine.isProcessing || engine.isModelGenerating
     }
 
     /// `includeAudio = false`: hold-to-talk 这种"用语音口述文字"的入口用,

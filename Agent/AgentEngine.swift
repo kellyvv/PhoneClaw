@@ -438,6 +438,29 @@ class AgentEngine {
         catalog.availableModels
     }
 
+    // MARK: - Coordinator Convenience (Phase 3c)
+
+    /// Model is loaded and ready to accept generation requests.
+    /// Replaces UI reads of `inference.isLoaded` — driven by coordinator's
+    /// validated state machine rather than raw inference-layer booleans.
+    ///
+    /// Uses `MainActor.assumeIsolated` because SwiftUI body evaluation (the
+    /// only consumer) always runs on MainActor. Phase 5 will add `@MainActor`
+    /// to AgentEngine itself, eliminating the need for this wrapper.
+    var isModelReady: Bool {
+        MainActor.assumeIsolated {
+            self.coordinator.sessionState.canGenerate
+        }
+    }
+
+    /// A generation is in progress (coordinator has an active transaction).
+    /// Replaces UI reads of `inference.isGenerating`.
+    var isModelGenerating: Bool {
+        MainActor.assumeIsolated {
+            self.coordinator.sessionState.isGenerating
+        }
+    }
+
     init(
         inference: InferenceService? = nil,
         catalog: ModelCatalog? = nil,

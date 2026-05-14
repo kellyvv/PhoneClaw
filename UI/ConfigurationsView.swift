@@ -286,7 +286,7 @@ struct ConfigurationsView: View {
     }
 
     private var modelHeaderText: String {
-        if engine.inference.isLoaded {
+        if engine.isModelReady {
             return tr("当前已加载：", "Loaded: ") + engine.catalog.modelDisplayName
         }
 
@@ -520,7 +520,7 @@ struct ConfigurationsView: View {
                             engine.reloadSkills()
                             engine.loadSystemPrompt()
                             systemPrompt = engine.config.systemPrompt
-                            if !engine.inference.isLoaded {
+                            if !engine.isModelReady {
                                 if let selectedModel = engine.availableModels.first(where: { $0.id == selectedModelID }),
                                    engine.installer.artifactPath(for: selectedModel) == nil {
                                     engine.inference.statusMessage = tr("请先下载模型", "Download a model first")
@@ -858,7 +858,7 @@ struct ConfigurationsView: View {
                     try await engine.installer.install(model: model)
                     if engine.installer.artifactPath(for: model) != nil,
                        selectedModelID == model.id,
-                       (!engine.inference.isLoaded || engine.catalog.loadedModel?.id != model.id) {
+                       (!engine.isModelReady || engine.catalog.loadedModel?.id != model.id) {
                         engine.config.selectedModelID = model.id
                         engine.reloadModel()
                     }
@@ -1022,7 +1022,7 @@ struct ConfigurationsView: View {
 
         if selectedModelID == engine.catalog.selectedModel.id,
            engine.catalog.loadedModel?.id == selectedModelID,
-           engine.inference.isLoaded {
+           engine.isModelReady {
             return tr("点击确定会保留当前模型。", "Tap OK to keep the current model.")
         }
 
@@ -1116,7 +1116,7 @@ struct ConfigurationsView: View {
         }
 
         engine.config.selectedModelID = selectedModelID
-        let needsLoad = !engine.inference.isLoaded || engine.catalog.loadedModel?.id != selectedModelID
+        let needsLoad = !engine.isModelReady || engine.catalog.loadedModel?.id != selectedModelID
         // backend / MTP 变更也要 reload — LiteRTLMEngine 在 load 时构造,
         // 这两个参数都不可热切换。
         if modelChanged || backendChanged || mtpChanged || needsLoad {
