@@ -425,7 +425,7 @@ struct ContentView: View {
     // 三个子元素都"贴着"胶囊内壁,而不是各自独立按钮并排。左右按钮 chip 形
     // (圆形浅底),输入框无自身背景。
     private var inputBar: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 16) {
             // 左:+ 附件菜单 — 圆形 chip
             Menu {
                 #if canImport(PhotosUI)
@@ -448,7 +448,7 @@ struct ContentView: View {
                 }
             } label: {
                 Image(systemName: "plus")
-                    .font(.system(size: 18, weight: .regular))
+                    .font(.system(size: 22, weight: .regular))
                     .foregroundStyle(Theme.textSecondary)
                     .frame(width: 40, height: 40)
                     .background(Theme.bgHover, in: Circle())
@@ -489,14 +489,21 @@ struct ContentView: View {
             //         语音模式 → keyboard).
             trailingDynamicButton
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 20)  // chip 高 40pt + 2×20 = 总高 80pt
+        // Spec (per master mockup, "floating" Arc/Linear/Vision Pro idiom,
+        // 不走标准 iOS HIG):
+        //   外部屏幕边距:  16pt
+        //   胶囊总高度:    54pt  (chip 40 + 上下 padding 7 × 2)
+        //   chip 距胶囊左/右内距: 12pt
+        //   阴影:          0 / 4 / 16 / rgba(0,0,0,0.05) — 更松、更高级
+        //   Capsule 自动用 height/2 圆角 → 27pt
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
         .background(
             Theme.bgElevated,
             in: Capsule()
         )
-        .shadow(color: Color.black.opacity(0.06), radius: 12, x: 0, y: 4)
-        .padding(.horizontal, 33)
+        .shadow(color: Color.black.opacity(0.05), radius: 16, x: 0, y: 4)
+        .padding(.horizontal, 16)
         .padding(.vertical, 14)
     }
 
@@ -550,7 +557,7 @@ struct ContentView: View {
         let needsBorder = !canSend && !canCancelGeneration
         return Button(action: style.action) {
             Image(systemName: style.icon)
-                .font(.system(size: 16, weight: .bold))
+                .font(.system(size: 22, weight: .regular))
                 .foregroundStyle(style.fgColor)
                 .frame(width: 40, height: 40)
                 .background(style.bgColor, in: Circle())
