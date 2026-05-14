@@ -45,6 +45,7 @@
 		5C01BF2FA8161562894FFD97 /* (null) in Sources */ = {isa = PBXBuildFile; };
 		5E3245AC20D4A5365C4A84E8 /* LiveLocale.swift in Sources */ = {isa = PBXBuildFile; fileRef = A263EC6C9ED96F37CF99E49E /* LiveLocale.swift */; };
 		623A278B9408C9BE8FDE61D1 /* SharedUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DBABEB8C21E7B67E5C2516D /* SharedUI.swift */; };
+		1A2B3C4D5E6F7A8B9C0D1E2F /* PorcelainOrbView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7A8B9C0D1E30 /* PorcelainOrbView.swift */; };
 		64C85AE4FF9AA2C865C799E9 /* (null) in Sources */ = {isa = PBXBuildFile; };
 		6ED70A065D44870C4B10BC01 /* (null) in Sources */ = {isa = PBXBuildFile; };
 		70A9AFA85FC91F00D3E00387 /* OrbBackgroundView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA48303BA25916A3A431EDE6 /* OrbBackgroundView.swift */; };
@@ -230,6 +231,7 @@
 		9C503EC6B19AD0CF5515B98E /* LiveComponentTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveComponentTest.swift; path = Live/Debug/LiveComponentTest.swift; sourceTree = SOURCE_ROOT; };
 		9D80CB631331A0CA07699BDE /* OutputSanitizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OutputSanitizer.swift; path = Shared/Audio/OutputSanitizer.swift; sourceTree = SOURCE_ROOT; };
 		9DBABEB8C21E7B67E5C2516D /* SharedUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SharedUI.swift; path = UI/SharedUI.swift; sourceTree = SOURCE_ROOT; };
+		1A2B3C4D5E6F7A8B9C0D1E30 /* PorcelainOrbView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PorcelainOrbView.swift; path = UI/PorcelainOrbView.swift; sourceTree = SOURCE_ROOT; };
 		A1AB7F250BEEFF938318AA75 /* Pods-PhoneClaw.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-PhoneClaw.debug.xcconfig"; path = "Target Support Files/Pods-PhoneClaw/Pods-PhoneClaw.debug.xcconfig"; sourceTree = "<group>"; };
 		A263EC6C9ED96F37CF99E49E /* LiveLocale.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveLocale.swift; path = LLM/LiveVoice/LiveLocale.swift; sourceTree = SOURCE_ROOT; };
 		A31476E82F856FD700318978 /* ChatAttachments.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatAttachments.swift; sourceTree = "<group>"; };
@@ -615,6 +617,7 @@
 				C70EDE41C438263F820D0FCC /* OrbShaderSource.swift */,
 				4628E2A5FD49247E1D6BE283 /* ResponseUI.swift */,
 				9DBABEB8C21E7B67E5C2516D /* SharedUI.swift */,
+				1A2B3C4D5E6F7A8B9C0D1E30 /* PorcelainOrbView.swift */,
 				9D80CB631331A0CA07699BDE /* OutputSanitizer.swift */,
 				F8D921B323B9D6342A22A29E /* LiveAudioIO.swift */,
 				83C5B0E5FD420CCB6BD8D1A4 /* LiveModeEngine.swift */,
@@ -903,6 +906,7 @@
 				7EB3859798F050565F8C28B9 /* OrbShaderSource.swift in Sources */,
 				AB877F6AD9467C63509E499F /* ResponseUI.swift in Sources */,
 				623A278B9408C9BE8FDE61D1 /* SharedUI.swift in Sources */,
+				1A2B3C4D5E6F7A8B9C0D1E2F /* PorcelainOrbView.swift in Sources */,
 				07D3C1FB6D5F4849F2E8136B /* (null) in Sources */,
 				44E858BC1F79BDD31F923BBC /* (null) in Sources */,
 				084BAD9BD1E8ED10B59ACADB /* (null) in Sources */,

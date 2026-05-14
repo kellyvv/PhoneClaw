@@ -380,44 +380,31 @@ struct ContentView: View {
     private var welcomeView: some View {
         VStack(spacing: 0) {
             Spacer()
-            ZStack {
-                Circle().fill(Theme.accentSubtle).frame(width: 60, height: 60)
-                Image(systemName: "sparkles")
-                    .font(.system(size: 24, weight: .medium))
-                    .foregroundStyle(Theme.accent)
-            }
-            Text("PhoneClaw")
-                .font(.system(size: 26, weight: .semibold, design: .rounded))
-                .foregroundStyle(Theme.textPrimary)
-                .padding(.top, 16)
-            Text("On-device AI Agent")
-                .font(.system(size: 14))
-                .foregroundStyle(Theme.textTertiary)
-                .padding(.top, 4)
+
+            // 中央陶瓷球 — 主屏视觉 hero
+            PorcelainOrbView(size: 280)
+
+            // "进入 LIVE" 入口 — 设计稿是 dot + 文字,无 capsule 背景。
+            // dot 用 brand muted gold #C39660,避开 iOS 通知红语义。
             Button(action: enterLiveMode) {
                 HStack(spacing: 10) {
-                    Image(systemName: "waveform.circle.fill")
-                        .font(.system(size: 16, weight: .semibold))
+                    Circle()
+                        .fill(canEnterLiveMode
+                              ? Color(hex: "C39660")
+                              : Theme.textTertiary)
+                        .frame(width: 6, height: 6)
                     Text(tr("进入 LIVE", "Enter LIVE"))
-                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(canEnterLiveMode
+                                         ? Theme.textPrimary
+                                         : Theme.textTertiary)
                 }
-                .foregroundStyle(canEnterLiveMode ? Theme.bg : Theme.textTertiary)
-                .padding(.horizontal, 18)
-                .frame(height: 44)
-                .background(
-                    canEnterLiveMode ? Theme.accentGreen : Theme.bgElevated,
-                    in: Capsule()
-                )
-                .overlay(
-                    Capsule().strokeBorder(
-                        canEnterLiveMode ? .clear : Theme.border,
-                        lineWidth: 1
-                    )
-                )
+                .contentShape(Rectangle())  // 整个 HStack 都可点
             }
             .buttonStyle(.plain)
             .disabled(!canEnterLiveMode)
-            .padding(.top, 22)
+            .padding(.top, 48)
+
             Spacer()
         }
     }
