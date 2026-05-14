@@ -129,6 +129,8 @@
 		7F3C4D5E6071839BC5678901 /* PromptObservation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F3C4D5E6071839BC1234567 /* PromptObservation.swift */; };
 		8A4D5E6F7182940CD6789012 /* ImageFollowUp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A4D5E6F7182940CD2345678 /* ImageFollowUp.swift */; };
 		9B5E6F708293A51DE7890123 /* PromptPipelineHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B5E6F708293A51DE3456789 /* PromptPipelineHelpers.swift */; };
+		AC6F708293B62EF01234AAAA /* ProcessInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC6F708293B62EF01234BBBB /* ProcessInput.swift */; };
+		BD708293B62EF01234CCCCCC /* EngineLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD708293B62EF01234DDDDDD /* EngineLifecycle.swift */; };
 		B8A84E4D0DDDE011B5929DA2 /* AgentEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = E18A47114A10132E25E220F8 /* AgentEngine.swift */; };
 		BB2000000000000000000001 /* LLMTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000001 /* LLMTypes.swift */; };
 		BB2000000000000000000002 /* InferenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000002 /* InferenceService.swift */; };
@@ -323,6 +325,8 @@
 		7F3C4D5E6071839BC1234567 /* PromptObservation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptObservation.swift; sourceTree = "<group>"; };
 		8A4D5E6F7182940CD2345678 /* ImageFollowUp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageFollowUp.swift; sourceTree = "<group>"; };
 		9B5E6F708293A51DE3456789 /* PromptPipelineHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptPipelineHelpers.swift; sourceTree = "<group>"; };
+		AC6F708293B62EF01234BBBB /* ProcessInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessInput.swift; sourceTree = "<group>"; };
+		BD708293B62EF01234DDDDDD /* EngineLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineLifecycle.swift; sourceTree = "<group>"; };
 		E18A47114A10132E25E220F8 /* AgentEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentEngine.swift; sourceTree = "<group>"; };
 		E1E383F793CD103FF368037A /* LiveHistoryMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveHistoryMessage.swift; path = Live/Turn/Types/LiveHistoryMessage.swift; sourceTree = SOURCE_ROOT; };
 		E62C3CEFC7AE63873D751E75 /* ConfigurationsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigurationsView.swift; sourceTree = "<group>"; };
@@ -411,6 +415,8 @@
 				7F3C4D5E6071839BC1234567 /* PromptObservation.swift */,
 				8A4D5E6F7182940CD2345678 /* ImageFollowUp.swift */,
 				9B5E6F708293A51DE3456789 /* PromptPipelineHelpers.swift */,
+				AC6F708293B62EF01234BBBB /* ProcessInput.swift */,
+				BD708293B62EF01234DDDDDD /* EngineLifecycle.swift */,
 				A31476F32F85741500318978 /* ToolCallParser.swift */,
 				A31476F42F85741500318978 /* ToolChain.swift */,
 				A31476E82F856FD700318978 /* ChatAttachments.swift */,
@@ -855,6 +861,8 @@
 				7F3C4D5E6071839BC5678901 /* PromptObservation.swift in Sources */,
 				8A4D5E6F7182940CD6789012 /* ImageFollowUp.swift in Sources */,
 				9B5E6F708293A51DE7890123 /* PromptPipelineHelpers.swift in Sources */,
+				AC6F708293B62EF01234AAAA /* ProcessInput.swift in Sources */,
+				BD708293B62EF01234CCCCCC /* EngineLifecycle.swift in Sources */,
 				C3C4D5E6F7081A2B3C52D3E4 /* ChatModels.swift in Sources */,
 				97E96A2FBFFAF609F276A896 /* ConfigurationsView.swift in Sources */,
 				9412304167DACB86E5D60D49 /* ContentView.swift in Sources */,
