@@ -419,85 +419,82 @@ struct ContentView: View {
         !audioCapture.isCapturing && audioCapture.latestSnapshot() != nil
     }
 
+    // MARK: - inputBar (v2: 胶囊形容器内嵌 3 个子元素)
+    //
+    // 设计稿:整个输入框是一个 white capsule,内部 [+] | text | [waveform/send]
+    // 三个子元素都"贴着"胶囊内壁,而不是各自独立按钮并排。左右按钮 chip 形
+    // (圆形浅底),输入框无自身背景。
     private var inputBar: some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 10) {
-                // 左侧：+ 号附件菜单
-                Menu {
-                    #if canImport(PhotosUI)
-                    Button {
-                        showPhotoPicker = true
-                    } label: {
-                        Label(tr("照片", "Photo"), systemImage: "photo")
-                    }
-                    #endif
-                    Button {
-                        captureOrigin = .menu
-                        Task { _ = await audioCapture.toggleCapture() }
-                    } label: {
-                        Label(audioCapture.isCapturing && captureOrigin == .menu ? tr("停止录音", "Stop Recording") : tr("录音", "Record"), systemImage: audioCapture.isCapturing && captureOrigin == .menu ? "stop.fill" : "waveform")
-                    }
-                    Button {
-                        showFilePicker = true
-                    } label: {
-                        Label(tr("文件", "File"), systemImage: "doc")
-                    }
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(Theme.textSecondary)
-                        .frame(width: 34, height: 34)
-                        .background(Theme.bgElevated, in: RoundedRectangle(cornerRadius: 9))
-                }
-                .buttonStyle(.plain)
+        HStack(spacing: 8) {
+            // 左:+ 附件菜单 — 圆形 chip
+            Menu {
                 #if canImport(PhotosUI)
-                .photosPicker(isPresented: $showPhotoPicker, selection: $selectedPhotoItem, matching: .images)
+                Button {
+                    showPhotoPicker = true
+                } label: {
+                    Label(tr("照片", "Photo"), systemImage: "photo")
+                }
                 #endif
-                .fileImporter(
-                    isPresented: $showFilePicker,
-                    allowedContentTypes: [.audio, .pdf, .plainText, .data],
-                    allowsMultipleSelection: false
-                ) { result in
-                    handleImportedFile(result)
+                Button {
+                    captureOrigin = .menu
+                    Task { _ = await audioCapture.toggleCapture() }
+                } label: {
+                    Label(audioCapture.isCapturing && captureOrigin == .menu ? tr("停止录音", "Stop Recording") : tr("录音", "Record"), systemImage: audioCapture.isCapturing && captureOrigin == .menu ? "stop.fill" : "waveform")
                 }
-
-                // 中间：文字输入 或 按住说话
-                if isVoiceInputMode {
-                    holdToTalkButton
-                } else {
-                    #if os(macOS)
-                    TextField("Message…", text: $inputText)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 15))
-                        .foregroundStyle(Theme.textPrimary)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 11)
-                        .background(Theme.bgElevated, in: RoundedRectangle(cornerRadius: 22))
-                        .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(Theme.border, lineWidth: 1))
-                        .onSubmit { Task { await send() } }
-                    #else
-                    TextField("Message…", text: $inputText, axis: .vertical)
-                        .lineLimit(1...5)
-                        .font(.system(size: 15))
-                        .foregroundStyle(Theme.textPrimary)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 11)
-                        .background(Theme.bgElevated, in: RoundedRectangle(cornerRadius: 22))
-                        .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(Theme.border, lineWidth: 1))
-                        .focused($isInputFocused)
-                        .onSubmit { Task { await send() } }
-                    #endif
+                Button {
+                    showFilePicker = true
+                } label: {
+                    Label(tr("文件", "File"), systemImage: "doc")
                 }
-
-                // 右侧:动态按钮 (idle → waveform / 有文字 → send / 生成中 → stop /
-                //              语音模式 → keyboard). 跟用户讨论确认的"4 状态合 1"模式,
-                //              类似 WhatsApp/iMessage 的输入框尾部按钮。
-                trailingDynamicButton
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 18, weight: .regular))
+                    .foregroundStyle(Theme.textSecondary)
+                    .frame(width: 34, height: 34)
+                    .background(Theme.bgHover, in: Circle())
             }
-            .padding(.horizontal, Theme.inputPadH)
-            .padding(.vertical, 14)
-            .background(Theme.bg)
+            .buttonStyle(.plain)
+            #if canImport(PhotosUI)
+            .photosPicker(isPresented: $showPhotoPicker, selection: $selectedPhotoItem, matching: .images)
+            #endif
+            .fileImporter(
+                isPresented: $showFilePicker,
+                allowedContentTypes: [.audio, .pdf, .plainText, .data],
+                allowsMultipleSelection: false
+            ) { result in
+                handleImportedFile(result)
+            }
+
+            // 中间:文字输入 或 按住说话 — 无自身背景,贴胶囊
+            if isVoiceInputMode {
+                holdToTalkButton
+            } else {
+                #if os(macOS)
+                TextField(tr("Ask anything...", "Ask anything..."), text: $inputText)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 17))
+                    .foregroundStyle(Theme.textPrimary)
+                    .onSubmit { Task { await send() } }
+                #else
+                TextField(tr("Ask anything...", "Ask anything..."), text: $inputText, axis: .vertical)
+                    .lineLimit(1...5)
+                    .font(.system(size: 17))
+                    .foregroundStyle(Theme.textPrimary)
+                    .focused($isInputFocused)
+                    .onSubmit { Task { await send() } }
+                #endif
+            }
+
+            // 右:动态按钮 (idle → waveform / 有文字 → send / 生成中 → stop /
+            //         语音模式 → keyboard).
+            trailingDynamicButton
         }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .background(Theme.bgElevated, in: Capsule())
+        .overlay(Capsule().strokeBorder(Theme.borderSubtle, lineWidth: 1))
+        .padding(.horizontal, Theme.inputPadH)
+        .padding(.vertical, 14)
     }
 
     // MARK: - 动态尾部按钮 (mic / send / stop / keyboard 四态合一)
@@ -529,7 +526,7 @@ struct ContentView: View {
         if isVoiceInputMode {
             return .init(
                 icon: "keyboard",
-                bgColor: Theme.bgElevated,
+                bgColor: Theme.bgHover,  // 跟左侧 + 按钮的 chip 底色一致
                 fgColor: Theme.textSecondary,
                 action: { exitVoiceInputMode() }
             )
@@ -537,7 +534,7 @@ struct ContentView: View {
         // idle: 输入框空 + 键盘模式 → waveform, 点击进语音模式
         return .init(
             icon: "waveform",
-            bgColor: Theme.bgElevated,
+            bgColor: Theme.bgHover,  // 跟左侧 + 按钮的 chip 底色一致
             fgColor: Theme.textSecondary,
             action: { enterVoiceInputMode() }
         )
