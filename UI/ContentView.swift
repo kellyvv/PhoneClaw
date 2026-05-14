@@ -275,30 +275,38 @@ struct ContentView: View {
     //   - 思考模式 toggle → 暂存,后续放到别处 (待定)
     private var topBar: some View {
         HStack(spacing: 0) {
-            // 左:历史 chip — 圆形浅底,内嵌状态点(muted gold = capable)
-            // 30pt chip + 6pt 内点 — 跟底部 chip 视觉一档,精致克制.
+            // 左:历史状态 chip.
+            // 28pt 外圈 + 6pt 内点 + opacity 0.6 — 这不是"按钮", 是"悬浮状态痕迹".
+            // 视觉重量比 orb / Dynamic Island 都要轻, 不抢戏.
             Button(action: {
                 engine.flushPendingSessionSave()
                 showHistory = true
             }) {
                 ZStack {
                     Circle()
-                        .fill(Theme.bgHover)
-                        .frame(width: 30, height: 30)
+                        .fill(Theme.bgHover.opacity(UIScale.topStatusChipBgOpacity))
+                        .frame(
+                            width: UIScale.topStatusChipDiameter,
+                            height: UIScale.topStatusChipDiameter
+                        )
                     Circle()
                         .fill(engine.isModelReady ? Theme.accentMuted : Theme.textTertiary)
-                        .frame(width: 6, height: 6)
+                        .frame(
+                            width: UIScale.topStatusChipDotSize,
+                            height: UIScale.topStatusChipDotSize
+                        )
                 }
             }
             .buttonStyle(.plain)
 
             Spacer()
 
-            // 右:settings gear — 裸 icon,无背景圆
+            // 右:settings gear — 裸 icon,opacity 0.72 让它"浮在空气里".
             Button(action: { showConfigurations = true }) {
                 Image(systemName: "gearshape")
-                    .font(.system(size: 18, weight: .regular))
+                    .font(.system(size: UIScale.gearIconSize, weight: .regular))
                     .foregroundStyle(Theme.textSecondary)
+                    .opacity(UIScale.gearIconOpacity)
             }
             .buttonStyle(.plain)
         }
@@ -553,13 +561,16 @@ struct ContentView: View {
 
     private var trailingDynamicButton: some View {
         let style = trailingButtonStyle
-        // chip 状态 (idle/keyboard) 需要边框来在白胶囊上可见;
-        // brand-color 状态 (send/stop) 自带高对比, 不需要边框
-        let needsBorder = !canSend && !canCancelGeneration
+        // waveform / keyboard 是 idle 辅助态, icon 用 17pt + opacity 0.68 让它"浮起来";
+        // send / stop 是行动态, 用 18pt 满 opacity 强调.
+        let isIdleAux = !canSend && !canCancelGeneration
+        let iconSize: CGFloat = isIdleAux ? UIScale.waveformIconSize : UIScale.chipIconSize
+        let iconOpacity: Double = isIdleAux ? UIScale.waveformIconOpacity : 1.0
         return Button(action: style.action) {
             Image(systemName: style.icon)
-                .font(.system(size: UIScale.chipIconSize, weight: .regular))
+                .font(.system(size: iconSize, weight: .regular))
                 .foregroundStyle(style.fgColor)
+                .opacity(iconOpacity)
                 .frame(width: UIScale.chipDiameter, height: UIScale.chipDiameter)
                 .background(style.bgColor, in: Circle())
         }

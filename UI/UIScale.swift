@@ -51,13 +51,36 @@ enum UIScale {
     static var pillShadowBlur: CGFloat { isLargeScreen ? 18 : 16 }
 
     /// chip (+ 按钮 / waveform 按钮) 直径.
-    /// 真机 PPI 下 40pt 偏大, 调到 38pt — Apple Music / Linear chip 大致这个量级.
-    static var chipDiameter: CGFloat { isLargeScreen ? 40 : 38 }
+    /// 36pt — 点击区够大,视觉重量克制. Apple Music nav chip 同档.
+    /// "点击区域大 / 视觉 icon 小" = 空气感 = 高级感.
+    static var chipDiameter: CGFloat { isLargeScreen ? 38 : 36 }
 
-    /// chip icon 字号 (SF Symbols).
-    /// 22pt 在真机偏粗, 改 18pt regular — 跟 Apple Music nav icon 同档,
-    /// 配 38pt chip 留出居中呼吸空间, 更精致.
+    /// plus icon 字号. 跟 chip ratio 50% — 留呼吸空间.
     static var chipIconSize: CGFloat { 18 }
+
+    /// waveform icon 字号 — 比 plus 小 1pt.
+    /// 因为 waveform 视觉密度高(三条波),同 pt 看着比 plus 更"吵".
+    /// 这个 icon 应该几乎隐身, 真正主角是 orb.
+    static var waveformIconSize: CGFloat { 17 }
+
+    /// waveform / keyboard icon 的 opacity — 让它"浮在空气里",不抢戏.
+    static var waveformIconOpacity: Double { 0.68 }
+
+    /// 右上 gear icon 字号.
+    static var gearIconSize: CGFloat { 18 }
+
+    /// 右上 gear icon opacity — 跟整体克制气质对齐.
+    static var gearIconOpacity: Double { 0.72 }
+
+    /// 左上 chip 外圈直径.
+    /// 28pt — 比底部 chip 更小, 因为它是"状态痕迹"不是按钮.
+    static var topStatusChipDiameter: CGFloat { 28 }
+
+    /// 左上 chip 内点直径.
+    static var topStatusChipDotSize: CGFloat { 6 }
+
+    /// 左上 chip 背景透明度 — 不像按钮, 像"悬浮状态痕迹".
+    static var topStatusChipBgOpacity: Double { 0.6 }
 
     /// chip 到胶囊内壁的距离.
     static var chipInnerMargin: CGFloat { 12 }
