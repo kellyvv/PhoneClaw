@@ -124,6 +124,9 @@
 		B85F211303561796B93E9575 /* (null) in Sources */ = {isa = PBXBuildFile; };
 		B881A2E7F9483D5ED2AC206B /* SkillsManagerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D269F8BFCAB68D82440F704B /* SkillsManagerView.swift */; };
 		137C43C64332571D07B4D532 /* ModelConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F0E463E3C7A27CA8DBEE333 /* ModelConfig.swift */; };
+		5D1A2B3C4E5F607180905678 /* HotfixFeatureFlags.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D1A2B3C4E5F607180901234 /* HotfixFeatureFlags.swift */; };
+		6E2B3C4D5F607182A0B56789 /* ConversationMemoryPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E2B3C4D5F607182A0B12345 /* ConversationMemoryPolicy.swift */; };
+		7F3C4D5E6071839BC5678901 /* PromptObservation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F3C4D5E6071839BC1234567 /* PromptObservation.swift */; };
 		B8A84E4D0DDDE011B5929DA2 /* AgentEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = E18A47114A10132E25E220F8 /* AgentEngine.swift */; };
 		BB2000000000000000000001 /* LLMTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000001 /* LLMTypes.swift */; };
 		BB2000000000000000000002 /* InferenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000002 /* InferenceService.swift */; };
@@ -313,6 +316,9 @@
 		DAF684F9A04FAEE76440F69C /* OrbAudioAnalyser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OrbAudioAnalyser.swift; path = Live/Audio/OrbAudioAnalyser.swift; sourceTree = SOURCE_ROOT; };
 		DISPATCHER000000000101 /* BackendDispatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendDispatcher.swift; sourceTree = "<group>"; };
 		9F0E463E3C7A27CA8DBEE333 /* ModelConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelConfig.swift; sourceTree = "<group>"; };
+		5D1A2B3C4E5F607180901234 /* HotfixFeatureFlags.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotfixFeatureFlags.swift; sourceTree = "<group>"; };
+		6E2B3C4D5F607182A0B12345 /* ConversationMemoryPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationMemoryPolicy.swift; sourceTree = "<group>"; };
+		7F3C4D5E6071839BC1234567 /* PromptObservation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptObservation.swift; sourceTree = "<group>"; };
 		E18A47114A10132E25E220F8 /* AgentEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentEngine.swift; sourceTree = "<group>"; };
 		E1E383F793CD103FF368037A /* LiveHistoryMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveHistoryMessage.swift; path = Live/Turn/Types/LiveHistoryMessage.swift; sourceTree = SOURCE_ROOT; };
 		E62C3CEFC7AE63873D751E75 /* ConfigurationsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigurationsView.swift; sourceTree = "<group>"; };
@@ -397,6 +403,8 @@
 				A31476F02F85741500318978 /* Planner.swift */,
 				A31476F12F85741500318978 /* Router.swift */,
 				A31476F22F85741500318978 /* ChatSessionStore.swift */,
+				6E2B3C4D5F607182A0B12345 /* ConversationMemoryPolicy.swift */,
+				7F3C4D5E6071839BC1234567 /* PromptObservation.swift */,
 				A31476F32F85741500318978 /* ToolCallParser.swift */,
 				A31476F42F85741500318978 /* ToolChain.swift */,
 				A31476E82F856FD700318978 /* ChatAttachments.swift */,
@@ -641,6 +649,7 @@
 				2F4A6C8E0A1B2C3D4E5F6070 /* AudioCaptureService.swift */,
 				E18A47114A10132E25E220F8 /* AgentEngine.swift */,
 				9F0E463E3C7A27CA8DBEE333 /* ModelConfig.swift */,
+				5D1A2B3C4E5F607180901234 /* HotfixFeatureFlags.swift */,
 			);
 			path = Agent;
 			sourceTree = "<group>";
@@ -835,6 +844,9 @@
 				2F4A6C8E0A1B2C3D4E5F6071 /* AudioCaptureService.swift in Sources */,
 				B8A84E4D0DDDE011B5929DA2 /* AgentEngine.swift in Sources */,
 				137C43C64332571D07B4D532 /* ModelConfig.swift in Sources */,
+				5D1A2B3C4E5F607180905678 /* HotfixFeatureFlags.swift in Sources */,
+				6E2B3C4D5F607182A0B56789 /* ConversationMemoryPolicy.swift in Sources */,
+				7F3C4D5E6071839BC5678901 /* PromptObservation.swift in Sources */,
 				C3C4D5E6F7081A2B3C52D3E4 /* ChatModels.swift in Sources */,
 				97E96A2FBFFAF609F276A896 /* ConfigurationsView.swift in Sources */,
 				9412304167DACB86E5D60D49 /* ContentView.swift in Sources */,
