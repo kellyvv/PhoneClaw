@@ -1,0 +1,4 @@
+.build/
+.swiftpm/
+Package.resolved
+*.xcodeproj/
