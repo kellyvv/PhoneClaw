@@ -11,8 +11,12 @@ typealias PlatformImage = UIImage
 typealias PlatformImage = CIImage
 #endif
 
+/// Agent 层的 free-form 日志入口。
+/// 转发到 PCLog.debug(走 os.Logger),不再用裸 print。
+/// 想细分级别的调用点可以直接换成 PCLog.warn/event/error。
+/// 见 docs/RUNTIME_ARCHITECTURE_PLAN.md §3.2 DiagnosticsLogger。
 func log(_ message: String) {
-    print(message)
+    PCLog.debug(message)
 }
 
 // MARK: - Agent Engine
