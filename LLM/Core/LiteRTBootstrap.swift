@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(PhoneClawEngine)
 import PhoneClawEngine
+#endif
 
 // MARK: - LiteRTBootstrap
 //
@@ -53,16 +55,23 @@ enum LiteRTBootstrap {
         //    LiteRT C API call that might trigger TF logging.
         PCLog.suppressRuntimeNoise()
 
-        // 2. GPU accelerator preload — the critical path.
+        // 2. GPU accelerator preload — the critical path (iOS only).
         //    This dlopen registers the Metal backend into LiteRT's singleton
         //    Environment before any engine_create can seal it.
+        //    CLI/Mac harness skips this — uses MLX, never calls LiteRT.
+        #if canImport(PhoneClawEngine)
         LiteRTRuntime.preloadGpuAccelerator()
+        #endif
 
         // 3. Mark complete.
         bootstrapTimestamp = CFAbsoluteTimeGetCurrent()
         isBootstrapped = true
 
+        #if canImport(PhoneClawEngine)
         PCLog.event("litert_bootstrap",
                     detail: "gpu_preloaded=\(LiteRTRuntime.isGpuAcceleratorPreloaded) elapsed_ms=\(String(format: "%.1f", (bootstrapTimestamp - LiteRTRuntime.preloadTimestamp) * 1000))")
+        #else
+        PCLog.event("litert_bootstrap", detail: "skipped=non_iOS")
+        #endif
     }
 }
