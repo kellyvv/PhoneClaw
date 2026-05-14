@@ -451,7 +451,7 @@ struct ContentView: View {
                     .font(.system(size: 18, weight: .regular))
                     .foregroundStyle(Theme.textSecondary)
                     .frame(width: 40, height: 40)
-                    .background(Theme.bg, in: Circle())
+                    .background(Theme.bgHover, in: Circle())
             }
             .buttonStyle(.plain)
             #if canImport(PhotosUI)
@@ -489,14 +489,14 @@ struct ContentView: View {
             //         语音模式 → keyboard).
             trailingDynamicButton
         }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 11)
         .background(
             Theme.bgElevated,
             in: Capsule()
         )
         .shadow(color: Color.black.opacity(0.06), radius: 12, x: 0, y: 4)
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 8)
         .padding(.vertical, 14)
     }
 
@@ -529,7 +529,7 @@ struct ContentView: View {
         if isVoiceInputMode {
             return .init(
                 icon: "keyboard",
-                bgColor: Theme.bg,  // champagne 色 chip,跟左侧 + 按钮一致 (iOS 凹陷视觉)
+                bgColor: Theme.bgHover,  // 暖灰 chip,跟左侧 + 按钮一致,在白胶囊上清晰可见
                 fgColor: Theme.textSecondary,
                 action: { exitVoiceInputMode() }
             )

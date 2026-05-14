@@ -16,7 +16,7 @@ struct Theme {
     // MARK: 背景
     static let bg = Color(hex: "F8F5EF")            // champagne 米白
     static let bgElevated = Color(hex: "FFFFFF")     // 卡片/输入框 纯白
-    static let bgHover = Color(hex: "F0EBE2")        // chip 内底 / pressed (3-4% 暗于 bg)
+    static let bgHover = Color(hex: "EAE5DB")        // chip 内底 / pressed (在白胶囊上有 ~8% 对比, 清晰可见)
 
     // MARK: 文字
     static let textPrimary = Color(hex: "2C2C2C")    // 主文字 深灰
