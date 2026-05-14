@@ -74,6 +74,13 @@ enum PCLog {
         logger.error("[Error] \(tag)\(suffix)")
     }
 
+    // MARK: - [Event] Lifecycle events (bootstrap, teardown, etc.)
+
+    static func event(_ tag: String, detail: String = "") {
+        let suffix = detail.isEmpty ? "" : " \(detail)"
+        logger.info("[Event] \(tag)\(suffix)")
+    }
+
     // MARK: - Suppress LiteRT Runtime Noise
 
     /// Call once at startup to set TF_CPP_MIN_LOG_LEVEL=2 (WARNING+).

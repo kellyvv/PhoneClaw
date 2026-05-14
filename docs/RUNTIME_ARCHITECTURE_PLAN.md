@@ -174,11 +174,12 @@ enum LiteRTBootstrap {
 
     static func bootstrap() {
         guard !isBootstrapped else { return }
+        PCLog.suppressRuntimeNoise()        // 日志降噪
         // GPU accelerator preload — 必须在任何 engine_create 之前
-        _ = _preloadGpuAcceleratorOnce
+        LiteRTRuntime.preloadGpuAccelerator()
         bootstrapTimestamp = CFAbsoluteTimeGetCurrent()
         isBootstrapped = true
-        DiagnosticsLogger.shared.event("litert_bootstrap_complete")
+        PCLog.event("litert_bootstrap_complete")
     }
 }
 
@@ -751,9 +752,8 @@ switchBackend("gpu")
 struct PhoneClawApp: App {
     init() {
         // ▸ 第一行：LiteRT 进程级初始化（同步，必须在任何 engine_create 之前）
+        // bootstrap() 内部已处理: PCLog.suppressRuntimeNoise() + GPU accelerator preload
         LiteRTBootstrap.bootstrap()
-
-        PCLog.suppressRuntimeNoise()
     }
 
     var body: some Scene {

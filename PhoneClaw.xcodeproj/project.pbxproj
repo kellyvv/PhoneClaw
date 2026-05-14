@@ -138,6 +138,11 @@
 		BB2000000000000000000100 /* LanguageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000100 /* LanguageService.swift */; };
 		BB2000000000000000000101 /* L10n.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000101 /* L10n.swift */; };
 		BB2000000000000000000102 /* PromptLocale.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000102 /* PromptLocale.swift */; };
+		BB2000000000000000000103 /* LiteRTBootstrap.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000103 /* LiteRTBootstrap.swift */; };
+		BB2000000000000000000104 /* RuntimeSessionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000104 /* RuntimeSessionState.swift */; };
+		BB2000000000000000000105 /* InstallState.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000105 /* InstallState.swift */; };
+		BB2000000000000000000106 /* GenerationTransaction.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000106 /* GenerationTransaction.swift */; };
+		BB2000000000000000000107 /* ModelRuntimeCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000107 /* ModelRuntimeCoordinator.swift */; };
 		BB2000000000000000000A99 /* ZipExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000A99 /* ZipExtractor.swift */; };
 		BD75E7E5620A8FF0A868E9F0 /* libPods-PhoneClaw.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 4F4ACB3F4531FF61E0AADA07 /* libPods-PhoneClaw.a */; };
 		BE6E6C928537BCC4DBC975E9 /* (null) in Sources */ = {isa = PBXBuildFile; };
@@ -263,6 +268,11 @@
 		BB1000000000000000000003 /* ModelCatalogProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelCatalogProtocol.swift; sourceTree = "<group>"; };
 		BB1000000000000000000004 /* ModelInstallerProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelInstallerProtocol.swift; sourceTree = "<group>"; };
 		BB1000000000000000000005 /* RuntimePolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimePolicy.swift; sourceTree = "<group>"; };
+		BB1000000000000000000103 /* LiteRTBootstrap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiteRTBootstrap.swift; sourceTree = "<group>"; };
+		BB1000000000000000000104 /* RuntimeSessionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeSessionState.swift; sourceTree = "<group>"; };
+		BB1000000000000000000105 /* InstallState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstallState.swift; sourceTree = "<group>"; };
+		BB1000000000000000000106 /* GenerationTransaction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationTransaction.swift; sourceTree = "<group>"; };
+		BB1000000000000000000107 /* ModelRuntimeCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelRuntimeCoordinator.swift; sourceTree = "<group>"; };
 		BB1000000000000000000006 /* PredefinedModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PredefinedModels.swift; sourceTree = "<group>"; };
 		BB1000000000000000000007 /* LiteRTBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiteRTBackend.swift; sourceTree = "<group>"; };
 		BB1000000000000000000008 /* LiteRTCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiteRTCatalog.swift; sourceTree = "<group>"; };
@@ -487,6 +497,11 @@
 				BB1000000000000000000003 /* ModelCatalogProtocol.swift */,
 				BB1000000000000000000004 /* ModelInstallerProtocol.swift */,
 				BB1000000000000000000005 /* RuntimePolicy.swift */,
+				BB1000000000000000000103 /* LiteRTBootstrap.swift */,
+				BB1000000000000000000104 /* RuntimeSessionState.swift */,
+				BB1000000000000000000105 /* InstallState.swift */,
+				BB1000000000000000000106 /* GenerationTransaction.swift */,
+				BB1000000000000000000107 /* ModelRuntimeCoordinator.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -958,6 +973,11 @@
 				BB2000000000000000000003 /* ModelCatalogProtocol.swift in Sources */,
 				BB2000000000000000000004 /* ModelInstallerProtocol.swift in Sources */,
 				BB2000000000000000000005 /* RuntimePolicy.swift in Sources */,
+				BB2000000000000000000103 /* LiteRTBootstrap.swift in Sources */,
+				BB2000000000000000000104 /* RuntimeSessionState.swift in Sources */,
+				BB2000000000000000000105 /* InstallState.swift in Sources */,
+				BB2000000000000000000106 /* GenerationTransaction.swift in Sources */,
+				BB2000000000000000000107 /* ModelRuntimeCoordinator.swift in Sources */,
 				BB2000000000000000000006 /* PredefinedModels.swift in Sources */,
 				BB2000000000000000000007 /* LiteRTBackend.swift in Sources */,
 				MINICPMV0000000000001 /* MiniCPMVBackend.swift in Sources */,
