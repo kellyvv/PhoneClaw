@@ -450,8 +450,8 @@ struct ContentView: View {
                 Image(systemName: "plus")
                     .font(.system(size: 18, weight: .regular))
                     .foregroundStyle(Theme.textSecondary)
-                    .frame(width: 34, height: 34)
-                    .background(Theme.bgHover, in: Circle())
+                    .frame(width: 40, height: 40)
+                    .background(Theme.bg, in: Circle())
             }
             .buttonStyle(.plain)
             #if canImport(PhotosUI)
@@ -489,11 +489,14 @@ struct ContentView: View {
             //         语音模式 → keyboard).
             trailingDynamicButton
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 9)
-        .background(Theme.bgElevated, in: Capsule())
-        .overlay(Capsule().strokeBorder(Theme.borderSubtle, lineWidth: 1))
-        .padding(.horizontal, Theme.inputPadH)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 6)
+        .background(
+            Theme.bgElevated,
+            in: Capsule()
+        )
+        .shadow(color: Color.black.opacity(0.06), radius: 12, x: 0, y: 4)
+        .padding(.horizontal, 16)
         .padding(.vertical, 14)
     }
 
@@ -526,7 +529,7 @@ struct ContentView: View {
         if isVoiceInputMode {
             return .init(
                 icon: "keyboard",
-                bgColor: Theme.bgHover,  // 跟左侧 + 按钮的 chip 底色一致
+                bgColor: Theme.bg,  // champagne 色 chip,跟左侧 + 按钮一致 (iOS 凹陷视觉)
                 fgColor: Theme.textSecondary,
                 action: { exitVoiceInputMode() }
             )
@@ -542,11 +545,14 @@ struct ContentView: View {
 
     private var trailingDynamicButton: some View {
         let style = trailingButtonStyle
+        // chip 状态 (idle/keyboard) 需要边框来在白胶囊上可见;
+        // brand-color 状态 (send/stop) 自带高对比, 不需要边框
+        let needsBorder = !canSend && !canCancelGeneration
         return Button(action: style.action) {
             Image(systemName: style.icon)
-                .font(.system(size: 14, weight: .bold))
+                .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(style.fgColor)
-                .frame(width: 34, height: 34)
+                .frame(width: 40, height: 40)
                 .background(style.bgColor, in: Circle())
         }
         .buttonStyle(.plain)
