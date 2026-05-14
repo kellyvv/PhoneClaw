@@ -77,7 +77,7 @@ struct SkillsManagerView: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .background(Theme.bg)
         }
-        .preferredColorScheme(.dark)
+        .preferredColorScheme(.light)
     }
 
     private func toggleExpand(_ id: String) {

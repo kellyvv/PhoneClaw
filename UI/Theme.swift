@@ -1,31 +1,41 @@
 import SwiftUI
 
-// MARK: - PhoneClaw 设计系统（Claude 风格）
-// 跨平台共享：macOS + iOS
+// MARK: - PhoneClaw 设计系统(瓷器风,v2)
+// 跨平台共享:macOS + iOS
+//
+// v2 配色锚点:
+//   - 主背景 champagne #F8F5EF (跟 master 设计稿一致)
+//   - 强调色 amber copper #C77A3F (跟 App Icon 金爪同色系,brand 主载体)
+//   - 状态点 muted gold #C39660 (避开 iOS 通知红语义)
+//   - 文字深灰系 (light theme 下保持高可读性)
+//
+// dark theme 的旧值 (#1A1915 / #D4A574 等) 已迁移走 — Live mode 内部
+// 用 dark 风格的 view 自己持有局部颜色, 不再走 Theme.bg。
 
 struct Theme {
     // MARK: 背景
-    static let bg = Color(hex: "1A1915")            // 深暖棕
-    static let bgElevated = Color(hex: "24221D")     // 卡片/输入框
-    static let bgHover = Color(hex: "2E2B25")        // hover / pressed
+    static let bg = Color(hex: "F8F5EF")            // champagne 米白
+    static let bgElevated = Color(hex: "FFFFFF")     // 卡片/输入框 纯白
+    static let bgHover = Color(hex: "F0EBE2")        // chip 内底 / pressed (3-4% 暗于 bg)
 
     // MARK: 文字
-    static let textPrimary = Color(hex: "ECECEA")    // 主文字 暖白
-    static let textSecondary = Color(hex: "A8A8A0")  // 次要
-    static let textTertiary = Color(hex: "6B6B63")   // 辅助/placeholder
+    static let textPrimary = Color(hex: "2C2C2C")    // 主文字 深灰
+    static let textSecondary = Color(hex: "6B6B6B")  // 次要中灰
+    static let textTertiary = Color(hex: "B0B0B0")   // 辅助/placeholder 浅灰
 
-    // MARK: 强调色
-    static let accent = Color(hex: "D4A574")         // 沙金/赭石
-    static let accentSubtle = Color(hex: "D4A574").opacity(0.12)
-    static let accentGreen = Color(hex: "7CB87C")    // 成功/在线
+    // MARK: 强调色 (brand)
+    static let accent = Color(hex: "C77A3F")         // amber copper — brand 主色
+    static let accentSubtle = Color(hex: "C77A3F").opacity(0.12)
+    static let accentMuted = Color(hex: "C39660")    // muted gold — 状态点专用,避开通知红
+    static let accentGreen = Color(hex: "7CB87C")    // 成功/在线 (保留, 旧逻辑可能在用)
 
-    // MARK: 用户气泡
-    static let userBubble = Color(hex: "D4A574")
-    static let userText = Color(hex: "1A1915")
+    // MARK: 用户气泡 (浅底 + 深字 → 改成 brand 色底 + 白字)
+    static let userBubble = Color(hex: "C77A3F")
+    static let userText = Color(hex: "FFFFFF")
 
     // MARK: 边框
-    static let border = Color(hex: "3A3732")
-    static let borderSubtle = Color(hex: "2E2B25")
+    static let border = Color(hex: "E0DED7")        // 浅描线
+    static let borderSubtle = Color(hex: "F0EBE2")  // 更浅
 
     // MARK: 响应式间距
     #if os(macOS)

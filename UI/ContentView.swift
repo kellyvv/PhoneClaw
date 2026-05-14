@@ -107,7 +107,7 @@ struct ContentView: View {
                 inputBar
             }
         }
-        .preferredColorScheme(.dark)
+        .preferredColorScheme(.light)
         .task {
             guard !ProcessInfo.processInfo.isRunningXCTest else { return }
             engine.setup()
@@ -1163,7 +1163,7 @@ private struct SessionHistorySheet: View {
                 }
             }
         }
-        .preferredColorScheme(.dark)
+        .preferredColorScheme(.light)
     }
 
     private var emptyState: some View {

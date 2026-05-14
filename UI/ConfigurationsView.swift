@@ -79,7 +79,7 @@ struct ConfigurationsView: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .background(Theme.bgElevated)
         }
-        .preferredColorScheme(.dark)
+        .preferredColorScheme(.light)
         .onAppear {
             guard !didLoadCurrentSettings else { return }
             didLoadCurrentSettings = true
