@@ -61,7 +61,7 @@ examples:
 
 # Sync anchor (see scripts/check-skill-sync.sh):
 translation-source-commit: 034c373
-translation-source-sha256: b8666b6ddbfa509bd901e7e2ce06ab4c2decdffe0aec288999e6e45237a5282f
+translation-source-sha256: f540d142133d8246547563fceed3f0a54540a1907516ab863e7833c5d3ede33d
 ---
 
 # Health Data Query
@@ -87,12 +87,8 @@ Note: "activity" / "activity level" defaults to step count (health-steps-today).
 ## Execution Flow
 
 1. Based on user intent, choose the correct tool and call it immediately — do not ask follow-up questions.
-2. Once you have the step count, give a **short** natural-language reply:
-   - Daily steps < 3000: "You walked Y steps X. Activity is on the low side — a short walk may help."
-   - 3000 ≤ daily steps < 8000: "You walked Y steps X. Activity is about average."
-   - Daily steps ≥ 8000: "You walked Y steps X. Nice activity level."
-   (X = "today"/"yesterday", Y = the number returned by the tool)
-3. For range queries (health-steps-range), return the total steps and daily average, and provide a short summary using the total and average.
+2. Once you have the step count, use the natural-language summary returned by the tool directly. Do not apply your own template or output placeholders.
+3. For range queries (health-steps-range), use the returned summary directly.
 4. **Do not** make up step counts yourself — always use the real numbers returned by the tool.
 5. **Do not** say "I don't have permission" or "I don't know" before calling the tool — call the tool first, then speak.
 

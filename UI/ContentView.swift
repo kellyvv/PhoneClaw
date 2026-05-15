@@ -65,6 +65,7 @@ struct ContentView: View {
     @State private var holdStartTask: Task<Bool, Never>?
     @State private var holdASRWarmupTask: Task<Void, Never>?
     @State private var captureOrigin: CaptureOrigin = .menu
+    @State private var showAttachmentTray = false
     @State private var showPhotoPicker = false
     @State private var showFilePicker = false
     @State private var importedAudioSnapshot: AudioCaptureSnapshot?
@@ -156,8 +157,21 @@ struct ContentView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(spacing: 0) {
                 composerAttachmentsPanel
+                if showAttachmentTray {
+                    HStack {
+                        attachmentTray
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, Theme.inputPadH + 10)
+                    .padding(.bottom, 8)
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .move(edge: .bottom)),
+                        removal: .opacity.combined(with: .scale(scale: 0.98, anchor: .bottomLeading))
+                    ))
+                }
                 inputBar
             }
+            .animation(.easeOut(duration: 0.2), value: showAttachmentTray)
         }
         .task {
             guard !ProcessInfo.processInfo.isRunningXCTest else { return }
@@ -186,6 +200,11 @@ struct ContentView: View {
                 holdASRWarmupTask?.cancel()
                 holdASRWarmupTask = nil
                 holdToTalkASR.unload()
+            }
+        }
+        .onChange(of: isInputFocused) { _, focused in
+            if focused {
+                showAttachmentTray = false
             }
         }
         .fullScreenCover(isPresented: $showHistory) {
@@ -495,6 +514,77 @@ struct ContentView: View {
         !audioCapture.isCapturing && audioCapture.latestSnapshot() != nil
     }
 
+    private var attachmentTray: some View {
+        HStack(spacing: 6) {
+            #if canImport(PhotosUI)
+            attachmentTrayButton(
+                title: tr("照片", "Photo"),
+                systemImage: "photo"
+            ) {
+                showAttachmentTray = false
+                showPhotoPicker = true
+            }
+            #endif
+
+            attachmentTrayButton(
+                title: audioCapture.isCapturing && captureOrigin == .menu
+                    ? tr("停止", "Stop")
+                    : tr("录音", "Record"),
+                systemImage: audioCapture.isCapturing && captureOrigin == .menu
+                    ? "stop.fill"
+                    : "waveform"
+            ) {
+                showAttachmentTray = false
+                captureOrigin = .menu
+                Task { _ = await audioCapture.toggleCapture() }
+            }
+
+            attachmentTrayButton(
+                title: tr("文件", "File"),
+                systemImage: "doc"
+            ) {
+                showAttachmentTray = false
+                showFilePicker = true
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 7)
+        .background(
+            Theme.bgElevated.opacity(0.78),
+            in: RoundedRectangle(cornerRadius: 22, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(Theme.border.opacity(0.62), lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.10), radius: 18, x: 0, y: 8)
+    }
+
+    private func attachmentTrayButton(
+        title: String,
+        systemImage: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 13, weight: .regular))
+                    .frame(width: 15)
+                Text(title)
+                    .font(.system(size: 12.5, weight: .regular, design: .rounded))
+            }
+            .foregroundStyle(Theme.textSecondary.opacity(0.82))
+            .padding(.horizontal, 10)
+            .frame(height: 30)
+            .background(
+                Theme.bgHover.opacity(0.34),
+                in: Capsule(style: .continuous)
+            )
+            .contentShape(Capsule(style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
     // MARK: - inputBar (v2: 胶囊形容器内嵌 3 个子元素)
     //
     // 设计稿:整个输入框是一个 white capsule,内部 [+] | text | [waveform/send]
@@ -503,31 +593,20 @@ struct ContentView: View {
     private var inputBar: some View {
         HStack(spacing: UIScale.chipTextSpacing) {
             // 左:+ 附件菜单 — 圆形 chip
-            Menu {
-                #if canImport(PhotosUI)
-                Button {
-                    showPhotoPicker = true
-                } label: {
-                    Label(tr("照片", "Photo"), systemImage: "photo")
-                }
-                #endif
-                Button {
-                    captureOrigin = .menu
-                    Task { _ = await audioCapture.toggleCapture() }
-                } label: {
-                    Label(audioCapture.isCapturing && captureOrigin == .menu ? tr("停止录音", "Stop Recording") : tr("录音", "Record"), systemImage: audioCapture.isCapturing && captureOrigin == .menu ? "stop.fill" : "waveform")
-                }
-                Button {
-                    showFilePicker = true
-                } label: {
-                    Label(tr("文件", "File"), systemImage: "doc")
-                }
+            Button {
+                isInputFocused = false
+                showAttachmentTray.toggle()
             } label: {
                 Image(systemName: "plus")
                     .font(.system(size: UIScale.chipIconSize, weight: .regular))
                     .foregroundStyle(Theme.textSecondary)
                     .frame(width: UIScale.chipDiameter, height: UIScale.chipDiameter)
-                    .background(Theme.bgHover, in: Circle())
+                    .background(
+                        showAttachmentTray ? Theme.bgHover.opacity(0.88) : Theme.bgHover,
+                        in: Circle()
+                    )
+                    .rotationEffect(.degrees(showAttachmentTray ? 45 : 0))
+                    .animation(.easeInOut(duration: 0.18), value: showAttachmentTray)
             }
             .buttonStyle(.plain)
             #if canImport(PhotosUI)
@@ -1001,6 +1080,7 @@ struct ContentView: View {
     private func send(includeAudio: Bool = true) async {
         let text = inputText
         let images = selectedImages
+        showAttachmentTray = false
         if audioCapture.isCapturing {
             _ = audioCapture.stopCapture()
         }
@@ -1026,6 +1106,7 @@ struct ContentView: View {
         }
         _ = audioCapture.consumeLatestSnapshot()
         isInputFocused = false
+        showAttachmentTray = false
         showLiveMode = true
     }
 
@@ -1416,28 +1497,18 @@ private struct SessionHistorySheet: View {
     }
 
     private var emptyState: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(tr("还没有历史记录", "No chat history yet"))
+        VStack(alignment: .leading, spacing: 18) {
+            Text(tr("暂无历史", "No History"))
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(Theme.textPrimary)
-
-            Text(tr(
-                "开始一次新会话后，聊天内容会自动保存在这里。",
-                "Start a new chat and it will appear here."
-            ))
-                .font(.system(size: 14, weight: .regular))
-                .lineSpacing(3)
-                .foregroundStyle(Theme.textSecondary)
-                .opacity(0.9)
 
             Button {
                 engine.startNewSession()
                 dismiss()
             } label: {
-                Text(tr("开始新会话", "Start New Chat"))
+                Text(tr("新会话", "New Chat"))
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(Theme.accentMuted)
-                    .padding(.top, 12)
             }
             .buttonStyle(.plain)
         }

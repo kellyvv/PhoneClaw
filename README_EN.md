@@ -21,7 +21,7 @@ A local AI Agent for iPhone. Offline. Private. Native.
 ## Demo
 
 <div align="center">
-  <video src="https://github.com/user-attachments/assets/be57bb84-ef68-406f-9dd2-5e214db1b191" width="100%" height="auto" controls autoplay loop muted></video>
+  <video src="https://github.com/user-attachments/assets/355bf2bf-d9cc-4354-aae0-c5d5cb0ca1ee" width="100%" height="auto" controls autoplay loop muted></video>
 </div>
 
 

@@ -45,6 +45,7 @@ enum HealthTools {
             description: tr("读取用户今日步数 (从本地 0 点到当前时间的累计步数)。仅读取,不修改。", "Read the user's step count for today (cumulative steps from local midnight to now). Read-only, no modifications."),
             parameters: tr("无", "None"),
             isParameterless: true,
+            skipFollowUp: true,
             execute: { args in
                 try await stepsTodayCanonical(args).detail
             },
@@ -61,6 +62,7 @@ enum HealthTools {
             description: tr("读取用户昨日步数 (昨天本地 0 点到 23:59:59 的累计步数)。仅读取,不修改。", "Read the user's step count for yesterday (cumulative steps from yesterday local midnight to 23:59:59). Read-only, no modifications."),
             parameters: tr("无", "None"),
             isParameterless: true,
+            skipFollowUp: true,
             execute: { args in
                 try await stepsYesterdayCanonical(args).detail
             },
@@ -77,6 +79,7 @@ enum HealthTools {
             description: tr("读取用户昨晚的睡眠数据 (最近 24 小时内的睡眠记录)。返回总时长和分阶段明细。", "Read the user's sleep data for last night (sleep records within the past 24 hours). Returns total duration and per-stage breakdown."),
             parameters: tr("无", "None"),
             isParameterless: true,
+            skipFollowUp: true,
             execute: { args in
                 try await sleepLastNightCanonical(args).detail
             },
@@ -93,6 +96,7 @@ enum HealthTools {
             description: tr("读取用户最近 7 天的睡眠汇总 (每晚总时长 + 7 天平均)。", "Read a sleep summary for the user's past 7 days (total duration per night + 7-day average)."),
             parameters: tr("无", "None"),
             isParameterless: true,
+            skipFollowUp: true,
             execute: { args in
                 try await sleepWeekCanonical(args).detail
             },
@@ -109,6 +113,7 @@ enum HealthTools {
             description: tr("读取用户最近 7 天的运动记录 (类型、时长、消耗)。", "Read the user's workout records for the past 7 days (type, duration, calories burned)."),
             parameters: tr("无", "None"),
             isParameterless: true,
+            skipFollowUp: true,
             execute: { args in
                 try await workoutRecentCanonical(args).detail
             },
@@ -125,6 +130,7 @@ enum HealthTools {
             description: tr("读取用户今日步行+跑步距离 (从本地 0 点到当前时间, 单位 km)。仅读取。", "Read the user's walking+running distance for today (from local midnight to now, in km). Read-only."),
             parameters: tr("无", "None"),
             isParameterless: true,
+            skipFollowUp: true,
             execute: { args in
                 try await distanceTodayCanonical(args).detail
             },
@@ -141,6 +147,7 @@ enum HealthTools {
             description: tr("读取用户今日活动消耗的卡路里 (从本地 0 点到当前时间)。仅读取。", "Read the user's active calories burned today (from local midnight to now). Read-only."),
             parameters: tr("无", "None"),
             isParameterless: true,
+            skipFollowUp: true,
             execute: { args in
                 try await activeEnergyTodayCanonical(args).detail
             },
@@ -157,6 +164,7 @@ enum HealthTools {
             description: tr("读取用户最近的静息心率 (最近 24 小时平均, 单位 BPM)。仅读取。", "Read the user's recent resting heart rate (average over the past 24 hours, in BPM). Read-only."),
             parameters: tr("无", "None"),
             isParameterless: true,
+            skipFollowUp: true,
             execute: { args in
                 try await heartRateRestingCanonical(args).detail
             },
@@ -174,6 +182,7 @@ enum HealthTools {
             parameters: tr("{\"days\":{\"type\":\"integer\",\"description\":\"查询天数 (1-30)\",\"required\":true}}", "{\"days\":{\"type\":\"integer\",\"description\":\"Number of days to query (1-30)\",\"required\":true}}"),
             requiredParameters: ["days"],
             isParameterless: false,
+            skipFollowUp: true,
             execute: { args in
                 try await stepsRangeCanonical(args).detail
             },
@@ -200,7 +209,7 @@ enum HealthTools {
         ) {
         case .success(let steps):
             let rounded = Int(steps.rounded())
-            let summary = tr("今天走了 \(rounded) 步。", "You walked \(rounded) steps today.")
+            let summary = singleDayStepsSummary(periodZh: "今天", periodEn: "Today", steps: rounded)
             return healthSuccess(
                 summary: summary,
                 extras: ["steps": rounded, "unit": tr("步", "steps"), "date": isoDateString(now)]
@@ -224,7 +233,7 @@ enum HealthTools {
         ) {
         case .success(let steps):
             let rounded = Int(steps.rounded())
-            let summary = tr("昨天走了 \(rounded) 步。", "You walked \(rounded) steps yesterday.")
+            let summary = singleDayStepsSummary(periodZh: "昨天", periodEn: "Yesterday", steps: rounded)
             return healthSuccess(
                 summary: summary,
                 extras: ["steps": rounded, "unit": tr("步", "steps"), "date": isoDateString(yesterdayStart)]
@@ -429,7 +438,7 @@ enum HealthTools {
             let total = entries.reduce(0) { $0 + Int($1.value.rounded()) }
             let avg = entries.isEmpty ? 0 : total / entries.count
             let dailyList = entries.map { ["date": $0.date, "steps": Int($0.value.rounded())] as [String: Any] }
-            let summary = tr("最近 \(clampedDays) 天共走了 \(total) 步，日均 \(avg) 步。", "Over the past \(clampedDays) days, you walked \(total) steps, averaging \(avg) per day.")
+            let summary = stepsRangeSummary(days: clampedDays, total: total, average: avg)
             return healthSuccess(
                 summary: summary,
                 extras: ["days": clampedDays, "total": total, "daily_avg": avg, "daily": dailyList]
@@ -768,6 +777,41 @@ enum HealthTools {
             summary: tr("无法读取步数数据。请确认健康权限已开启。", "Unable to read step data. Please make sure Health permission is enabled."),
             detail: tr("读取步数失败：\(detail)", "Failed to read steps: \(detail)"),
             errorCode: "HEALTH_STEPS_READ_FAILED"
+        )
+    }
+
+    private static func singleDayStepsSummary(periodZh: String, periodEn: String, steps: Int) -> String {
+        let (zhComment, enComment) = stepsActivityComment(for: steps)
+        if LanguageService.shared.current.isChinese {
+            return "\(periodZh)走了 \(steps) 步，\(zhComment)"
+        }
+        return "\(periodEn), you walked \(steps) steps. \(enComment)"
+    }
+
+    private static func stepsRangeSummary(days: Int, total: Int, average: Int) -> String {
+        let (zhComment, enComment) = stepsActivityComment(for: average)
+        if LanguageService.shared.current.isChinese {
+            return "最近 \(days) 天共走了 \(total) 步，日均 \(average) 步，\(zhComment)"
+        }
+        return "Over the past \(days) days, you walked \(total) steps, averaging \(average) per day. \(enComment)"
+    }
+
+    private static func stepsActivityComment(for steps: Int) -> (zh: String, en: String) {
+        if steps < 3_000 {
+            return (
+                "活动量偏少。可以出去散散步。",
+                "Activity is on the low side. A short walk may help."
+            )
+        }
+        if steps < 8_000 {
+            return (
+                "活动量一般。",
+                "Activity is about average."
+            )
+        }
+        return (
+            "活动量不错。",
+            "Nice activity level."
         )
     }
 

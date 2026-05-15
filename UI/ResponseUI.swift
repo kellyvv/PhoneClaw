@@ -678,21 +678,24 @@ struct SkillCardView: View {
 // MARK: - Thinking Indicator
 
 struct ThinkingIndicator: View {
-    @State private var active = 0
-    let timer = Timer.publish(every: 0.45, on: .main, in: .common).autoconnect()
-
     var body: some View {
-        HStack(spacing: 5) {
-            ForEach(0..<3, id: \.self) { i in
-                Circle()
-                    .fill(Theme.textTertiary)
-                    .frame(width: 6, height: 6)
-                    .opacity(active == i ? 1.0 : 0.3)
-                    .scaleEffect(active == i ? 1.0 : 0.75)
-                    .animation(.easeInOut(duration: 0.35), value: active)
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
+            let time = context.date.timeIntervalSinceReferenceDate
+
+            HStack(spacing: 5) {
+                ForEach(0..<3, id: \.self) { index in
+                    let phase = (time * 1.35 + Double(index) * 0.22)
+                        .truncatingRemainder(dividingBy: 1.0)
+                    let wave = (sin(phase * .pi * 2.0) + 1.0) / 2.0
+
+                    Circle()
+                        .fill(Theme.textTertiary)
+                        .frame(width: 6, height: 6)
+                        .opacity(0.28 + wave * 0.52)
+                        .scaleEffect(0.72 + wave * 0.28)
+                }
             }
+            .frame(height: 20)
         }
-        .frame(height: 20)
-        .onReceive(timer) { _ in active = (active + 1) % 3 }
     }
 }
