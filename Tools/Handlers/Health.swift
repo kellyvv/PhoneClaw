@@ -200,7 +200,7 @@ enum HealthTools {
         ) {
         case .success(let steps):
             let rounded = Int(steps.rounded())
-            let summary = tr("今日步数: \(rounded) 步", "Steps today: \(rounded)")
+            let summary = tr("今天走了 \(rounded) 步。", "You walked \(rounded) steps today.")
             return healthSuccess(
                 summary: summary,
                 extras: ["steps": rounded, "unit": tr("步", "steps"), "date": isoDateString(now)]
@@ -224,7 +224,7 @@ enum HealthTools {
         ) {
         case .success(let steps):
             let rounded = Int(steps.rounded())
-            let summary = tr("昨日步数: \(rounded) 步", "Steps yesterday: \(rounded)")
+            let summary = tr("昨天走了 \(rounded) 步。", "You walked \(rounded) steps yesterday.")
             return healthSuccess(
                 summary: summary,
                 extras: ["steps": rounded, "unit": tr("步", "steps"), "date": isoDateString(yesterdayStart)]
@@ -245,7 +245,7 @@ enum HealthTools {
             let hours = totalMin / 60
             let mins = totalMin % 60
             let stageList = stages.map { ["stage": $0.stage, "minutes": $0.minutes] as [String: Any] }
-            let summary = tr("昨晚睡眠: \(hours) 小时 \(mins) 分钟", "Sleep last night: \(hours) h \(mins) min")
+            let summary = tr("昨晚睡了 \(hours) 小时 \(mins) 分钟。", "You slept \(hours) h \(mins) min last night.")
             return healthSuccess(
                 summary: summary,
                 extras: ["total_minutes": totalMin, "hours": hours, "minutes": mins, "stages": stageList]
@@ -274,7 +274,7 @@ enum HealthTools {
             let avgMin = totalMin / 7
             let avgH = avgMin / 60
             let avgM = avgMin % 60
-            let summary = tr("最近 7 天睡眠: 日均 \(avgH) 小时 \(avgM) 分钟", "Sleep over the past 7 days: daily average \(avgH) h \(avgM) min")
+            let summary = tr("最近 7 天日均睡眠 \(avgH) 小时 \(avgM) 分钟。", "Your 7-day sleep average is \(avgH) h \(avgM) min.")
             return healthSuccess(
                 summary: summary,
                 extras: ["total_minutes": totalMin, "avg_minutes": avgMin, "days": 7]
@@ -303,7 +303,7 @@ enum HealthTools {
                 ["type": w.type, "duration_min": w.durationMin, "calories": w.calories, "date": w.date] as [String: Any]
             }
             let totalMin = workouts.reduce(0) { $0 + $1.durationMin }
-            let summary = tr("最近 7 天共 \(workouts.count) 次运动, 总时长 \(totalMin) 分钟", "\(workouts.count) workouts in the past 7 days, total duration \(totalMin) min")
+            let summary = tr("最近 7 天有 \(workouts.count) 次运动，共 \(totalMin) 分钟。", "\(workouts.count) workouts in the past 7 days, \(totalMin) min total.")
             return healthSuccess(
                 summary: summary,
                 extras: ["workouts": list, "count": workouts.count, "total_minutes": totalMin]
@@ -334,7 +334,7 @@ enum HealthTools {
         ) {
         case .success(let meters):
             let km = (meters / 1000 * 100).rounded() / 100
-            let summary = tr("今日步行距离: \(km) 公里", "Walking distance today: \(km) km")
+            let summary = tr("今天步行约 \(km) 公里。", "You walked about \(km) km today.")
             return healthSuccess(
                 summary: summary,
                 extras: ["distance_km": km, "distance_m": Int(meters.rounded()), "date": isoDateString(now)]
@@ -365,7 +365,7 @@ enum HealthTools {
         ) {
         case .success(let kcal):
             let rounded = Int(kcal.rounded())
-            let summary = tr("今日活动消耗: \(rounded) 千卡", "Active calories today: \(rounded) kcal")
+            let summary = tr("今天活动消耗约 \(rounded) 千卡。", "You burned about \(rounded) active kcal today.")
             return healthSuccess(
                 summary: summary,
                 extras: ["calories": rounded, "unit": "kcal", "date": isoDateString(now)]
@@ -391,7 +391,7 @@ enum HealthTools {
         ) {
         case .success(let bpm):
             let rounded = Int(bpm.rounded())
-            let summary = tr("静息心率: \(rounded) BPM", "Resting heart rate: \(rounded) BPM")
+            let summary = tr("静息心率是 \(rounded) BPM。", "Your resting heart rate is \(rounded) BPM.")
             return healthSuccess(
                 summary: summary,
                 extras: ["bpm": rounded, "unit": "BPM"]
@@ -429,7 +429,7 @@ enum HealthTools {
             let total = entries.reduce(0) { $0 + Int($1.value.rounded()) }
             let avg = entries.isEmpty ? 0 : total / entries.count
             let dailyList = entries.map { ["date": $0.date, "steps": Int($0.value.rounded())] as [String: Any] }
-            let summary = tr("最近 \(clampedDays) 天步数: 总计 \(total) 步, 日均 \(avg) 步", "Steps over the past \(clampedDays) days: total \(total), daily average \(avg)")
+            let summary = tr("最近 \(clampedDays) 天共走了 \(total) 步，日均 \(avg) 步。", "Over the past \(clampedDays) days, you walked \(total) steps, averaging \(avg) per day.")
             return healthSuccess(
                 summary: summary,
                 extras: ["days": clampedDays, "total": total, "daily_avg": avg, "daily": dailyList]
@@ -758,7 +758,7 @@ enum HealthTools {
         extras: [String: Any] = [:]
     ) -> CanonicalToolResult {
         healthEmpty(
-            summary: tr("\(periodDescription)还没有可用的步数结果。", "No step data available for \(periodDescription) yet."),
+            summary: tr("\(periodDescription)还没有可用的步数数据。", "No step data is available for \(periodDescription) yet."),
             extras: extras
         )
     }

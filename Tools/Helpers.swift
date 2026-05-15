@@ -48,8 +48,8 @@ func canonicalToolResult(
         return CanonicalToolResult(
             success: true,
             summary: tr(
-                "工具 \(toolName) 已执行，但没有返回内容。",
-                "Tool \(toolName) executed but returned no content."
+                "已完成，但没有返回可展示的内容。",
+                "Done, but there was no displayable result."
             ),
             detail: ""
         )
@@ -64,10 +64,10 @@ func canonicalToolResult(
             return CanonicalToolResult(
                 success: false,
                 summary: errorText.isEmpty
-                    ? tr("工具 \(toolName) 执行失败。",
-                         "Tool \(toolName) execution failed.")
-                    : tr("工具 \(toolName) 执行失败：\(errorText)",
-                         "Tool \(toolName) execution failed: \(errorText)"),
+                    ? tr("这项操作没有完成。",
+                         "This action could not be completed.")
+                    : tr("这项操作没有完成：\(errorText)",
+                         "This action could not be completed: \(errorText)"),
                 detail: trimmed,
                 errorCode: payload["error_code"] as? String
             )
@@ -143,6 +143,17 @@ func iso8601String(from date: Date) -> String {
     let formatter = ISO8601DateFormatter()
     formatter.timeZone = .current
     formatter.formatOptions = [.withInternetDateTime]
+    return formatter.string(from: date)
+}
+
+func displayDateTimeString(from date: Date) -> String {
+    let formatter = DateFormatter()
+    formatter.locale = LanguageService.shared.current.isChinese
+        ? Locale(identifier: "zh_Hans_CN")
+        : Locale(identifier: "en_US")
+    formatter.timeZone = .current
+    formatter.dateStyle = .medium
+    formatter.timeStyle = .short
     return formatter.string(from: date)
 }
 

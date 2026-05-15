@@ -96,8 +96,8 @@ enum CalendarTools {
         let location = (args["location"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         let notes = (args["notes"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         let summary = tr(
-            "已创建日历事项\u{201C}\(title)\u{201D}，开始时间为 \(iso8601String(from: startDate))。",
-            "Created calendar event \u{201C}\(title)\u{201D}, starting at \(iso8601String(from: startDate))."
+            "已创建：\(title)，\(displayDateTimeString(from: startDate))。",
+            "Created: \(title), \(displayDateTimeString(from: startDate))."
         )
 
         #if !os(iOS)

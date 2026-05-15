@@ -27,7 +27,7 @@ examples:
 
 # Sync anchor (see scripts/check-skill-sync.sh):
 translation-source-commit: 034c373
-translation-source-sha256: b963af0c9babd57afb64bc39d1d646238c34ebce1f30a69aef53cbd3997b10a6
+translation-source-sha256: 810069bcade6953c301f2840ba2f592066a0344c2d92758e3783f854aabcd8e0
 ---
 
 # Calendar Event Creation
@@ -81,6 +81,12 @@ When deciding "are all parameters provided", you must **merge all user messages 
 - **Both hard params present (no matter which turn supplied them)** → emit tool_call immediately, no explanation
 - **Either start or title missing across the full history** → ask one short question for the missing one, **do not emit tool_call**
 - Never ask for end/location/notes (soft params)
+
+## Reply after completion
+
+- After the tool succeeds, confirm the result in one natural sentence. Do not mention tool names, JSON, or internal steps.
+- Prioritize what the user cares about: event title + time.
+- Example: "Created: Product review meeting, tomorrow at 2pm."
 
 ## Invocation format
 

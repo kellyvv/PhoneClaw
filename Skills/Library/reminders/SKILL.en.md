@@ -27,7 +27,7 @@ examples:
 
 # Sync anchor (see scripts/check-skill-sync.sh):
 translation-source-commit: 034c373
-translation-source-sha256: 41d06aedebcbcd4f33370798ac393df2be8d1113f987c9b520977eba22efa4fc
+translation-source-sha256: 5254c5a5720e4f300503c46280533d4e6c449c499f5bf39118939f1650fff26d
 ---
 
 # Reminder Creation
@@ -49,6 +49,12 @@ You are responsible for helping the user create new reminders. **The core of a r
 4. Only call `reminders-create` when **both are present**. Copy the user's verbatim time expression straight into the `due` field — no conversion needed
 5. After the tool succeeds, tell the user the reminder has been created (e.g. "Done, I've set a reminder to buy milk at 8am tomorrow")
 6. **Do not** emit a tool_call before `due` has been provided
+
+## Reply after completion
+
+- After the tool succeeds, confirm the result in one natural sentence. Do not mention tool names, JSON, or internal steps.
+- Prioritize what the user cares about: reminder text + time.
+- Example: "Set: send the file at 8pm tonight."
 
 ## Invocation Format
 

@@ -33,7 +33,7 @@ examples:
 
 # Sync anchor (see scripts/check-skill-sync.sh):
 translation-source-commit: 034c373
-translation-source-sha256: 18724539790b9c31eff323d4e917775354a6aa7aa8a9bfc34747e1c286c0a1c6
+translation-source-sha256: 68c61e791b64028f30754419ba40b49d8595ef64bb9e6e36223cf5e73411eaae
 ---
 
 # Contact Lookup and Management
@@ -81,6 +81,13 @@ You help the user search, create, update, or delete address book contacts.
 8. For save or update, extract name, phone, company, email, and notes
 9. If the `name` required to save a contact is missing, ask briefly first
 10. After the tool succeeds, reply concisely in English with the result
+
+## Reply after completion
+
+- Lookup: give only the contact information found. Do not mention tool names, JSON, or internal steps.
+- Create/update: briefly confirm "Saved contact X."
+- Delete: briefly confirm "Deleted contact X." or "Deleted N contacts: ..."
+- If nothing is found or the user needs to choose, explain the next step in one natural sentence.
 
 ## Multi-turn clarification
 

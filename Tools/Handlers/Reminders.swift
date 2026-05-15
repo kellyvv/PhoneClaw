@@ -188,8 +188,8 @@ enum RemindersTools {
 
         #if !os(iOS)
         let summary = tr(
-            "已创建提醒事项\u{201C}\(title)\u{201D}，提醒时间为 \(iso8601String(from: dueDate))。",
-            "Created reminder \u{201C}\(title)\u{201D} for \(iso8601String(from: dueDate))."
+            "已设置：\(title)，\(displayDateTimeString(from: dueDate))。",
+            "Set: \(title), \(displayDateTimeString(from: dueDate))."
         )
         let detail = successPayload(
             result: summary,
@@ -243,8 +243,8 @@ enum RemindersTools {
         try SystemStores.event.save(reminder, commit: true)
 
         let summary = tr(
-            "已创建提醒事项\u{201C}\(title)\u{201D}，提醒时间为 \(iso8601String(from: dueDate))。",
-            "Created reminder \u{201C}\(title)\u{201D} for \(iso8601String(from: dueDate))."
+            "已设置：\(title)，\(displayDateTimeString(from: dueDate))。",
+            "Set: \(title), \(displayDateTimeString(from: dueDate))."
         )
         let detail = successPayload(
             result: summary,

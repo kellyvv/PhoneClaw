@@ -61,7 +61,7 @@ examples:
 
 # Sync anchor (see scripts/check-skill-sync.sh):
 translation-source-commit: 034c373
-translation-source-sha256: a37b853870edd73ce311efa0291df26139d0839158edc35ae9b27718d35858fa
+translation-source-sha256: b8666b6ddbfa509bd901e7e2ce06ab4c2decdffe0aec288999e6e45237a5282f
 ---
 
 # Health Data Query
@@ -88,13 +88,19 @@ Note: "activity" / "activity level" defaults to step count (health-steps-today).
 
 1. Based on user intent, choose the correct tool and call it immediately — do not ask follow-up questions.
 2. Once you have the step count, give a **short** natural-language reply:
-   - Daily steps < 3000: "You walked Y steps X, activity is on the low side — maybe go out for a walk."
-   - 3000 ≤ daily steps < 8000: "You walked Y steps X, activity is average."
-   - Daily steps ≥ 8000: "You walked Y steps X, nice activity level."
+   - Daily steps < 3000: "You walked Y steps X. Activity is on the low side — a short walk may help."
+   - 3000 ≤ daily steps < 8000: "You walked Y steps X. Activity is about average."
+   - Daily steps ≥ 8000: "You walked Y steps X. Nice activity level."
    (X = "today"/"yesterday", Y = the number returned by the tool)
 3. For range queries (health-steps-range), return the total steps and daily average, and provide a short summary using the total and average.
 4. **Do not** make up step counts yourself — always use the real numbers returned by the tool.
 5. **Do not** say "I don't have permission" or "I don't know" before calling the tool — call the tool first, then speak.
+
+## Reply after completion
+
+- For all health data, answer in short natural language. Do not mention tool names, JSON, or internal steps.
+- For sleep, heart rate, distance, calories, and workout records, give the core number and at most one light interpretation.
+- If there is no data, say that no record is available. Do not guess.
 
 ## When Permission Is Denied
 

@@ -39,10 +39,20 @@ examples:
 
 1. 用户要求读取 → 调用 `clipboard-read`
 2. 用户要求复制/写入 → 调用 `clipboard-write`，传入 text 参数
-3. 根据工具返回结果，简洁回答用户
+3. 根据返回结果，简洁回答用户
+
+## 完成后回复
+
+- 读取剪贴板: 直接说内容, 不要提工具名或内部步骤
+- 写入剪贴板: 简短确认 "已复制到剪贴板。"
+- 如果内容过长或不是文本, 按工具返回的摘要自然说明
 
 ## 调用格式
 
 <tool_call>
-{"name": "工具名", "arguments": {}}
+{"name": "clipboard-read", "arguments": {}}
+</tool_call>
+
+<tool_call>
+{"name": "clipboard-write", "arguments": {"text": "要复制的文字"}}
 </tool_call>

@@ -27,7 +27,7 @@ examples:
 
 # Sync anchor (see scripts/check-skill-sync.sh):
 translation-source-commit: 034c373
-translation-source-sha256: 563c470ee1465d828ced53ec8e821e3f3f7f72126870fd18536cc8d20c1cb91a
+translation-source-sha256: 26bacc9d376bc54c8433cbacd24beaa64c1c6c3034fee7f672fd7b709b81ff4a
 ---
 
 # Clipboard Operations
@@ -43,10 +43,20 @@ You are responsible for helping the user read and write the system clipboard.
 
 1. User asks to read → call `clipboard-read`
 2. User asks to copy/write → call `clipboard-write`, passing the text parameter
-3. Based on the tool's return value, answer the user concisely
+3. Based on the result, answer the user concisely
+
+## Reply after completion
+
+- Reading the clipboard: answer with the content directly. Do not mention tool names or internal steps.
+- Writing the clipboard: briefly confirm "Copied to the clipboard."
+- If the content is long or non-text, explain it naturally using the tool summary.
 
 ## Call Format
 
 <tool_call>
-{"name": "tool_name", "arguments": {}}
+{"name": "clipboard-read", "arguments": {}}
+</tool_call>
+
+<tool_call>
+{"name": "clipboard-write", "arguments": {"text": "text to copy"}}
 </tool_call>

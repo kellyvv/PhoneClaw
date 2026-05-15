@@ -628,8 +628,8 @@ extension AgentEngine {
                 } catch {
                     messages[cardIndex].update(role: .system, content: "done", skillName: displayName)
                     finishPlanning(with: tr(
-                        "❌ Tool 执行失败:\(error.localizedDescription)",
-                        "❌ Tool execution failed: \(error.localizedDescription)"
+                        "这项操作没有完成：\(error.localizedDescription)",
+                        "This action could not be completed: \(error.localizedDescription)"
                     ))
                     return true
                 }

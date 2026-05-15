@@ -157,8 +157,8 @@ enum ClipboardTools {
                 ? tr("（内容较长，已截断显示）", " (content is long; truncated)")
                 : ""
             let summary = tr(
-                "剪贴板当前文本内容是：\(preview)\(suffix)",
-                "The clipboard currently contains text: \(preview)\(suffix)"
+                "剪贴板里是：\(preview)\(suffix)",
+                "Clipboard: \(preview)\(suffix)"
             )
             let detail = successPayload(
                 result: summary,
@@ -177,8 +177,8 @@ enum ClipboardTools {
                 ? tr("（内容较长，已截断显示）", " (content is long; truncated)")
                 : ""
             let summary = tr(
-                "剪贴板当前是链接：\(preview)\(suffix)",
-                "The clipboard currently contains a URL: \(preview)\(suffix)"
+                "剪贴板里是这个链接：\(preview)\(suffix)",
+                "Clipboard URL: \(preview)\(suffix)"
             )
             let detail = successPayload(
                 result: summary,
@@ -193,8 +193,8 @@ enum ClipboardTools {
         case "image":
             let itemCount = snapshot["item_count"] as? Int ?? 1
             let summary = tr(
-                "剪贴板当前是图片内容。为避免额外内存占用，暂不直接解码图片。",
-                "The clipboard currently contains image content. To avoid extra memory usage, images are not decoded directly."
+                "剪贴板里是一张图片，暂时不能直接读取图片内容。",
+                "The clipboard contains an image, which cannot be read directly yet."
             )
             let detail = successPayload(
                 result: summary,
@@ -208,8 +208,8 @@ enum ClipboardTools {
         case "unsupported":
             let itemCount = snapshot["item_count"] as? Int ?? 1
             let summary = tr(
-                "剪贴板当前包含 \(itemCount) 项非文本内容，暂不直接读取。",
-                "The clipboard currently contains \(itemCount) non-text item(s); not reading directly."
+                "剪贴板里有 \(itemCount) 项非文本内容，暂时不能直接读取。",
+                "The clipboard contains \(itemCount) non-text item(s), which cannot be read directly yet."
             )
             let detail = successPayload(
                 result: summary,
@@ -232,8 +232,8 @@ enum ClipboardTools {
 
     private static func canonicalWriteResult(text: String) -> CanonicalToolResult {
         let summary = tr(
-            "已写入剪贴板，共 \(text.count) 个字符。",
-            "Wrote \(text.count) character(s) to the clipboard."
+            "已复制到剪贴板。",
+            "Copied to the clipboard."
         )
         let detail = successPayload(
             result: summary,
@@ -392,8 +392,8 @@ enum ClipboardTools {
                 ? tr("（内容较长，已截断显示）", " (content is long; truncated)")
                 : ""
             let summary = tr(
-                "剪贴板当前文本内容是：\(preview)\(suffix)",
-                "The clipboard currently contains text: \(preview)\(suffix)"
+                "剪贴板里是：\(preview)\(suffix)",
+                "Clipboard: \(preview)\(suffix)"
             )
             let detail = successPayload(
                 result: summary,
@@ -408,8 +408,8 @@ enum ClipboardTools {
                 ? tr("（内容较长，已截断显示）", " (content is long; truncated)")
                 : ""
             let summary = tr(
-                "剪贴板当前是链接：\(preview)\(suffix)",
-                "The clipboard currently contains a URL: \(preview)\(suffix)"
+                "剪贴板里是这个链接：\(preview)\(suffix)",
+                "Clipboard URL: \(preview)\(suffix)"
             )
             let detail = successPayload(
                 result: summary,
@@ -420,8 +420,8 @@ enum ClipboardTools {
         case "image":
             let itemCount = snapshot["item_count"] as? Int ?? 1
             let summary = tr(
-                "剪贴板当前是图片内容。为避免额外内存占用，暂不直接解码图片。",
-                "The clipboard currently contains image content. To avoid extra memory usage, images are not decoded directly."
+                "剪贴板里是一张图片，暂时不能直接读取图片内容。",
+                "The clipboard contains an image, which cannot be read directly yet."
             )
             let detail = successPayload(
                 result: summary,
@@ -432,8 +432,8 @@ enum ClipboardTools {
         case "unsupported":
             let itemCount = snapshot["item_count"] as? Int ?? 1
             let summary = tr(
-                "剪贴板当前包含 \(itemCount) 项非文本内容，暂不直接读取。",
-                "The clipboard currently contains \(itemCount) non-text item(s); not reading directly."
+                "剪贴板里有 \(itemCount) 项非文本内容，暂时不能直接读取。",
+                "The clipboard contains \(itemCount) non-text item(s), which cannot be read directly yet."
             )
             let detail = successPayload(
                 result: summary,
@@ -453,8 +453,8 @@ enum ClipboardTools {
 
     private static func canonicalWriteResult(text: String) -> CanonicalToolResult {
         let summary = tr(
-            "已写入剪贴板，共 \(text.count) 个字符。",
-            "Wrote \(text.count) character(s) to the clipboard."
+            "已复制到剪贴板。",
+            "Copied to the clipboard."
         )
         let detail = successPayload(
             result: summary,

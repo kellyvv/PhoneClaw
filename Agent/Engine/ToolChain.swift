@@ -206,21 +206,21 @@ extension AgentEngine {
 
         if trimmed.isEmpty {
             return tr(
-                "工具 \(toolName) 已执行，但没有返回内容。",
-                "Tool \(toolName) executed but returned no content."
+                "已完成，但没有返回可展示的内容。",
+                "Done, but there was no displayable result."
             )
         }
 
         if LanguageService.shared.current.isChinese {
             return """
-            工具 \(toolName) 已执行完成，但模型没有生成最终回答。
-            工具返回结果：
+            已完成，不过我没能整理出自然回复。
+            结果如下：
             \(trimmed)
             """
         } else {
             return """
-            Tool \(toolName) finished executing, but the model did not produce a final answer.
-            Tool result:
+            Done, but I could not compose a natural reply.
+            Result:
             \(trimmed)
             """
         }
@@ -228,8 +228,8 @@ extension AgentEngine {
 
     func fallbackReplyForEmptySkillFollowUp(skillName: String) -> String {
         tr(
-            "Skill \(skillName) 已加载，但模型没有继续生成工具调用或最终回答。请重试，或把问题说得更具体一些。",
-            "Skill \(skillName) is loaded, but the model did not continue with a tool call or final answer. Please retry, or rephrase the question more specifically."
+            "我已经准备好这项能力了，但还缺少下一步。请把需求说得更具体一些。",
+            "I'm ready to use this capability, but I need a more specific request."
         )
     }
 
@@ -670,8 +670,8 @@ extension AgentEngine {
         } catch {
             messages[cardIndex].update(role: .system, content: "done", skillName: displayName)
             messages.append(ChatMessage(role: .system, content: tr(
-                "❌ Tool 执行失败: \(error)",
-                "❌ Tool execution failed: \(error)"
+                "这项操作没有完成：\(error.localizedDescription)",
+                "This action could not be completed: \(error.localizedDescription)"
             )))
             finishTurn()
         }
