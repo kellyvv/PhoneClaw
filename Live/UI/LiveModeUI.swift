@@ -10,6 +10,7 @@ import UIKit
 
 struct LiveModeView: View {
     @Binding var isPresented: Bool
+    @Environment(\.colorScheme) private var colorScheme
 
     let inference: InferenceService
     let catalog: ModelCatalog
@@ -44,6 +45,47 @@ struct LiveModeView: View {
 
     private var isPreparingLive: Bool {
         liveEngine.statusMessage.hasPrefix(liveStrings.preparingPrefix)
+    }
+
+    private var usesLightVoiceChrome: Bool {
+        colorScheme == .light && !isCameraEnabled
+    }
+
+    private var liveBackground: Color {
+        usesLightVoiceChrome
+            ? Theme.bg
+            : Color(red: 0.08, green: 0.06, blue: 0.10)
+    }
+
+    private var liveForeground: Color {
+        if isCameraEnabled { return .white }
+        return usesLightVoiceChrome ? Theme.textPrimary : .white
+    }
+
+    private var liveSecondaryForeground: Color {
+        if isCameraEnabled { return .white }
+        return usesLightVoiceChrome ? Theme.textSecondary : .white
+    }
+
+    private var liveTertiaryForeground: Color {
+        if isCameraEnabled { return .white }
+        return usesLightVoiceChrome ? Theme.textTertiary : .white
+    }
+
+    private var liveControlFill: Color {
+        usesLightVoiceChrome ? Theme.bgElevated.opacity(0.78) : Color.white.opacity(0.10)
+    }
+
+    private var liveControlBorder: Color {
+        usesLightVoiceChrome ? Theme.border.opacity(0.7) : Color.white.opacity(0.10)
+    }
+
+    private var loadingMask: Color {
+        usesLightVoiceChrome ? Theme.bg : .black
+    }
+
+    private var loadingMaskOpacity: Double {
+        usesLightVoiceChrome ? 0.58 : 0.55
     }
 
     /// 基于 engine.state 的状态文字. 对齐原始设计 (6d0b310) ——
@@ -92,7 +134,7 @@ struct LiveModeView: View {
             // OrbSceneView 的 WKWebView 初始加载 (~100-300ms) 是透明的, 不给底色
             // 会穿到上一层 view 或系统背景造成白闪. 同时 Orb 在 "准备中" 期间会
             // 保持暗灰状态 (state == .idle), 这个底色也要和 Orb 暗态视觉连贯.
-            Color(red: 0.08, green: 0.06, blue: 0.10)
+            liveBackground
                 .ignoresSafeArea()
 
             // ── 背景层 ──
@@ -104,14 +146,16 @@ struct LiveModeView: View {
             OrbSceneView(
                 inputAnalyser: liveEngine.inputAnalyser,
                 outputAnalyser: liveEngine.outputAnalyser,
-                state: liveEngine.state
+                state: liveEngine.state,
+                lightBackground: colorScheme == .light
             )
-            .ignoresSafeArea()
             .opacity(isCameraEnabled ? 0 : 1)
+            .allowsHitTesting(false)
+            .ignoresSafeArea()
             #else
             OrbBackgroundView()
-                .ignoresSafeArea()
                 .opacity(isCameraEnabled ? 0 : 1)
+                .ignoresSafeArea()
             #endif
 
             if isCameraEnabled {
@@ -125,8 +169,8 @@ struct LiveModeView: View {
             // easeOut 淡出 —— 视觉效果就是 "黑 → 金" 过度, 和 shader 零耦合.
             // 相机模式下不蒙, 那时 Orb 已经被相机画面替换.
             if !isCameraEnabled {
-                Color.black
-                    .opacity(isPreparingLive ? 0.55 : 0)
+                loadingMask
+                    .opacity(isPreparingLive ? loadingMaskOpacity : 0)
                     .ignoresSafeArea()
                     .allowsHitTesting(false)
                     .animation(.easeOut(duration: 0.6), value: isPreparingLive)
@@ -152,7 +196,6 @@ struct LiveModeView: View {
                 bottomBar
             }
         }
-        .preferredColorScheme(.dark)
         .task {
             // 注: 之前 E4B 在 Live 有 jetsam 风险, 已在 iPhone 17 Pro Max 验证
             // headroom 充足 (~2.7 GB), 不再强制切 E2B.
@@ -184,9 +227,17 @@ struct LiveModeView: View {
             Button(action: close) {
                 Image(systemName: "xmark")
                     .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(liveSecondaryForeground.opacity(usesLightVoiceChrome ? 0.76 : 1))
                     .frame(width: 40, height: 40)
-                    .background(.ultraThinMaterial, in: Circle())
+                    .background(
+                        Circle()
+                            .fill(liveControlFill)
+                    )
+                    .overlay(
+                        Circle()
+                            .strokeBorder(liveControlBorder, lineWidth: 1)
+                            .allowsHitTesting(false)
+                    )
             }
             .buttonStyle(.plain)
 
@@ -208,12 +259,12 @@ struct LiveModeView: View {
                         .font(.system(size: 14, weight: .thin))
                         .fontWidth(.condensed)
                         .tracking(2.0)
-                        .foregroundStyle(.white.opacity(0.55))
+                        .foregroundStyle(liveSecondaryForeground.opacity(usesLightVoiceChrome ? 0.72 : 0.55))
 
                     if liveEngine.state == .speaking || liveEngine.state == .processing {
                         Text(liveStrings.interruptHint)
                             .font(.system(size: 10, weight: .light, design: .rounded))
-                            .foregroundStyle(.white.opacity(0.4))
+                            .foregroundStyle(liveTertiaryForeground.opacity(usesLightVoiceChrome ? 0.68 : 0.4))
                             .transition(.opacity)
                     }
                 }
@@ -243,9 +294,15 @@ struct LiveModeView: View {
         return nil
     }
 
-    // 色温方案: user 冷灰, AI 暖琥珀 (和 Orb 同色系, 说话时颜色呼应)
-    private static let userCaptionColor = Color(white: 0.78)     // 冷中性灰
-    private static let aiCaptionColor   = Color(red: 1.00, green: 0.72, blue: 0.40)  // 暖琥珀
+    private var userCaptionColor: Color {
+        if isCameraEnabled { return .white }
+        return usesLightVoiceChrome ? Theme.textSecondary : Color(white: 0.78)
+    }
+
+    private var aiCaptionColor: Color {
+        if isCameraEnabled { return Theme.accent }
+        return usesLightVoiceChrome ? Theme.accentMuted : Color(red: 1.00, green: 0.72, blue: 0.40)
+    }
 
     private var captionArea: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -253,7 +310,7 @@ struct LiveModeView: View {
             if let current = currentUserCaption {
                 Text(current.text)
                     .font(.system(size: 15, weight: .regular))
-                    .foregroundStyle(Self.userCaptionColor.opacity(current.isLive ? 0.45 : 0.65))
+                    .foregroundStyle(userCaptionColor.opacity(current.isLive ? 0.55 : 0.72))
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentTransition(.interpolate)
@@ -267,7 +324,7 @@ struct LiveModeView: View {
             if realtimeCaption == nil, !liveEngine.lastReply.isEmpty {
                 Text(liveEngine.lastReply)
                     .font(.system(size: 15, weight: .regular))
-                    .foregroundStyle(Self.aiCaptionColor.opacity(0.70))
+                    .foregroundStyle(aiCaptionColor.opacity(usesLightVoiceChrome ? 0.82 : 0.70))
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .id("ai-reply")
@@ -346,10 +403,18 @@ struct LiveModeView: View {
                     Text(isCameraEnabled ? tr("关闭摄像头", "Stop Camera") : tr("开摄像头", "Start Camera"))
                         .font(.system(size: 14, weight: .semibold, design: .rounded))
                 }
-                .foregroundStyle(isCameraEnabled ? Theme.accent : .white)
+                .foregroundStyle(isCameraEnabled ? Theme.accent : (usesLightVoiceChrome ? Theme.textSecondary : .white))
                 .frame(maxWidth: .infinity)
                 .frame(height: 52)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18))
+                .background(
+                    RoundedRectangle(cornerRadius: 18)
+                        .fill(liveControlFill)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18)
+                        .strokeBorder(liveControlBorder, lineWidth: 1)
+                        .allowsHitTesting(false)
+                )
             }
             .buttonStyle(.plain)
 
@@ -361,10 +426,18 @@ struct LiveModeView: View {
                     Text(tr("结束", "End"))
                         .font(.system(size: 14, weight: .semibold, design: .rounded))
                 }
-                .foregroundStyle(.white)
+                .foregroundStyle(usesLightVoiceChrome ? Theme.bg : .white)
                 .frame(maxWidth: .infinity)
                 .frame(height: 52)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18))
+                .background(
+                    RoundedRectangle(cornerRadius: 18)
+                        .fill(usesLightVoiceChrome ? Theme.textPrimary : Color.white.opacity(0.10))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18)
+                        .strokeBorder(liveControlBorder, lineWidth: 1)
+                        .allowsHitTesting(false)
+                )
             }
             .buttonStyle(.plain)
         }

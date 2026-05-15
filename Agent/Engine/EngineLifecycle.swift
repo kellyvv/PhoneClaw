@@ -309,7 +309,10 @@ extension AgentEngine {
     }
 
     func deleteSession(id: UUID) {
-        sessionStore.flushPendingSave(messages: messages)
+        let deletingCurrentSession = id == sessionStore.currentSessionID
+        if deletingCurrentSession {
+            sessionStore.flushPendingSave(messages: messages)
+        }
         if let switchResult = sessionStore.deleteSession(id: id) {
             // Deleted the current session — need to switch
             resetPromptPipelineState()
@@ -323,9 +326,15 @@ extension AgentEngine {
     }
 
     func setAllSkills(enabled: Bool) {
-        for i in skillEntries.indices {
-            skillEntries[i].isEnabled = enabled
+        let ids = skillEntries.map(\.id)
+        ids.forEach { setSkill(id: $0, enabled: enabled) }
+    }
+
+    func setSkill(id: String, enabled: Bool) {
+        if let index = skillEntries.firstIndex(where: { $0.id == id }) {
+            skillEntries[index].isEnabled = enabled
         }
+        skillRegistry.setEnabled(id, enabled: enabled)
     }
 
     // MARK: - 解析

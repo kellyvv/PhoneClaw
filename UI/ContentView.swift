@@ -21,6 +21,17 @@ private extension ProcessInfo {
     }
 }
 
+private extension View {
+    @ViewBuilder
+    func symbolReplaceTransition() -> some View {
+        if #available(iOS 17.0, macOS 14.0, *) {
+            self.contentTransition(.symbolEffect(.replace.downUp))
+        } else {
+            self
+        }
+    }
+}
+
 // MARK: - 主入口
 
 private enum CaptureOrigin { case menu, holdToTalk }
@@ -45,6 +56,7 @@ struct ContentView: View {
     @State private var expandedSkills: Set<UUID> = []
     /// 记录每个 THINK 卡片的展开状态（key = ResponseBlock.id）
     @State private var expandedThoughts: Set<UUID> = []
+    @State private var keyboardScrollTask: Task<Void, Never>?
     @FocusState private var isInputFocused: Bool
 
     // MARK: - Voice Input Mode
@@ -85,31 +97,68 @@ struct ContentView: View {
         )
     }
 
+    private var composerSkillPrompts: [String] {
+        var seen = Set<String>()
+        let prompts = engine.enabledSkillInfos.compactMap(composerPrompt)
+
+        let unique = prompts.filter { seen.insert($0).inserted }
+        if unique.isEmpty {
+            return [tr("问点什么…", "Ask anything...")]
+        }
+        return Array(unique.prefix(8))
+    }
+
+    private func composerPrompt(for skill: SkillInfo) -> String? {
+        switch skill.name {
+        case "calendar":
+            return tr("创建明天下午会议", "Create tomorrow's meeting")
+        case "reminders":
+            return tr("今晚八点提醒我", "Remind me at 8pm")
+        case "contacts":
+            return tr("添加一个联系人", "Add a contact")
+        case "clipboard":
+            return tr("读取剪贴板内容", "Read my clipboard")
+        case "health":
+            return tr("查看今天步数", "Show today's steps")
+        case "translate":
+            return tr("翻译这句话", "Translate this sentence")
+        default:
+            let fallback = skill.chipLabel?.isEmpty == false
+                ? skill.chipLabel
+                : (skill.samplePrompt.isEmpty ? skill.chipPrompt : skill.samplePrompt)
+            return fallback?.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+    }
+
     var body: some View {
-        ZStack {
+        ZStack(alignment: .top) {
             Theme.bg.ignoresSafeArea()
 
+            welcomeView
+                .opacity(engine.messages.isEmpty ? 1 : 0)
+                .scaleEffect(engine.messages.isEmpty ? 1 : 0.985)
+                .allowsHitTesting(engine.messages.isEmpty)
+                .accessibilityHidden(!engine.messages.isEmpty)
+
             VStack(spacing: 0) {
-                topBar
+                Color.clear
+                    .frame(height: UIScale.topChromeHeight)
+                chatList
+            }
+            .opacity(engine.messages.isEmpty ? 0 : 1)
+            .allowsHitTesting(!engine.messages.isEmpty)
+            .accessibilityHidden(engine.messages.isEmpty)
 
-                if engine.messages.isEmpty {
-                    welcomeView
-                } else {
-                    chatList
-                }
-
+            topBar
+        }
+        .ignoresSafeArea(engine.messages.isEmpty ? .keyboard : [], edges: .bottom)
+        .animation(.easeInOut(duration: 0.28), value: engine.messages.isEmpty)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            VStack(spacing: 0) {
                 composerAttachmentsPanel
-
-                // v2 UI:空状态 skill chips 暂时不展示,后续会换位置/形态 (TBD)。
-                // 函数 `skillChips` 保留供后续恢复 / 重新挂载。
-                // if engine.messages.isEmpty {
-                //     skillChips.padding(.bottom, 8)
-                // }
-
                 inputBar
             }
         }
-        .preferredColorScheme(.light)
         .task {
             guard !ProcessInfo.processInfo.isRunningXCTest else { return }
             engine.setup()
@@ -139,7 +188,7 @@ struct ContentView: View {
                 holdToTalkASR.unload()
             }
         }
-        .sheet(isPresented: $showHistory) {
+        .fullScreenCover(isPresented: $showHistory) {
             SessionHistorySheet(engine: engine)
         }
         .fullScreenCover(isPresented: $showLiveMode) {
@@ -150,7 +199,7 @@ struct ContentView: View {
                 userSystemPrompt: engine.config.systemPrompt
             )
         }
-        .sheet(isPresented: $showConfigurations) {
+        .fullScreenCover(isPresented: $showConfigurations) {
             ConfigurationsView(engine: engine)
         }
         .alert(
@@ -210,19 +259,57 @@ struct ContentView: View {
                 guard !Task.isCancelled else { return }
                 scrollTo(proxy, animated: !signal.isProcessing)
             }
+            .onChange(of: isInputFocused) { _, focused in
+                guard focused else { return }
+                followKeyboardScroll(proxy, duration: 0.32)
+            }
+            #if canImport(UIKit)
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { notification in
+                guard isInputFocused else { return }
+                followKeyboardScroll(proxy, duration: keyboardAnimationDuration(from: notification))
+            }
+            #endif
         }
     }
 
     @MainActor
-    private func scrollTo(_ proxy: ScrollViewProxy, animated: Bool = true) {
+    private func scrollTo(_ proxy: ScrollViewProxy, animated: Bool = true, duration: Double = 0.22) {
         guard let last = displayItems.last else { return }
         let lastID = last.id
         if animated {
-            withAnimation(.easeOut(duration: 0.2)) {
+            withAnimation(.easeOut(duration: duration)) {
                 proxy.scrollTo(lastID, anchor: .bottom)
             }
         } else {
             proxy.scrollTo(lastID, anchor: .bottom)
+        }
+    }
+
+    private func keyboardAnimationDuration(from notification: Notification) -> Double {
+        #if canImport(UIKit)
+        let raw = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? NSNumber
+        return min(max(raw?.doubleValue ?? 0.32, 0.22), 0.48)
+        #else
+        return 0.32
+        #endif
+    }
+
+    private func followKeyboardScroll(_ proxy: ScrollViewProxy, duration: Double) {
+        keyboardScrollTask?.cancel()
+        keyboardScrollTask = Task { @MainActor in
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            scrollTo(proxy, animated: true, duration: duration)
+
+            let midDelay = UInt64(max(duration * 0.45, 0.10) * 1_000_000_000)
+            try? await Task.sleep(nanoseconds: midDelay)
+            guard !Task.isCancelled else { return }
+            scrollTo(proxy, animated: true, duration: 0.16)
+
+            let settleDelay = UInt64(max(duration * 0.35, 0.08) * 1_000_000_000)
+            try? await Task.sleep(nanoseconds: settleDelay)
+            guard !Task.isCancelled else { return }
+            scrollTo(proxy, animated: false)
         }
     }
 
@@ -346,58 +433,16 @@ struct ContentView: View {
 
     // MARK: - 欢迎页
 
-    // MARK: - welcomeView (vertical rhythm: 上轻 / 中聚焦 / 下承托)
+    // MARK: - welcomeView (fixed top anchor)
     //
-    // 节奏设计:
-    //   topBar
-    //     ↓ 60pt (fixed, 上轻)
-    //   orb
-    //     ↓ 28pt (orb 跟 LIVE 是同一组, 距离必须近)
-    //   • 进入 LIVE ›
-    //     ↓ flexible (Spacer, 下承托空气)
-    //   inputBar
-    //
-    // 不是几何居中 — orb 中心在屏幕 38-40% 高度, 视觉重心偏上.
-    // 输入框很重 (白胶囊+阴影+chip), 主视觉必须更高才能视觉平衡.
+    // 品牌签名不再放进 `VStack + Spacer`.
+    // 键盘出现时 bottom safeAreaInset 会改变可用高度, Spacer 会重新分配空间,
+    // 导致品牌签名跟着输入法漂移. 这里改为顶部固定偏移, 只让输入栏响应键盘.
     private var welcomeView: some View {
-        VStack(spacing: 0) {
-            // 顶部固定 spacer — 让 orb 整组上移
-            Spacer().frame(height: UIScale.topToOrbGap)
-
-            // 中央陶瓷球 — 占屏宽 48% (标准) / 44% (大屏),大屏反而 缩,
-            // 用更多空气换高级感. 见 UIScale.swift 详释.
-            PorcelainOrbView(size: UIScale.orbSize)
-
-            // "进入 LIVE" entry portal — 不是 capsule button, 是 "方向性符号".
-            //   dot + text + chevron.right
-            // chevron 是关键 — 它把"label"语义改成"entry/可触发"语义,
-            // 跟 Apple Music onboarding / VisionOS setup / Apple TV 同款手法.
-            // 整组 idle opacity 0.88, pressed 1.0 + scale 0.985, 120ms — 像器物按压反馈.
-            Button(action: enterLiveMode) {
-                HStack(spacing: 10) {
-                    Circle()
-                        .fill(canEnterLiveMode
-                              ? Theme.accentMuted
-                              : Theme.textTertiary)
-                        .frame(width: 6, height: 6)
-                    Text(tr("进入 LIVE", "Enter LIVE"))
-                        .font(.system(size: 17, weight: .medium))
-                        .foregroundStyle(canEnterLiveMode
-                                         ? Theme.textPrimary
-                                         : Theme.textTertiary)
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 12, weight: .regular))
-                        .foregroundStyle(Theme.accentMuted)
-                        .opacity(canEnterLiveMode ? 0.55 : 0.3)
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(EntryPortalButtonStyle())
-            .disabled(!canEnterLiveMode)
-            .padding(.top, UIScale.orbToEntryTextGap)
-
-            Spacer(minLength: UIScale.entryToInputMinGap)
-        }
+        BrandMarkView(size: UIScale.orbSize)
+            .padding(.top, UIScale.welcomeBrandTopOffset)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .allowsHitTesting(false)
     }
 
     // MARK: - Skill 快捷标签
@@ -496,48 +541,68 @@ struct ContentView: View {
                 handleImportedFile(result)
             }
 
-            // 中间:文字输入 或 按住说话 — 无自身背景,贴胶囊
-            if isVoiceInputMode {
-                holdToTalkButton
-            } else {
-                #if os(macOS)
-                TextField(tr("Ask anything...", "Ask anything..."), text: $inputText)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: UIScale.pillTextSize))
-                    .foregroundStyle(Theme.textPrimary)
-                    .onSubmit { Task { await send() } }
-                #else
-                TextField(tr("Ask anything...", "Ask anything..."), text: $inputText, axis: .vertical)
-                    .lineLimit(1...5)
-                    .font(.system(size: UIScale.pillTextSize))
-                    .foregroundStyle(Theme.textPrimary)
-                    .focused($isInputFocused)
-                    .onSubmit { Task { await send() } }
-                #endif
+            // 中间槽常驻, 内部状态淡入淡出, 避免 TextField / hold-to-talk sibling 硬切。
+            ZStack(alignment: .leading) {
+                if isVoiceInputMode {
+                    holdToTalkButton
+                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                } else {
+                    composerTextField
+                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .animation(.easeInOut(duration: 0.18), value: isVoiceInputMode)
 
-            // 右:动态按钮 (idle → waveform / 有文字 → send / 生成中 → stop /
-            //         语音模式 → keyboard).
+            // 右侧 mic + LIVE 视觉分级:
+            //   mic = 内嵌图标 (无 chip 底), 辅助输入开关, "藏在文字旁"
+            //   LIVE = 圆 chip, 主操作入口, "落在胶囊右端"
+            modeToggleButton
             trailingDynamicButton
         }
-        // Spec (per master mockup, "floating" Arc/Linear/Vision Pro idiom).
-        // 大屏 (Pro Max) 不等比放大 — 组件微增、空气大增, 见 UIScale.swift.
-        //   胶囊总高度:    54 / 56pt
-        //   chip 距胶囊左/右内距: 12pt
-        //   阴影 blur:     16 / 18pt, offsetY 4pt, opacity 0.05
-        //   Capsule 自动用 height/2 圆角
         .padding(.horizontal, UIScale.chipInnerMargin)
         .padding(.vertical, (UIScale.pillHeight - UIScale.chipDiameter) / 2)
-        .background(
-            Theme.bgElevated,
-            in: Capsule()
-        )
+        .background(Theme.bgElevated, in: Capsule())
         .shadow(color: Color.black.opacity(0.05), radius: UIScale.pillShadowBlur, x: 0, y: 4)
         .padding(.horizontal, UIScale.pillHorizontalMargin)
         .padding(.vertical, UIScale.inputBarBottomGap)
     }
 
-    // MARK: - 动态尾部按钮 (mic / send / stop / keyboard 四态合一)
+    private var composerTextField: some View {
+        ZStack(alignment: .leading) {
+            if inputText.isEmpty && !isInputFocused {
+                ComposerPromptCarousel(prompts: composerSkillPrompts)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+
+            #if os(macOS)
+            TextField("", text: $inputText)
+                .textFieldStyle(.plain)
+                .font(.system(size: UIScale.pillTextSize, weight: .regular, design: .rounded))
+                .foregroundStyle(Theme.textPrimary)
+                .onSubmit { Task { await send() } }
+            #else
+            TextField("", text: $inputText, axis: .vertical)
+                .lineLimit(1...5)
+                .font(.system(size: UIScale.pillTextSize, weight: .regular, design: .rounded))
+                .foregroundStyle(Theme.textPrimary)
+                .focused($isInputFocused)
+                .onSubmit { Task { await send() } }
+            #endif
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .clipped()
+    }
+
+    // MARK: - 输入栏右侧按钮组 (mic 模式切换 + 动态主操作)
+    //
+    // 设计:右侧两枚 chip 并排.
+    //   modeToggleButton: 永远在原位, 切换 "键盘 ⇄ 语音输入" (mic ↔ keyboard).
+    //   trailingDynamicButton: 主操作动态, idle → LIVE entry (waveform), 有文字 → send,
+    //     生成中 → stop.
+    // LIVE 跟 voice 是平行的两条音频路径 — LIVE 是实时对话模式 (走 orb), voice 是
+    // 单条按住说话 (走 ASR→文字→当前对话). 用户在两者间显式选择.
 
     private struct DynamicButtonStyle {
         let icon: String
@@ -566,34 +631,55 @@ struct ContentView: View {
                 action: { Task { await send() } }
             )
         }
-        if isVoiceInputMode {
-            return .init(
-                icon: "keyboard",
-                bgColor: Theme.bgHover,  // 暖灰 chip,跟左侧 + 按钮一致,在白胶囊上清晰可见
-                fgColor: Theme.textSecondary,
-                action: { exitVoiceInputMode() }
-            )
-        }
-        // idle: 输入框空 + 键盘模式 → waveform, 点击进语音模式
+        // idle 或 语音模式 → LIVE entry. 不管中央是文字框还是 hold-to-talk,
+        // LIVE 都在原位等待用户点击进入实时模式.
         return .init(
             icon: "waveform",
-            bgColor: Theme.bgHover,  // 跟左侧 + 按钮的 chip 底色一致
+            bgColor: Theme.bgHover,
             fgColor: Theme.textSecondary,
-            action: { enterVoiceInputMode() }
+            action: { enterLiveMode() }
         )
+    }
+
+    /// 右侧 mic / keyboard 切换按钮 — 内嵌图标 (无 chip 底), 辅助开关.
+    /// 视觉上"贴着文字", 不抢右端主操作 (LIVE) 的位置.
+    /// idle:     mic — 点击进语音输入模式 (中央换成 holdToTalk)
+    /// 语音模式: keyboard — 点击回键盘模式
+    private var modeToggleButton: some View {
+        let icon = isVoiceInputMode ? "keyboard" : "mic"
+        let action: () -> Void = isVoiceInputMode
+            ? { exitVoiceInputMode() }
+            : { enterVoiceInputMode() }
+        return Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: UIScale.waveformIconSize, weight: .regular))
+                .foregroundStyle(Theme.textSecondary)
+                .symbolReplaceTransition()
+                .opacity(0.55)  // 比 LIVE chip 更弱, 强化"辅助" 而非 "主操作"
+                .frame(width: UIScale.chipDiameter, height: UIScale.chipDiameter)
+                .contentShape(Rectangle())  // 保持 chip 大小的点击区
+        }
+        .buttonStyle(.plain)
+        .animation(.easeInOut(duration: 0.15), value: isVoiceInputMode)
     }
 
     private var trailingDynamicButton: some View {
         let style = trailingButtonStyle
-        // waveform / keyboard 是 idle 辅助态, icon 用 17pt + opacity 0.68 让它"浮起来";
+        // waveform = LIVE entry 是 idle 辅助态, icon 17pt + opacity 0.68 让它"浮起来";
         // send / stop 是行动态, 用 18pt 满 opacity 强调.
         let isIdleAux = !canSend && !canCancelGeneration
         let iconSize: CGFloat = isIdleAux ? UIScale.waveformIconSize : UIScale.chipIconSize
-        let iconOpacity: Double = isIdleAux ? UIScale.waveformIconOpacity : 1.0
+        // LIVE 模型未就绪时, 进一步压暗 (0.68 → 0.32) 暗示不可用. 点击仍会触发 action,
+        // 由 enterLiveMode 内部 guard 兜底 (no-op).
+        let liveDimmed = isIdleAux && !canEnterLiveMode
+        let iconOpacity: Double = isIdleAux
+            ? (liveDimmed ? 0.32 : UIScale.waveformIconOpacity)
+            : 1.0
         return Button(action: style.action) {
             Image(systemName: style.icon)
                 .font(.system(size: iconSize, weight: .regular))
                 .foregroundStyle(style.fgColor)
+                .symbolReplaceTransition()
                 .opacity(iconOpacity)
                 .frame(width: UIScale.chipDiameter, height: UIScale.chipDiameter)
                 .background(style.bgColor, in: Circle())
@@ -601,7 +687,7 @@ struct ContentView: View {
         .buttonStyle(.plain)
         .animation(.easeInOut(duration: 0.15), value: canSend)
         .animation(.easeInOut(duration: 0.15), value: canCancelGeneration)
-        .animation(.easeInOut(duration: 0.15), value: isVoiceInputMode)
+        .animation(.easeInOut(duration: 0.15), value: canEnterLiveMode)
     }
 
     /// 进入语音模式:检查 ASR 模型, 预热, 切换 UI 状态.
@@ -1104,6 +1190,58 @@ struct ContentView: View {
 }
 
 
+private struct ComposerPromptCarousel: View {
+    let prompts: [String]
+    @State private var index = 0
+
+    private var promptIdentity: String {
+        prompts.joined(separator: "\u{1F}")
+    }
+
+    private var currentPrompt: String {
+        guard !prompts.isEmpty else { return tr("问点什么…", "Ask anything...") }
+        return prompts[index % prompts.count]
+    }
+
+    var body: some View {
+        ZStack(alignment: .leading) {
+            Text(currentPrompt)
+                .id("\(promptIdentity)-\(index)")
+                .font(.system(size: UIScale.pillPlaceholderTextSize, weight: .regular, design: .rounded))
+                .foregroundStyle(Theme.textTertiary.opacity(0.52))
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .transition(
+                    .asymmetric(
+                        insertion: .move(edge: .bottom).combined(with: .opacity),
+                        removal: .move(edge: .top).combined(with: .opacity)
+                    )
+                )
+        }
+        .frame(maxWidth: .infinity, minHeight: UIScale.chipDiameter, alignment: .leading)
+        .clipped()
+        .task(id: promptIdentity) {
+            await MainActor.run { index = 0 }
+            guard prompts.count > 1 else { return }
+
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(nanoseconds: 2_700_000_000)
+                } catch {
+                    return
+                }
+
+                await MainActor.run {
+                    withAnimation(.easeInOut(duration: 0.38)) {
+                        index = (index + 1) % prompts.count
+                    }
+                }
+            }
+        }
+    }
+}
+
+
 // LiveModeView has been extracted to LiveModeUI.swift
 
 private struct SessionHistorySheet: View {
@@ -1111,126 +1249,200 @@ private struct SessionHistorySheet: View {
 
     var engine: AgentEngine
 
-    private static let dateFormatter: RelativeDateTimeFormatter = {
+    private var dateFormatter: RelativeDateTimeFormatter {
         let formatter = RelativeDateTimeFormatter()
-        formatter.locale = Locale(identifier: Locale.preferredLanguages.first ?? Locale.current.identifier)
+        formatter.locale = Locale(identifier: LanguageService.shared.current.isChinese ? "zh-Hans" : "en")
         formatter.unitsStyle = .short
         return formatter
-    }()
+    }
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if engine.sessionStore.sessionSummaries.isEmpty {
-                    emptyState
-                } else {
-                    List {
-                        ForEach(engine.sessionStore.sessionSummaries) { session in
-                            Button {
-                                engine.loadSession(id: session.id)
-                                dismiss()
-                            } label: {
-                                HStack(alignment: .top, spacing: 12) {
-                                    VStack(alignment: .leading, spacing: 6) {
-                                        HStack(spacing: 8) {
-                                            Text(session.title)
-                                                .font(.system(size: 16, weight: .semibold))
-                                                .foregroundStyle(Theme.textPrimary)
-                                                .lineLimit(1)
-                                            if session.id == engine.sessionStore.currentSessionID {
-                                                Text(tr("当前", "Current"))
-                                                    .font(.system(size: 11, weight: .semibold))
-                                                    .foregroundStyle(Theme.bg)
-                                                    .padding(.horizontal, 6)
-                                                    .padding(.vertical, 2)
-                                                    .background(Theme.accent, in: Capsule())
-                                            }
-                                        }
+        ZStack(alignment: .top) {
+            Theme.bg.ignoresSafeArea()
 
-                                        Text(session.preview)
-                                            .font(.system(size: 13))
-                                            .foregroundStyle(Theme.textSecondary)
-                                            .lineLimit(2)
+            VStack(spacing: 0) {
+                historyTopBar
 
-                                        Text(Self.dateFormatter.localizedString(for: session.updatedAt, relativeTo: Date()))
-                                            .font(.system(size: 11))
-                                            .foregroundStyle(Theme.textTertiary)
-                                    }
-
-                                    Spacer(minLength: 0)
-                                }
-                                .padding(.vertical, 4)
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .listRowBackground(Theme.bgElevated)
-                        }
-                        .onDelete { offsets in
-                            for index in offsets {
-                                engine.deleteSession(id: engine.sessionStore.sessionSummaries[index].id)
-                            }
-                        }
+                Group {
+                    if sessions.isEmpty {
+                        emptyState
+                    } else {
+                        historyList
                     }
-                    .scrollContentBackground(.hidden)
-                    .background(Theme.bg)
+                }
+                .padding(.top, 46)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    private var sessions: [ChatSessionSummary] {
+        engine.sessionStore.sessionSummaries
+    }
+
+    private var historyTopBar: some View {
+        HStack(spacing: 0) {
+            Button {
+                dismiss()
+            } label: {
+                ZStack {
+                    Circle()
+                        .fill(Theme.bgHover.opacity(UIScale.topStatusChipBgOpacity))
+                        .frame(
+                            width: UIScale.topStatusChipDiameter,
+                            height: UIScale.topStatusChipDiameter
+                        )
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(Theme.textSecondary)
+                        .opacity(0.58)
                 }
             }
-            .navigationTitle(tr("历史记录", "History"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button(tr("关闭", "Close")) {
-                        dismiss()
+            .buttonStyle(.plain)
+
+            Spacer()
+
+            Text(tr("历史记录", "History"))
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Theme.textSecondary)
+                .opacity(0.72)
+
+            Spacer()
+
+            Button {
+                engine.startNewSession()
+                dismiss()
+            } label: {
+                Image(systemName: "square.and.pencil")
+                    .font(.system(size: UIScale.gearIconSize, weight: .regular))
+                    .foregroundStyle(Theme.textSecondary)
+                    .opacity(UIScale.gearIconOpacity)
+                    .frame(
+                        width: UIScale.topStatusChipDiameter,
+                        height: UIScale.topStatusChipDiameter
+                    )
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, Theme.inputPadH)
+        .padding(.vertical, 10)
+    }
+
+    private var historyList: some View {
+        List {
+            ForEach(Array(sessions.enumerated()), id: \.element.id) { index, session in
+                VStack(spacing: 0) {
+                    sessionRow(session)
+
+                    if index < sessions.count - 1 {
+                        Rectangle()
+                            .fill(Theme.borderSubtle)
+                            .frame(height: 1)
+                            .opacity(0.9)
+                            .padding(.vertical, 18)
                     }
                 }
-
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        engine.startNewSession()
-                        dismiss()
+                .listRowInsets(EdgeInsets(top: 0, leading: 34, bottom: 0, trailing: 34))
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    Button(role: .destructive) {
+                        engine.deleteSession(id: session.id)
                     } label: {
-                        Label(tr("新会话", "New Chat"), systemImage: "square.and.pencil")
+                        Image(systemName: "trash")
+                    }
+                    .accessibilityLabel(Text(tr("删除", "Delete")))
+                    .tint(Theme.accentMuted)
+                }
+                .contextMenu {
+                    Button(role: .destructive) {
+                        engine.deleteSession(id: session.id)
+                    } label: {
+                        Label(tr("删除", "Delete"), systemImage: "trash")
                     }
                 }
             }
         }
-        .preferredColorScheme(.light)
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(Theme.bg)
+        .scrollIndicators(.hidden)
+        .environment(\.defaultMinListRowHeight, 0)
+    }
+
+    private func sessionRow(_ session: ChatSessionSummary) -> some View {
+        Button {
+            engine.loadSession(id: session.id)
+            dismiss()
+        } label: {
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(session.title)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(Theme.textPrimary)
+                        .lineLimit(1)
+
+                    if session.id == engine.sessionStore.currentSessionID {
+                        Circle()
+                            .fill(Theme.accentMuted)
+                            .frame(width: 5, height: 5)
+                            .opacity(0.72)
+                    }
+
+                    Spacer(minLength: 0)
+                }
+
+                Text(session.preview)
+                    .font(.system(size: 14, weight: .regular))
+                    .lineSpacing(3)
+                    .foregroundStyle(Theme.textSecondary)
+                    .opacity(0.9)
+                    .lineLimit(2)
+
+                Text(dateFormatter.localizedString(for: session.updatedAt, relativeTo: Date()))
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(Theme.textTertiary)
+                    .padding(.top, 2)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 2)
+            .padding(.vertical, 2)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private var emptyState: some View {
-        VStack(spacing: 14) {
-            Image(systemName: "clock.arrow.circlepath")
-                .font(.system(size: 28, weight: .medium))
-                .foregroundStyle(Theme.textTertiary)
-
+        VStack(alignment: .leading, spacing: 10) {
             Text(tr("还没有历史记录", "No chat history yet"))
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(Theme.textPrimary)
 
             Text(tr(
                 "开始一次新会话后，聊天内容会自动保存在这里。",
-                "Start a new chat — your messages will be saved here automatically."
+                "Start a new chat and it will appear here."
             ))
-                .font(.system(size: 14))
+                .font(.system(size: 14, weight: .regular))
+                .lineSpacing(3)
                 .foregroundStyle(Theme.textSecondary)
-                .multilineTextAlignment(.center)
+                .opacity(0.9)
 
             Button {
                 engine.startNewSession()
                 dismiss()
             } label: {
                 Text(tr("开始新会话", "Start New Chat"))
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Theme.bg)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(Theme.accent, in: Capsule())
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Theme.accentMuted)
+                    .padding(.top, 12)
             }
             .buttonStyle(.plain)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(24)
-        .background(Theme.bg)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 34)
     }
 }
 
@@ -1256,12 +1468,22 @@ struct UserBubble: View {
                 }
                 if !text.isEmpty {
                     Text(text)
-                        .font(.system(size: 15))
+                        .font(.system(size: 15, weight: .regular, design: .rounded))
                         .foregroundStyle(Theme.userText)
+                        .lineSpacing(4)
+                        .multilineTextAlignment(.leading)
                         .textSelection(.enabled)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .background(Theme.userBubble, in: UserBubbleShape())
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 9)
+                        .background(
+                            Theme.userBubble,
+                            in: RoundedRectangle(cornerRadius: 15, style: .continuous)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 15, style: .continuous)
+                                .strokeBorder(Theme.userBubbleStroke, lineWidth: 1)
+                        )
                         .contextMenu {
                             Button {
                                 UIPasteboard.general.string = text

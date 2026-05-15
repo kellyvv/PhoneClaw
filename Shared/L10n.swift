@@ -36,8 +36,8 @@ enum L10n {
             // 短语刻意控长度跟中文版接近 — 之前的英文版换行成 2 行,
             // 中英切换时整个 layout 跳一截 (Configurations sheet 高度变化).
             tr(
-                "默认跟随系统。切换语言只影响新对话。",
-                "Defaults to system. Applies to new chats."
+                "界面会立即更新，新对话使用新的语言偏好。",
+                "Interface updates immediately. New chats use the new language."
             )
         }
     }
@@ -57,10 +57,10 @@ enum L10n {
     // MARK: - Live 语音模式
 
     enum Live {
-        static var englishNotSupported: String {
+        static var voiceModelsRequired: String {
             tr(
-                "LIVE 模式暂仅支持中文语音。",
-                "LIVE voice mode currently supports Chinese only."
+                "请先下载当前语言的语音模型。",
+                "Download the voice models for the current language first."
             )
         }
     }

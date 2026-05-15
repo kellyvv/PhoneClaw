@@ -13,7 +13,6 @@ import SwiftUI
 //   - 会话边界: 语言切换只影响下一次新开会话, 当前对话不动 (AgentEngine 读 current 时快照)
 //
 // 不包含:
-//   - Live 英文支持 — ASR/TTS 语音能力另有评估, 英文 Live 阶段性禁用
 //   - 运行时切换时清空已生成对话 — 用户可能正在翻阅历史, 不触发破坏性操作
 
 // MARK: - AppLanguage

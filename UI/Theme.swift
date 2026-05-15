@@ -1,4 +1,9 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
 
 // MARK: - PhoneClaw 设计系统(瓷器风,v2)
 // 跨平台共享:macOS + iOS
@@ -14,39 +19,42 @@ import SwiftUI
 
 struct Theme {
     // MARK: 背景
-    static let bg = Color(hex: "F8F5EF")            // champagne 米白
-    static let bgElevated = Color(hex: "FFFFFF")     // 卡片/输入框 纯白
-    static let bgHover = Color(hex: "EAE5DB")        // chip 内底 / pressed (在白胶囊上有 ~8% 对比, 清晰可见)
+    static let bg = Color(light: "F8F5EF", dark: "15130F")
+    static let bgElevated = Color(light: "FFFFFF", dark: "211E19")
+    static let bgHover = Color(light: "EAE5DB", dark: "2D2821")
 
     // MARK: 文字
-    static let textPrimary = Color(hex: "2C2C2C")    // 主文字 深灰
-    static let textSecondary = Color(hex: "6B6B6B")  // 次要中灰
-    static let textTertiary = Color(hex: "B0B0B0")   // 辅助/placeholder 浅灰
+    static let textPrimary = Color(light: "3A342E", dark: "EFE9DF")
+    static let textSecondary = Color(light: "70675E", dark: "B9AFA3")
+    static let textTertiary = Color(light: "B8ADA0", dark: "756D63")
+    static let assistantText = Color(light: "4A433B", dark: "BDB3A6")
 
     // MARK: 强调色 (brand)
-    static let accent = Color(hex: "C77A3F")         // amber copper — brand 主色
-    static let accentSubtle = Color(hex: "C77A3F").opacity(0.12)
-    static let accentMuted = Color(hex: "C39660")    // muted gold — 状态点专用,避开通知红
-    static let accentGreen = Color(hex: "7CB87C")    // 成功/在线 (保留, 旧逻辑可能在用)
+    static let accent = Color(light: "C77A3F", dark: "D59B63")
+    static let accentSubtle = Color(light: "C77A3F", dark: "D59B63").opacity(0.16)
+    static let accentMuted = Color(light: "C39660", dark: "C99B68")
+    static let accentGreen = Color(light: "7CB87C", dark: "8FD08F")
 
-    // MARK: 用户气泡 (浅底 + 深字 → 改成 brand 色底 + 白字)
-    static let userBubble = Color(hex: "C77A3F")
-    static let userText = Color(hex: "FFFFFF")
+    // MARK: 对话
+    static let userBubble = Color(light: "C49660", dark: "C49660").opacity(0.14)
+    static let userBubbleStroke = Color(light: "C49660", dark: "D0A16D").opacity(0.18)
+    static let userText = Color(light: "6A5848", dark: "E6D3BC")
+    static let quietAction = Color(light: "8D8275", dark: "8E8378").opacity(0.5)
 
     // MARK: 边框
-    static let border = Color(hex: "E0DED7")        // 浅描线
-    static let borderSubtle = Color(hex: "F0EBE2")  // 更浅
+    static let border = Color(light: "E0DED7", dark: "39332A")
+    static let borderSubtle = Color(light: "F0EBE2", dark: "2B261F")
 
     // MARK: 响应式间距
     #if os(macOS)
     static let chatPadH: CGFloat = 24
-    static let chatSpacing: CGFloat = 24
+    static let chatSpacing: CGFloat = 28
     static let inputPadH: CGFloat = 20
     static let bubbleMinSpacer: CGFloat = 80
     static let aiMinSpacer: CGFloat = 40
     #else
     static let chatPadH: CGFloat = 16
-    static let chatSpacing: CGFloat = 20
+    static let chatSpacing: CGFloat = 24
     static let inputPadH: CGFloat = 16
     static let bubbleMinSpacer: CGFloat = 60
     static let aiMinSpacer: CGFloat = 24
@@ -56,16 +64,63 @@ struct Theme {
 // MARK: - Hex Color（跨平台）
 
 extension Color {
+    init(light: String, dark: String) {
+        #if canImport(UIKit)
+        self.init(UIColor { traits in
+            UIColor(hex: traits.userInterfaceStyle == .dark ? dark : light)
+        })
+        #elseif canImport(AppKit)
+        self.init(NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            return NSColor(hex: isDark ? dark : light)
+        })
+        #else
+        self.init(hex: light)
+        #endif
+    }
+
     init(hex: String) {
-        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-        var int: UInt64 = 0
-        Scanner(string: hex).scanHexInt64(&int)
-        let a, r, g, b: UInt64
-        switch hex.count {
-        case 6: (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
-        case 8: (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
-        default: (a, r, g, b) = (255, 0, 0, 0)
-        }
+        let (a, r, g, b) = rgbaComponents(from: hex)
         self.init(.sRGB, red: Double(r)/255, green: Double(g)/255, blue: Double(b)/255, opacity: Double(a)/255)
     }
 }
+
+private func rgbaComponents(from hexString: String) -> (UInt64, UInt64, UInt64, UInt64) {
+    let hex = hexString.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+    var int: UInt64 = 0
+    Scanner(string: hex).scanHexInt64(&int)
+    switch hex.count {
+    case 6:
+        return (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
+    case 8:
+        return (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
+    default:
+        return (255, 0, 0, 0)
+    }
+}
+
+#if canImport(UIKit)
+private extension UIColor {
+    convenience init(hex: String) {
+        let (a, r, g, b) = rgbaComponents(from: hex)
+        self.init(
+            red: CGFloat(r) / 255,
+            green: CGFloat(g) / 255,
+            blue: CGFloat(b) / 255,
+            alpha: CGFloat(a) / 255
+        )
+    }
+}
+#elseif canImport(AppKit)
+private extension NSColor {
+    convenience init(hex: String) {
+        let (a, r, g, b) = rgbaComponents(from: hex)
+        self.init(
+            srgbRed: CGFloat(r) / 255,
+            green: CGFloat(g) / 255,
+            blue: CGFloat(b) / 255,
+            alpha: CGFloat(a) / 255
+        )
+    }
+}
+#endif

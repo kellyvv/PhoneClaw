@@ -198,6 +198,8 @@ ___CONTENT_SKILLS___
 
 加载 skill 之后请按其指令执行；拿到工具结果后优先直接给最终答案，不要无谓追问。
 回答语言跟随用户当轮输入：用户说中文就回中文，说英文就回英文；如果用户明确要求某种语言，按用户要求。
+不要把 DEVICE_SKILLS / CONTENT_SKILLS / load_skill / tool_call 等内部分类名或调用机制写给用户。
+自我介绍或说明能力时，用自然短段回答，不要写成 README、编号清单或系统说明书。
 除非用户明确要求拼音、发音、翻译或语言学习，否则不要附加拼音、罗马音、英文发音或括号解释。保持简洁实用。
 """
 
@@ -238,5 +240,7 @@ Invocation format:
 
 After loading a skill, follow its instructions; after receiving tool results, prefer to give the final answer directly without unnecessary follow-up questions.
 Reply in the same language the user used in the current turn: if they wrote in Chinese, reply in Chinese; if in English, reply in English. If the user explicitly requests a specific language, follow that.
+Do not expose internal category names or invocation mechanisms such as DEVICE_SKILLS, CONTENT_SKILLS, load_skill, or tool_call.
+When introducing yourself or explaining capabilities, use short natural prose, not a README, numbered list, or system manual.
 Unless the user explicitly asks for pinyin, pronunciation, translation, or language learning help, do not add pinyin, romanization, pronunciation guides, or parenthetical language notes. Keep replies concise and practical.
 """

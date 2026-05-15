@@ -241,8 +241,8 @@ struct PromptBuilder {
         // 第一段加 "禁止自称 Gemma" 进一步缓解.
         let rawBase = (systemPrompt ?? defaultSystemPrompt).trimmingCharacters(in: .whitespacesAndNewlines)
         return rawBase + tr(
-            "\n\n【当前模式: 闲聊】本轮严禁输出 <tool_call>, 严禁提及 Skill / load_skill / 工具调用. 上文所有 Skill 调用规则本轮一律不适用. 回答语言跟随用户当轮输入, 默认简洁. 除非用户明确要求拼音、发音、翻译或语言学习, 否则不要附加拼音、罗马音、英文发音或括号解释.",
-            "\n\n[Current mode: casual chat] This turn: do NOT emit <tool_call>, do NOT mention Skill / load_skill / tool invocation. All Skill invocation rules above do not apply this turn. Reply in the same language the user used this turn, concise by default. Unless the user explicitly asks for pinyin, pronunciation, translation, or language learning help, do not add pinyin, romanization, pronunciation guides, or parenthetical language notes."
+            "\n\n【当前模式: 闲聊】本轮严禁输出 <tool_call>, 严禁提及 Skill / load_skill / 工具调用, 也不要复述 DEVICE_SKILLS / CONTENT_SKILLS 这类内部分类名. 上文所有 Skill 调用规则本轮一律不适用. 回答语言跟随用户当轮输入, 默认简洁. 自我介绍或说明能力时, 用自然短段回答, 不要写成 README、编号清单或系统说明书. 除非用户明确要求拼音、发音、翻译或语言学习, 否则不要附加拼音、罗马音、英文发音或括号解释.",
+            "\n\n[Current mode: casual chat] This turn: do NOT emit <tool_call>, do NOT mention Skill / load_skill / tool invocation, and do NOT repeat internal category names such as DEVICE_SKILLS or CONTENT_SKILLS. All Skill invocation rules above do not apply this turn. Reply in the same language the user used this turn, concise by default. When introducing yourself or explaining capabilities, use short natural prose, not a README, numbered list, or system manual. Unless the user explicitly asks for pinyin, pronunciation, translation, or language learning help, do not add pinyin, romanization, pronunciation guides, or parenthetical language notes."
         )
     }
 

@@ -1,5 +1,5 @@
 import SwiftUI
-import MarkdownUI
+import Foundation
 
 // MARK: - AI 回复
 
@@ -57,22 +57,23 @@ struct AIResponseView: View {
                         content: text,
                         isStreaming: block.isThinking
                     )
-                    .padding(.leading, 4)
+                    .padding(.leading, 6)
+                    .padding(.trailing, 12)
                 }
 
                 if let onRetry, !block.isThinking {
                     Button(action: onRetry) {
-                        HStack(spacing: 4) {
+                        HStack(spacing: 5) {
                             Image(systemName: "arrow.counterclockwise")
-                                .font(.system(size: 11, weight: .medium))
+                                .font(.system(size: 10, weight: .regular))
                             Text(tr("重新生成", "Regenerate"))
-                                .font(.system(size: 12))
+                                .font(.system(size: 11))
                         }
-                        .foregroundStyle(Theme.textTertiary)
+                        .foregroundStyle(Theme.quietAction)
                     }
                     .buttonStyle(.plain)
-                    .padding(.leading, 4)
-                    .padding(.top, 4)
+                    .padding(.leading, 6)
+                    .padding(.top, 10)
                 }
             }
             .animation(.easeInOut(duration: 0.3), value: block.skills.count)
@@ -84,28 +85,221 @@ struct AIResponseView: View {
 
 // MARK: - Streaming Markdown
 
-/// Single-renderer streaming markdown. MarkdownUI throughout — no mid-stream
-/// or end-of-stream renderer swap, so there is never a "re-render" visual jump.
-///
-/// `.contentTransition(.opacity)` is an environment value that cascades into
-/// MarkdownUI's internal Text views. When content grows, new glyphs crossfade
-/// in using the animation context provided by `.animation(_:value:)`.
-/// This mirrors the per-glyph fade used by React-based streaming markdown
-/// (e.g. Claude Code desktop) while keeping view identity stable.
+/// Lightweight assistant text renderer.
+/// MarkdownUI's default list typography is too document-like for the floating chat UI,
+/// so plain text / lists / code blocks are mapped to a quieter local rhythm.
 private struct StreamingMarkdownView: View {
     let content: String
     let isStreaming: Bool
 
     var body: some View {
-        Markdown(content)
-            .markdownTextStyle {
-                FontSize(15)
-                ForegroundColor(Theme.textPrimary)
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(AssistantTextBlock.parse(content)) { block in
+                switch block.kind {
+                case .paragraph(let text, let isLead):
+                    Text(text)
+                        .font(.system(size: isLead ? 14 : 14.5, weight: .regular, design: .rounded))
+                        .foregroundStyle(Theme.assistantText.opacity(isLead ? 0.86 : 0.9))
+                        .lineSpacing(6)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                case .numbered(let number, let text):
+                    HStack(alignment: .firstTextBaseline, spacing: 7) {
+                        Text(number)
+                            .font(.system(size: 11.5, weight: .regular))
+                            .monospacedDigit()
+                            .foregroundStyle(Theme.textTertiary.opacity(0.5))
+                            .frame(width: 13, alignment: .trailing)
+                        Text(text)
+                            .font(.system(size: 14.25, weight: .regular, design: .rounded))
+                            .foregroundStyle(Theme.assistantText.opacity(0.86))
+                            .lineSpacing(6)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                case .bullet(let text):
+                    HStack(alignment: .top, spacing: 8) {
+                        Circle()
+                            .fill(Theme.accentMuted.opacity(0.38))
+                            .frame(width: 3.5, height: 3.5)
+                            .padding(.top, 8.5)
+                            .frame(width: 10)
+                        Text(text)
+                            .font(.system(size: 14.25, weight: .regular, design: .rounded))
+                            .foregroundStyle(Theme.assistantText.opacity(0.86))
+                            .lineSpacing(6)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                case .codeBlock(let text):
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        Text(text)
+                            .font(.system(size: 12, weight: .regular, design: .monospaced))
+                            .foregroundStyle(Theme.textSecondary)
+                            .lineSpacing(4)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                    }
+                    .background(Theme.bgHover.opacity(0.42), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .padding(.vertical, 2)
+                }
             }
-            .textSelection(.enabled)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .fixedSize(horizontal: false, vertical: true)
-            .animation(nil, value: content)
+        }
+        .textSelection(.enabled)
+        .frame(maxWidth: assistantTextMaxWidth, alignment: .leading)
+        .fixedSize(horizontal: false, vertical: true)
+        .animation(nil, value: content)
+    }
+
+    private var assistantTextMaxWidth: CGFloat {
+        #if os(macOS)
+        return 620
+        #else
+        return 322
+        #endif
+    }
+}
+
+private struct AssistantTextBlock: Identifiable {
+    enum Kind {
+        case paragraph(String, isLead: Bool)
+        case numbered(String, String)
+        case bullet(String)
+        case codeBlock(String)
+    }
+
+    let id: Int
+    var kind: Kind
+
+    static func parse(_ source: String) -> [AssistantTextBlock] {
+        let lines = source
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+            .components(separatedBy: "\n")
+
+        var blocks: [AssistantTextBlock] = []
+        var paragraph: [String] = []
+        var codeLines: [String] = []
+        var isInCodeBlock = false
+
+        func flushParagraph() {
+            let text = clean(paragraph.joined(separator: " "))
+            paragraph.removeAll()
+            guard !text.isEmpty else { return }
+            let isLead = text.count <= 16 && text.hasSuffix("：")
+            blocks.append(.init(id: blocks.count, kind: .paragraph(text, isLead: isLead)))
+        }
+
+        func flushCodeBlock() {
+            let text = codeLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+            codeLines.removeAll()
+            guard !text.isEmpty else { return }
+            blocks.append(.init(id: blocks.count, kind: .codeBlock(text)))
+        }
+
+        func appendToLastList(_ text: String) -> Bool {
+            let text = clean(text)
+            guard !text.isEmpty, let lastIndex = blocks.indices.last else { return false }
+            switch blocks[lastIndex].kind {
+            case .numbered(let number, let existing):
+                blocks[lastIndex].kind = .numbered(number, clean(existing + " " + text))
+                return true
+            case .bullet(let existing):
+                blocks[lastIndex].kind = .bullet(clean(existing + " " + text))
+                return true
+            case .paragraph, .codeBlock:
+                return false
+            }
+        }
+
+        for rawLine in lines {
+            let trimmedLine = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmedLine.hasPrefix("```") {
+                if isInCodeBlock {
+                    flushCodeBlock()
+                    isInCodeBlock = false
+                } else {
+                    flushParagraph()
+                    isInCodeBlock = true
+                }
+                continue
+            }
+
+            if isInCodeBlock {
+                codeLines.append(rawLine)
+                continue
+            }
+
+            guard !rawLine.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                flushParagraph()
+                continue
+            }
+
+            if rawLine.first?.isWhitespace == true, appendToLastList(rawLine) {
+                continue
+            }
+
+            let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let item = numberedItem(from: line) {
+                flushParagraph()
+                blocks.append(.init(id: blocks.count, kind: .numbered(item.number, clean(item.text))))
+                continue
+            }
+
+            if let item = bulletItem(from: line) {
+                flushParagraph()
+                blocks.append(.init(id: blocks.count, kind: .bullet(clean(item))))
+                continue
+            }
+
+            paragraph.append(line)
+        }
+
+        flushParagraph()
+        flushCodeBlock()
+        return blocks
+    }
+
+    private static func numberedItem(from line: String) -> (number: String, text: String)? {
+        var index = line.startIndex
+        var number = ""
+        while index < line.endIndex, line[index].isNumber {
+            number.append(line[index])
+            index = line.index(after: index)
+        }
+        guard !number.isEmpty, index < line.endIndex else { return nil }
+        let marker = line[index]
+        guard marker == "." || marker == "、" || marker == ")" || marker == "）" else { return nil }
+        index = line.index(after: index)
+        guard index < line.endIndex, line[index].isWhitespace else { return nil }
+        let text = line[index...].trimmingCharacters(in: .whitespacesAndNewlines)
+        return (number, text)
+    }
+
+    private static func bulletItem(from line: String) -> String? {
+        let markers = ["- ", "* ", "• ", "· "]
+        for marker in markers where line.hasPrefix(marker) {
+            return String(line.dropFirst(marker.count))
+        }
+        return nil
+    }
+
+    private static func clean(_ raw: String) -> String {
+        var text = raw
+        for token in [
+            "**", "__", "`",
+            "(DEVICE_SKILLS)", "（DEVICE_SKILLS）",
+            "(CONTENT_SKILLS)", "（CONTENT_SKILLS）"
+        ] {
+            text = text.replacingOccurrences(of: token, with: "")
+        }
+        text = text.replacingOccurrences(of: "：  ", with: "：")
+        text = text.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        text = text.replacingOccurrences(of: " ,", with: ",")
+        text = text.replacingOccurrences(of: " .", with: ".")
+        text = text.replacingOccurrences(of: " :", with: ":")
+        text = text.replacingOccurrences(of: " ：", with: "：")
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 

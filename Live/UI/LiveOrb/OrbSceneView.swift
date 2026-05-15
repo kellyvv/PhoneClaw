@@ -22,6 +22,7 @@ struct OrbSceneView: UIViewRepresentable {
     let inputAnalyser: OrbAudioAnalyser?
     let outputAnalyser: OrbAudioAnalyser?
     let state: LiveModeEngine.State
+    var lightBackground: Bool = false
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -30,6 +31,7 @@ struct OrbSceneView: UIViewRepresentable {
         context.coordinator.inputAnalyser = inputAnalyser
         context.coordinator.outputAnalyser = outputAnalyser
         context.coordinator.state = state
+        context.coordinator.lightBackground = lightBackground
         context.coordinator.loadOrb(into: webView)
         return webView
     }
@@ -38,12 +40,17 @@ struct OrbSceneView: UIViewRepresentable {
         context.coordinator.inputAnalyser = inputAnalyser
         context.coordinator.outputAnalyser = outputAnalyser
         context.coordinator.state = state
+        if context.coordinator.lightBackground != lightBackground {
+            context.coordinator.lightBackground = lightBackground
+            context.coordinator.pushChrome()
+        }
     }
 
     final class Coordinator: NSObject, WKNavigationDelegate {
         weak var inputAnalyser: OrbAudioAnalyser?
         weak var outputAnalyser: OrbAudioAnalyser?
         var state: LiveModeEngine.State = .idle
+        var lightBackground = false
 
         private weak var webView: WKWebView?
         private let schemeHandler = OrbBundleSchemeHandler()
@@ -82,6 +89,19 @@ struct OrbSceneView: UIViewRepresentable {
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             isReady = true
+            pushChrome()
+        }
+
+        func pushChrome() {
+            guard isReady, let webView else { return }
+            let flag = lightBackground ? 1 : 0
+            let script = """
+            window.__orbLightModePending = \(flag);
+            if (window.__orbSetChrome) {
+              window.__orbSetChrome(\(flag));
+            }
+            """
+            webView.evaluateJavaScript(script, completionHandler: nil)
         }
 
         @objc private func tick() {
@@ -229,6 +249,7 @@ void main() {
 out vec4 fragmentColor;
 uniform vec2 resolution;
 uniform float rand;
+uniform float lightMode;
 void main() {
   float aspectRatio = resolution.x / resolution.y;
   vec2 vUv = gl_FragCoord.xy / resolution;
@@ -237,9 +258,15 @@ void main() {
   vUv.x *= aspectRatio;
   float factor = 4.;
   float d = factor * length(vUv);
-  vec3 from = vec3(3.) / 255.;
-  vec3 to = vec3(16., 12., 20.) / 2550.;
-  fragmentColor = vec4(mix(from, to, d) + .005 * noise, 1.);
+  float lightD = clamp(d, 0., 1.);
+  vec3 darkFrom = vec3(3.) / 255.;
+  vec3 darkTo = vec3(16., 12., 20.) / 2550.;
+  vec3 lightFrom = vec3(255., 252., 246.) / 255.;
+  vec3 lightTo = vec3(238., 232., 221.) / 255.;
+  vec3 darkColor = mix(darkFrom, darkTo, d);
+  vec3 lightColor = mix(lightFrom, lightTo, lightD);
+  float noiseAmount = mix(.005, .0025, lightMode);
+  fragmentColor = vec4(mix(darkColor, lightColor, lightMode) + noiseAmount * noise, 1.);
 }`;
 
     const sphereVS = `#define STANDARD
@@ -330,7 +357,8 @@ void main() {
       new THREE.RawShaderMaterial({
         uniforms: {
           resolution: { value: new THREE.Vector2(1, 1) },
-          rand: { value: 0 }
+          rand: { value: 0 },
+          lightMode: { value: 0 }
         },
         vertexShader: backdropVS,
         fragmentShader: backdropFS,
@@ -355,7 +383,6 @@ void main() {
     const pmremGenerator = new THREE.PMREMGenerator(renderer);
     pmremGenerator.compileEquirectangularShader();
 
-    const baseEmissiveIntensity = 1.2;
     const sphereMaterial = new THREE.MeshStandardMaterial({
       color: 0x2a1a08,
       metalness: 0.85,
@@ -401,7 +428,10 @@ void main() {
       0
     );
     composer.addPass(bloomPass);
-    const fullBloomStrength = 5;
+    const bloomChrome = {
+      base: 0.3,
+      full: 5
+    };
 
     function onWindowResize() {
       camera.aspect = window.innerWidth / window.innerHeight;
@@ -426,13 +456,55 @@ void main() {
     const rotation = new THREE.Vector3(0, 0, 0);
     let prevTime = performance.now();
 
-    // 蒙版控制: TTS 播放后 1s 延迟, 然后 6s 淡出 (wall-clock time)
+    // 蒙版控制: TTS 播放后 1s 延迟, 然后 2s 淡出 (wall-clock time)
     const mask = document.getElementById('mask');
     const initialMaskOpacity = 0.45;
     let maskOpacity = initialMaskOpacity;
     let revealStartTime = -1;  // -1 = 未触发
     const revealDelayMs = 1000;   // 1s delay
     const revealDurationMs = 2000; // 2s ramp, total reveal = 3s with 1s hold
+
+    function revealEase(now) {
+      if (revealStartTime < 0) { return 0; }
+      const elapsed = now - revealStartTime;
+      if (elapsed <= revealDelayMs) { return 0; }
+      const progress = Math.min((elapsed - revealDelayMs) / revealDurationMs, 1.0);
+      return progress * progress * (3 - 2 * progress);
+    }
+
+    window.__orbSetChrome = (light) => {
+      const isLight = light !== undefined && light > 0.5;
+      backdrop.material.uniforms.lightMode.value = isLight ? 1 : 0;
+
+      if (isLight) {
+        sphereMaterial.color.setHex(0x35271d);
+        sphereMaterial.emissive.setHex(0x080503);
+        sphereMaterial.emissiveIntensity = 0.16;
+        sphereMaterial.metalness = 0.92;
+        sphereMaterial.roughness = 0.34;
+        bloomChrome.base = 0.05;
+        bloomChrome.full = 1.15;
+      } else {
+        sphereMaterial.color.setHex(0x2a1a08);
+        sphereMaterial.emissive.setHex(0x1a0f04);
+        sphereMaterial.emissiveIntensity = 1.2;
+        sphereMaterial.metalness = 0.85;
+        sphereMaterial.roughness = 0.25;
+        bloomChrome.base = 0.3;
+        bloomChrome.full = 5;
+      }
+      sphereMaterial.needsUpdate = true;
+      const eased = revealEase(performance.now());
+      bloomPass.strength = bloomChrome.base + (bloomChrome.full - bloomChrome.base) * eased;
+
+      const bg = isLight ? 0xf8f5ef : 0x100c14;
+      const cssBg = isLight ? '#f8f5ef' : '#100c14';
+      scene.background = new THREE.Color(bg);
+      document.documentElement.style.background = cssBg;
+      document.body.style.background = cssBg;
+      mask.style.background = isLight ? 'rgba(248,245,239,0.45)' : 'rgba(0,0,0,0.45)';
+    };
+    window.__orbSetChrome(window.__orbLightModePending || 0);
 
     window.__orbUpdate = (i0, i1, i2, o0, o1, o2, br) => {
       target.ix = i0; target.iy = i1; target.iz = i2;
@@ -460,15 +532,11 @@ void main() {
 
       backdrop.material.uniforms.rand.value = Math.random() * 10000;
 
-      // 蒙版 + bloom: 1s delay + 6s 淡出 (wall-clock)
+      // 蒙版 + bloom: 1s delay + 2s 淡出 (wall-clock)
       if (revealStartTime >= 0) {
-        const elapsed = t - revealStartTime;
-        if (elapsed > revealDelayMs) {
-          const progress = Math.min((elapsed - revealDelayMs) / revealDurationMs, 1.0);
-          const eased = progress * progress * (3 - 2 * progress);
-          maskOpacity = initialMaskOpacity * (1.0 - eased);
-          bloomPass.strength = 0.3 + (fullBloomStrength - 0.3) * eased;
-        }
+        const eased = revealEase(t);
+        maskOpacity = initialMaskOpacity * (1.0 - eased);
+        bloomPass.strength = bloomChrome.base + (bloomChrome.full - bloomChrome.base) * eased;
       }
       mask.style.opacity = maskOpacity;
 
@@ -523,6 +591,7 @@ struct OrbSceneView: View {
     let inputAnalyser: OrbAudioAnalyser?
     let outputAnalyser: OrbAudioAnalyser?
     let state: LiveModeEngine.State
+    var lightBackground: Bool = false
 
     var body: some View {
         OrbBackgroundView()

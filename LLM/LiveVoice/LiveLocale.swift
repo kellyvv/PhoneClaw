@@ -5,7 +5,7 @@ import Foundation
 // 设计目标: LIVE flow 代码全部用 `LiveLocale.zhCN.config` 这个固定入口。
 // 真正的语言切换发生在 `.config` getter 内部 — 它读 LanguageService,
 // 系统语言中文返回 .zhCN 数据, 英文返回 .enUS 数据。这样保持 LIVE flow
-// 文件 (LiveModeEngine / LiveModeUI / LiveTurnProcessor) 一行不动,
+// 文件 (LiveModeEngine / LiveModeUI / LiveTurnProcessor) 少量改动,
 // 同时让 zh / en 走各自的 prompt + persona + 状态文案。
 //
 // 关键设计点:
@@ -18,8 +18,8 @@ enum LiveLocale: String, Sendable {
     case zhCN = "zh-CN"
 
     /// LIVE flow 调用 `LiveLocale.zhCN.config` 的地方都走这个 getter。
-    /// 实际返回哪份数据看 `LanguageService.shared.current` — 中文系统拿 .zhCN,
-    /// 英文系统拿 .enUS。case 维持一个 `.zhCN` 是因为 LIVE flow 大量代码
+    /// 实际返回哪份数据看 `LanguageService.shared.current` — 生效语言中文拿 .zhCN,
+    /// 英文拿 .enUS。case 维持一个 `.zhCN` 是因为 LIVE flow 大量代码
     /// 已经写死了 `LiveLocale.zhCN` / `locale: .zhCN`, 改 enum 形状就要碰
     /// LIVE flow 文件 (跟"流程不改"边界冲突)。让 case 退化成"locale 入口",
     /// 用一个 dynamic getter 换 call site 全部不动。

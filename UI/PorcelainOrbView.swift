@@ -1,71 +1,40 @@
 import SwiftUI
 
-// MARK: - PorcelainOrbView
+// MARK: - BrandMarkView
 //
-// 主屏空状态的瓷器球视觉。
+// 主屏中央的"品牌签名"——直接渲染 designer 提供的爪痕 asset (brand_mark.imageset).
 //
-// 设计语言:跟 App Icon 的金爪同色系(brand color #C77A3F),
-// 但形态从"利爪划痕"软化为"釉中流金"——同一物质语言不同姿态。
+// 实现历史 (注释保留, 避免后人重蹈覆辙):
+//   先后尝试过 3D 瓷釉球 (太拟物)、扁平 SwiftUI Path 爪痕 (画不出味道, 像断的 WiFi).
+//   最终结论: 品牌 mark 走 raster asset, SwiftUI 只负责尺寸 + 极弱呼吸. 见 memory
+//   "feedback_dont_handdraw_brand.md".
 //
-// 实现选择:Image asset + SwiftUI 微动画(方案 D)。
-// 主屏不需要响应音频,只是 idle 邀请性视觉,PNG + breathing scale 够了。
-// Live mode 内的动态 orb 仍走 Three.js (OrbSceneView),那里能跟着 audio 顶点变形。
-//
-// 球本体已包含瓷釉裂纹 + 金铜流痕 + 下方涟漪,SwiftUI 只负责呼吸 + 微旋转。
-
-struct PorcelainOrbView: View {
-    /// 球的视觉直径(包含下方涟漪)。默认 280pt 对应设计稿主屏中央比例。
-    var size: CGFloat = 280
+// 资源: Assets.xcassets/brand_mark.imageset (1024×1024 RGBA, 透明背景, 金铜原色)
+struct BrandMarkView: View {
+    var size: CGFloat = 90
 
     @State private var breathing = false
-    @State private var rotation: Double = -2
 
     var body: some View {
-        Image("orb_porcelain")
+        Image("brand_mark")
             .resizable()
             .scaledToFit()
             .frame(width: size, height: size)
-            .scaleEffect(breathing ? 1.02 : 1.0)
-            .rotationEffect(.degrees(rotation))
+            .scaleEffect(breathing ? 1.008 : 1.0)
             .onAppear {
-                // 呼吸: 3s 一个周期, scale 1.0 ↔ 1.02 — 轻微到几乎察觉不到,
-                // 暗示"陶瓷之内有生命"。
-                withAnimation(.easeInOut(duration: 3.0).repeatForever(autoreverses: true)) {
+                // 极缓极弱呼吸 — 4.5s 周期, ±0.8% scale, 几乎察觉不到.
+                // 只为不让签名"完全静止" 而显死板.
+                withAnimation(.easeInOut(duration: 4.5).repeatForever(autoreverses: true)) {
                     breathing = true
-                }
-                // 微旋转: 12s 一个周期, -2° ↔ +2° — 表面流金有缓慢"漂移"感。
-                withAnimation(.easeInOut(duration: 12.0).repeatForever(autoreverses: true)) {
-                    rotation = 2
                 }
             }
     }
 }
 
-#Preview {
+#Preview("BrandMark") {
     ZStack {
-        Color(red: 248/255, green: 245/255, blue: 239/255)  // champagne #F8F5EF
+        Color(red: 248/255, green: 245/255, blue: 239/255)
             .ignoresSafeArea()
-        PorcelainOrbView()
-    }
-}
-
-// MARK: - EntryPortalButtonStyle
-//
-// "进入 LIVE" 等入口的按压反馈 — 不走 iOS 系统默认 plain (没有 visual feedback),
-// 也不走 capsule fill (会"掉价" 成普通互联网按钮).
-//
-// 走 "器物按压" 逻辑:
-//   idle:    opacity 0.88 — 微弱存在感, 方向性符号 (chevron) 暗示可点
-//   pressed: opacity 1.00 + scale 0.985 — 触感反馈, 像按下一块陶瓷按钮
-//   duration: 120ms — 比 iOS 默认 200ms 快, 显精致
-//
-// 参考: Apple Music onboarding CTA, VisionOS setup, Arc 移动端启动页.
-
-struct EntryPortalButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .opacity(configuration.isPressed ? 1.0 : 0.88)
-            .scaleEffect(configuration.isPressed ? 0.985 : 1.0)
-            .animation(.easeInOut(duration: 0.12), value: configuration.isPressed)
+        BrandMarkView()
     }
 }

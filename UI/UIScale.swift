@@ -88,29 +88,31 @@ enum UIScale {
     /// chip 跟中间 textfield 的间距.
     static var chipTextSpacing: CGFloat { isLargeScreen ? 18 : 16 }
 
-    /// placeholder / 输入文字字号.
-    static var pillTextSize: CGFloat { 17 }
+    /// 输入文字字号.
+    static var pillTextSize: CGFloat { 16 }
+
+    /// 输入框空态示例字号. 比真实输入更轻一点, 避免示例抢主视觉。
+    static var pillPlaceholderTextSize: CGFloat { 15 }
 
     // MARK: - Welcome Screen Spec
 
-    /// Orb 占屏宽比例 — 大屏反而 缩 (留更多空气).
-    static var orbWidthRatio: CGFloat { isLargeScreen ? 0.44 : 0.48 }
+    /// 品牌签名 (BrandMarkView) 占屏宽比例 — 极小, 是"签字" 不是 "印章".
+    /// 大屏反而 略缩, 留更多空气.
+    static var orbWidthRatio: CGFloat { isLargeScreen ? 0.20 : 0.22 }
 
-    /// Orb 视觉直径.
+    /// 品牌签名视觉直径. (名字保留 orbSize 是为了减少调用点改动 —
+    /// 历史 PorcelainOrbView 已被 BrandMarkView 替换.)
     static var orbSize: CGFloat { screenWidth * orbWidthRatio }
 
-    /// Orb 跟下方 "进入 LIVE" 文字的距离.
-    /// 必须 ≤ 56pt — orb + LIVE 是一个整体, 距离太大会让 LIVE 读作 "说明文字"
-    /// 而不是 "orb 的交互入口". (注: PorcelainOrbView image 自带涟漪占下方 ~24pt,
-    /// 所以实际 visual gap = 这个值 + 24pt.)
-    static var orbToEntryTextGap: CGFloat { isLargeScreen ? 32 : 28 }
+    /// 顶部固定留白 (topBar 下方 → 签名开始) — 让签名落到屏幕 ~ 42-45%
+    /// 高度, 而不是被 topBar 推得太低. 签名小, 视觉重心可以更靠中央.
+    static var topToOrbGap: CGFloat { isLargeScreen ? 230 : 200 }
 
-    /// 顶部固定留白 (topBar 下方 → orb image 开始) — 让 orb 整组视觉重心
-    /// 上移到屏幕 38-40% 高度. iOS Onboarding 风格: 主体偏上, 不几何居中.
-    static var topToOrbGap: CGFloat { isLargeScreen ? 80 : 60 }
+    /// 顶部 chrome 视觉高度. topBar 内部是 28pt 状态点 + 上下 10pt padding.
+    static var topChromeHeight: CGFloat { topStatusChipDiameter + 20 }
 
-    /// "进入 LIVE" 跟底部输入框的间距 — 流动 Spacer 占满,下方承托空间最大.
-    static var entryToInputMinGap: CGFloat { isLargeScreen ? 160 : 140 }
+    /// 品牌签名从安全区顶部开始的固定偏移, 保持旧版 topBar + topToOrbGap 的位置.
+    static var welcomeBrandTopOffset: CGFloat { topChromeHeight + topToOrbGap }
 
     /// 输入框到屏幕底部 (home indicator 之上) 的间距.
     static var inputBarBottomGap: CGFloat { isLargeScreen ? 18 : 14 }

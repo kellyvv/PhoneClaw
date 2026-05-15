@@ -21,19 +21,17 @@ struct ConfigurationsView: View {
     @State private var requestingPermission: AppPermissionKind?
     @State private var liveDownloader = LiveModelStore()
     @State private var didLoadCurrentSettings = false
+    @State private var activeInfoTopic: SettingsInfoTopic?
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                // Tab 切换
-                HStack(spacing: 0) {
-                    tabButton(tr("模型设置", "Model Settings"), tag: 0)
-                    tabButton(tr("系统提示词", "System Prompt"), tag: 1)
-                    tabButton(tr("权限", "Permissions"), tag: 2)
-                }
-                .padding(.horizontal)
+        ZStack {
+            Theme.bg.ignoresSafeArea()
 
-                Rectangle().fill(Theme.border).frame(height: 1)
+            VStack(spacing: 0) {
+                settingsTopBar
+
+                settingsTabs
+                    .padding(.top, 34)
 
                 Group {
                     if selectedTab == 0 {
@@ -44,48 +42,31 @@ struct ConfigurationsView: View {
                         permissionsTab
                     }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.top, 28)
 
-                Rectangle().fill(Theme.border).frame(height: 1)
-
-                // 底部按钮
-                HStack(spacing: 20) {
-                    Button {
-                        showSkillsManager = true
-                    } label: {
-                        Label(tr("Skills", "Skills"), systemImage: "puzzlepiece.extension")
-                            .font(.body.weight(.medium))
-                            .foregroundStyle(Theme.textSecondary)
-                    }
-                    .buttonStyle(.plain)
-
-                    Spacer()
-                    Button(tr("取消", "Cancel")) { dismiss() }
-                        .foregroundStyle(Theme.textSecondary)
-                    Button(tr("确定", "OK")) {
-                        if applySettings() {
-                            dismiss()
-                        }
-                    }
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(Theme.accent)
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 8)
-                    .background(Theme.accent.opacity(0.15), in: Capsule())
-                }
-                .padding()
+                settingsBottomBar
             }
-            .navigationTitle(tr("配置", "Configurations"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .background(Theme.bgElevated)
+
+            if let topic = activeInfoTopic {
+                InfoDisclosureOverlay(
+                    title: topic.title,
+                    message: topic.message
+                ) {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        activeInfoTopic = nil
+                    }
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.985)))
+                .zIndex(10)
+            }
         }
-        .preferredColorScheme(.light)
         .onAppear {
             guard !didLoadCurrentSettings else { return }
             didLoadCurrentSettings = true
             loadCurrentSettings()
         }
-        .sheet(isPresented: $showSkillsManager) {
+        .fullScreenCover(isPresented: $showSkillsManager) {
             SkillsManagerView(engine: engine)
         }
         #if canImport(UIKit)
@@ -99,387 +80,446 @@ struct ConfigurationsView: View {
 
     // MARK: - Tab 按钮
 
+    private var settingsTopBar: some View {
+        HStack(spacing: 0) {
+            Button {
+                dismiss()
+            } label: {
+                ZStack {
+                    Circle()
+                        .fill(SettingsStyle.controlFill)
+                        .frame(
+                            width: UIScale.topStatusChipDiameter,
+                            height: UIScale.topStatusChipDiameter
+                        )
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(SettingsStyle.secondary)
+                        .opacity(0.58)
+                }
+            }
+            .buttonStyle(.plain)
+
+            Spacer()
+
+            Text(tr("模型设置", "Model Settings"))
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(SettingsStyle.muted)
+
+            Spacer()
+
+            Color.clear
+                .frame(
+                    width: UIScale.topStatusChipDiameter,
+                    height: UIScale.topStatusChipDiameter
+                )
+        }
+        .padding(.horizontal, Theme.inputPadH)
+        .padding(.vertical, 10)
+    }
+
+    private var settingsTabs: some View {
+        HStack(spacing: 8) {
+            tabButton(tr("模型", "Model"), tag: 0)
+            tabButton(tr("提示词", "Prompt"), tag: 1)
+            tabButton(tr("权限", "Access"), tag: 2)
+        }
+        .padding(.horizontal, 34)
+    }
+
+    private var settingsBottomBar: some View {
+        HStack(spacing: 18) {
+            Button {
+                showSkillsManager = true
+            } label: {
+                Label(tr("技能", "Skills"), systemImage: "puzzlepiece.extension")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(SettingsStyle.secondary)
+            }
+            .buttonStyle(.plain)
+
+            Spacer()
+
+            Button(tr("取消", "Cancel")) {
+                dismiss()
+            }
+            .font(.system(size: 15, weight: .regular))
+            .foregroundStyle(SettingsStyle.secondary)
+
+            Button {
+                if applySettings() {
+                    dismiss()
+                }
+            } label: {
+                Text(tr("确定", "OK"))
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(SettingsStyle.onPrimary)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 11)
+                    .background(SettingsStyle.primary, in: Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 34)
+        .padding(.top, 12)
+        .padding(.bottom, 18)
+        .background(Theme.bg)
+    }
+
     private func tabButton(_ title: String, tag: Int) -> some View {
         Button {
             withAnimation(.easeInOut(duration: 0.2)) { selectedTab = tag }
         } label: {
-            VStack(spacing: 8) {
-                Text(title)
-                    .font(.subheadline.weight(selectedTab == tag ? .semibold : .regular))
-                    .foregroundStyle(selectedTab == tag ? Theme.textPrimary : Theme.textTertiary)
-
-                Rectangle()
-                    .fill(selectedTab == tag ? Theme.accent : .clear)
-                    .frame(height: 2)
-            }
+            Text(title)
+                .font(.system(size: 13, weight: selectedTab == tag ? .medium : .regular))
+                .foregroundStyle(selectedTab == tag ? SettingsStyle.ink : SettingsStyle.tertiary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 9)
+                .background(
+                    selectedTab == tag ? SettingsStyle.controlFill : Color.clear,
+                    in: Capsule()
+                )
         }
-        .frame(maxWidth: .infinity)
+        .buttonStyle(.plain)
     }
 
     // MARK: - Model Configs
 
     private var modelConfigsTab: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 34) {
+                runtimeHeroSection
                 modelSection
+                liveModelSection
                 backendSection
                 languageSection
-                liveModelSection
             }
-            .padding()
+            .padding(.horizontal, 34)
+            .padding(.bottom, 36)
         }
+        .scrollIndicators(.hidden)
     }
 
     // MARK: - System Prompt
 
     private var systemPromptTab: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 18) {
+            labelWithInfo(tr("系统提示词", "System Prompt"), topic: .systemPrompt)
+
             TextEditor(text: $systemPrompt)
-                .font(.system(size: 13))
-                .foregroundStyle(Theme.textPrimary)
+                .font(.system(size: 14, weight: .regular))
+                .foregroundStyle(SettingsStyle.ink)
                 .scrollContentBackground(.hidden)
-                .padding(12)
-                .background(Theme.bg, in: RoundedRectangle(cornerRadius: 8))
+                .lineSpacing(5)
+                .padding(16)
+                .frame(minHeight: 360)
+                .background(SettingsStyle.selectedFill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .strokeBorder(Theme.border, lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(SettingsStyle.hairline.opacity(0.62), lineWidth: 1)
                         .allowsHitTesting(false)
                 )
 
-            Button(tr("恢复默认", "Restore Default")) {
-                systemPrompt = engine.defaultSystemPrompt
+            HStack {
+                Spacer()
+
+                Button(tr("恢复默认", "Restore Default")) {
+                    systemPrompt = engine.defaultSystemPrompt
+                }
+                .font(.system(size: 13, weight: .regular))
+                .foregroundStyle(SettingsStyle.secondary)
+                .opacity(0.72)
             }
-            .font(.subheadline)
-            .foregroundStyle(Theme.accent)
         }
-        .padding()
+        .padding(.horizontal, 34)
+        .padding(.bottom, 36)
     }
 
     private var permissionsTab: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 28) {
                 permissionsSection
             }
-            .padding()
+            .padding(.horizontal, 34)
+            .padding(.bottom, 36)
         }
+        .scrollIndicators(.hidden)
     }
 
-    // MARK: - 配置 Slider
+    // MARK: - 模型
+
+    private var selectedModel: ModelDescriptor? {
+        engine.availableModels.first(where: { $0.id == selectedModelID })
+    }
+
+    private var runtimeHeroSection: some View {
+        let model = selectedModel
+        let state = model.map { engine.installer.installState(for: $0.id) } ?? .notInstalled
+
+        return VStack(alignment: .leading, spacing: 12) {
+            labelWithInfo(tr("已启用模型", "Enabled Model"), topic: .enabledModel)
+
+            Text(model?.displayName ?? tr("未选择模型", "No model selected"))
+                .font(.system(size: 31, weight: .semibold))
+                .foregroundStyle(SettingsStyle.ink)
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
+
+            Text(modelStateLine(for: model, state: state))
+                .font(.system(size: 14, weight: .regular))
+                .foregroundStyle(SettingsStyle.secondary)
+        }
+        .padding(.top, 4)
+    }
 
     private var modelSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(tr("模型", "Model"))
-                .font(.headline)
-                .foregroundStyle(Theme.textPrimary)
+        VStack(alignment: .leading, spacing: 16) {
+            labelWithInfo(tr("模型", "Models"), topic: .models)
 
-            Text(modelHeaderText)
-                .font(.subheadline)
-                .foregroundStyle(Theme.textSecondary)
+            VStack(spacing: 0) {
+                ForEach(Array(engine.availableModels.enumerated()), id: \.element.id) { index, model in
+                    modelCandidateRow(model)
 
-            VStack(spacing: 10) {
-                ForEach(engine.availableModels) { model in
-                    let state = engine.installer.installState(for: model.id)
-                    let isDownloading: Bool = {
-                        if case .downloading = state { return true }
-                        return false
-                    }()
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack(spacing: 12) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(model.displayName)
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(Theme.textPrimary)
-                                Text(model.id)
-                                    .font(.caption.monospaced())
-                                    .foregroundStyle(Theme.textTertiary)
-                                // 模型定位提示 — 用户通常只装一个, 不做"请切换 X" 的无效建议,
-                                // 直接声明各自能力边界, 让用户基于场景选一个。
-                                if model.id.contains("e2b") {
-                                    Text(tr(
-                                        "轻量款 · 聊天 / 翻译 / 单轮查询。多轮工具对话能力有限。",
-                                        "Lightweight · chat / translate / single-turn. Limited multi-turn tool use."
-                                    ))
-                                        .font(.caption2)
-                                        .foregroundStyle(Theme.textTertiary)
-                                        .padding(.top, 2)
-                                } else if model.id.contains("e4b") {
-                                    Text(tr(
-                                        "完整款 · 多轮工具对话 + 复杂 agent 能力。更吃存储。",
-                                        "Full · multi-turn tool use + complex agent. Uses more storage."
-                                    ))
-                                        .font(.caption2)
-                                        .foregroundStyle(Theme.textTertiary)
-                                        .padding(.top, 2)
-                                }
-                            }
-
-                            Spacer()
-
-                            if isDownloading {
-                                if selectedModelID == model.id {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundStyle(Theme.accent)
-                                } else {
-                                    Image(systemName: "circle")
-                                        .foregroundStyle(Theme.textTertiary)
-                                }
-                            } else {
-                                VStack(alignment: .trailing, spacing: 8) {
-                                    modelStateControl(for: model, state: state)
-
-                                    if selectedModelID == model.id {
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .foregroundStyle(Theme.accent)
-                                    } else {
-                                        Image(systemName: "circle")
-                                            .foregroundStyle(Theme.textTertiary)
-                                    }
-                                }
-                            }
-                        }
-
-                        if case let .downloading(completedFiles, totalFiles, _) = state {
-                            downloadProgressBadge(
-                                modelID: model.id,
-                                completedFiles: completedFiles,
-                                totalFiles: totalFiles
-                            )
-                        }
-
-                        if let detail = modelStateDetail(state, modelID: model.id) {
-                            Text(detail)
-                                .font(.caption)
-                                .foregroundStyle(state.isFailure ? Theme.accent : Theme.textTertiary)
-                        }
-                    }
-                    .padding(12)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(selectedModelID == model.id ? Theme.accentSubtle : Theme.bg)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .strokeBorder(
-                                selectedModelID == model.id ? Theme.accent : Theme.border,
-                                lineWidth: 1
-                            )
-                            .allowsHitTesting(false)
-                    )
-                    .contentShape(RoundedRectangle(cornerRadius: 12))
-                    .onTapGesture {
-                        selectedModelID = model.id
+                    if index < engine.availableModels.count - 1 {
+                        Rectangle()
+                            .fill(SettingsStyle.hairline)
+                            .frame(height: 1)
+                            .padding(.vertical, 12)
                     }
                 }
             }
-
-            Text(modelFooterText)
-                .font(.caption)
-                .foregroundStyle(Theme.textTertiary)
         }
-        .padding(14)
-        .background(Theme.bgElevated, in: RoundedRectangle(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .strokeBorder(Theme.border, lineWidth: 1)
-                .allowsHitTesting(false)
-        )
     }
 
-    private var modelHeaderText: String {
-        if engine.isModelReady {
-            return tr("当前已加载：", "Loaded: ") + engine.catalog.modelDisplayName
-        }
+    private func modelCandidateRow(_ model: ModelDescriptor) -> some View {
+        let state = engine.installer.installState(for: model.id)
+        let isSelected = selectedModelID == model.id
+        let isSelectable = modelIsSelectable(state)
 
-        guard let selectedModel = engine.availableModels.first(where: { $0.id == selectedModelID }) else {
-            return tr("请选择一个模型。", "Select a model.")
-        }
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(model.displayName)
+                        .font(.system(size: 16, weight: isSelected ? .semibold : .regular))
+                        .foregroundStyle(isSelectable ? SettingsStyle.ink : SettingsStyle.secondary)
+                        .lineLimit(1)
 
-        let state = engine.installer.installState(for: selectedModel.id)
-        switch state {
-        case .notInstalled:
-            if engine.installer.hasResumableDownload(for: selectedModel.id) {
-                return tr(
-                    "可继续下载 \(selectedModel.displayName)",
-                    "Resume \(selectedModel.displayName)"
+                    Text(modelInstallLabel(for: state, model: model))
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundStyle(SettingsStyle.tertiary)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 10)
+
+                modelStateControl(for: model, state: state)
+
+                if isSelected && isSelectable {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(SettingsStyle.ink)
+                        .frame(width: 20, height: 20)
+                }
+            }
+
+            if case let .downloading(completedFiles, totalFiles, _) = state {
+                downloadProgressBadge(
+                    modelID: model.id,
+                    completedFiles: completedFiles,
+                    totalFiles: totalFiles
                 )
             }
-            return tr(
-                "请先下载模型",
-                "Download a model first"
-            )
-        case .checkingSource:
-            return tr(
-                "准备下载 \(selectedModel.displayName)",
-                "Preparing \(selectedModel.displayName)"
-            )
-        case .downloading:
-            return tr(
-                "正在下载 \(selectedModel.displayName)",
-                "Downloading \(selectedModel.displayName)"
-            )
-        case .downloaded:
-            return tr(
-                "\(selectedModel.displayName) 已下载，点确定加载",
-                "\(selectedModel.displayName) downloaded. Tap OK"
-            )
-        case .bundled:
-            return tr(
-                "\(selectedModel.displayName) 已内置",
-                "\(selectedModel.displayName) bundled"
-            )
-        case .failed:
-            return tr(
-                "\(selectedModel.displayName) 下载失败",
-                "\(selectedModel.displayName) download failed"
-            )
+
+            if case let .failed(message) = state {
+                Text(message)
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(SettingsStyle.danger)
+                    .lineLimit(2)
+            }
+        }
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if isSelectable {
+                selectedModelID = model.id
+            }
         }
     }
 
-    // MARK: - 推理 Backend (GPU / CPU)
+    private func labelWithInfo(_ title: String, topic: SettingsInfoTopic, compact: Bool = false) -> some View {
+        HStack(spacing: compact ? 6 : 7) {
+            Text(title)
+                .font(.system(size: compact ? 15 : 13, weight: compact ? .regular : .medium))
+                .foregroundStyle(compact ? SettingsStyle.ink : SettingsStyle.secondary)
 
-    /// 当前选中模型的 family。用于 gate 那些只对特定家族有意义的 UI 控件
+            Button {
+                activeInfoTopic = topic
+            } label: {
+                ZStack {
+                    Circle()
+                        .strokeBorder(SettingsStyle.tertiary.opacity(0.78), lineWidth: 1)
+                        .frame(width: compact ? 15 : 16, height: compact ? 15 : 16)
+                    Text("!")
+                        .font(.system(size: compact ? 9 : 10, weight: .semibold))
+                        .foregroundStyle(SettingsStyle.tertiary)
+                }
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func modelIsSelectable(_ state: ModelInstallState) -> Bool {
+        switch state {
+        case .downloaded, .bundled:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func modelInstallLabel(for state: ModelInstallState, model: ModelDescriptor) -> String {
+        if let runtimeLabel = modelRuntimeLabel(for: model, includeBackend: true) {
+            return runtimeLabel
+        }
+
+        switch state {
+        case .downloaded, .bundled:
+            return tr("已下载", "Downloaded")
+        case .notInstalled:
+            return engine.installer.hasResumableDownload(for: model.id)
+                ? tr("未下载 · 可继续", "Not downloaded · resumable")
+                : tr("未下载", "Not downloaded")
+        case .checkingSource:
+            return tr("检查中", "Checking")
+        case .downloading:
+            return tr("下载中", "Downloading")
+        case .failed:
+            return tr("下载失败", "Download failed")
+        }
+    }
+
+    private func modelStateLine(for model: ModelDescriptor?, state: ModelInstallState) -> String {
+        guard let model else {
+            return tr("请选择模型", "Select a model")
+        }
+
+        if let runtimeLabel = modelRuntimeLabel(for: model, includeBackend: true) {
+            return runtimeLabel
+        }
+
+        let mode = preferredBackend.uppercased()
+        switch state {
+        case .downloaded, .bundled:
+            return tr("已下载 · \(mode)", "Downloaded · \(mode)")
+        case .notInstalled:
+            if engine.installer.hasResumableDownload(for: model.id) {
+                return tr("未下载 · 可继续", "Not downloaded · resumable")
+            }
+            return tr("未下载", "Not downloaded")
+        case .checkingSource:
+            return tr("检查中", "Checking")
+        case .downloading:
+            return tr("下载中", "Downloading")
+        case .failed:
+            return tr("模型下载失败", "Download failed")
+        }
+    }
+
+    private func modelRuntimeLabel(for model: ModelDescriptor, includeBackend: Bool) -> String? {
+        switch engine.coordinator.sessionState {
+        case .ready(let modelID, let backend):
+            guard modelID == model.id else { return nil }
+            return runtimeLabel(
+                zh: "已加载",
+                en: "Loaded",
+                backend: includeBackend ? backend : nil
+            )
+        case .generating(let modelID, _):
+            guard modelID == model.id else { return nil }
+            return runtimeLabel(
+                zh: "已加载",
+                en: "Loaded",
+                backend: includeBackend ? engine.config.preferredBackend : nil
+            )
+        case .loading(let modelID, _):
+            guard modelID == model.id else { return nil }
+            return runtimeLabel(
+                zh: "加载中",
+                en: "Loading",
+                backend: includeBackend ? preferredBackend : nil
+            )
+        case .switching(_, let target):
+            guard target.modelID == model.id else { return nil }
+            return runtimeLabel(
+                zh: "切换中",
+                en: "Switching",
+                backend: includeBackend ? target.backend : nil
+            )
+        case .unloading(let modelID):
+            guard modelID == model.id else { return nil }
+            return tr("卸载中", "Unloading")
+        default:
+            return nil
+        }
+    }
+
+    private func runtimeLabel(zh: String, en: String, backend: String?) -> String {
+        guard let backend, !backend.isEmpty else {
+            return tr(zh, en)
+        }
+        let mode = backend.uppercased()
+        return tr("\(zh) · \(mode)", "\(en) · \(mode)")
+    }
+
+    // MARK: - 推理
+
+    /// 选中模型的 family。用于 gate 那些只对特定家族有意义的 UI 控件
     /// (例如 MTP 推测解码只 Gemma 4 .litertlm 才有, MiniCPM-V 没有这个概念)。
     /// 找不到 descriptor 时返回 nil, 调用方按需 fallback。
     private var currentModelFamily: ModelFamily? {
         engine.availableModels.first(where: { $0.id == selectedModelID })?.family
     }
 
-    /// 按 model + backend 实测/估算的 decode tok/s.
-    /// - Gemma 4 E2B: iPhone 17 Pro Max 实测 (LiteRT-LM)
-    /// - Gemma 4 E4B: GPU 实测, CPU 按 E2B 比例推算
-    /// - MiniCPM-V 4.6: iPhone 17 Pro Max 实测 (llama.cpp Metal + ANE vision)
-    ///   纯文本 ~10-15 tok/s, vision turn ~5-7 tok/s. 取保守中位数。
-    ///   Hybrid Mamba/GDN op 在 Metal 上的优化不如纯 transformer GEMM 成熟, 比
-    ///   Gemma 4 慢一半左右 (详见 LLM/Backends/MiniCPMV/MiniCPMVBackend.swift 注释)。
-    private var estimatedSpeedText: String {
-        let fastLabel = tr("较快", "fast")
-        let slowLabel = tr("较慢", "slower")
-        let mediumLabel = tr("中等", "medium")
-
-        // MiniCPM-V 走独立分支 — model-family 一对应 (id 前缀 minicpm-v)。
-        if selectedModelID.hasPrefix("minicpm-v") {
-            switch preferredBackend {
-            case "gpu":
-                return tr("MiniCPM-V · 推理速度 ~10 tok/s (\(mediumLabel))",
-                          "MiniCPM-V · Inference ~10 tok/s (\(mediumLabel))")
-            case "cpu":
-                return tr("MiniCPM-V · 推理速度 ~3 tok/s (\(slowLabel))",
-                          "MiniCPM-V · Inference ~3 tok/s (\(slowLabel))")
-            default:
-                return ""
-            }
-        }
-
-        // Gemma 4 (E2B / E4B) 原有逻辑保持。
-        let isE4B = selectedModelID.contains("e4b")
-        switch (preferredBackend, isE4B) {
-        case ("gpu", false): return tr("E2B · 推理速度 ~25 tok/s (\(fastLabel))",
-                                               "E2B · Inference ~25 tok/s (\(fastLabel))")
-        case ("gpu", true):  return tr("E4B · 推理速度 ~20 tok/s (\(fastLabel))",
-                                               "E4B · Inference ~20 tok/s (\(fastLabel))")
-        case ("cpu", false): return tr("E2B · 推理速度 ~8 tok/s (\(slowLabel))",
-                                               "E2B · Inference ~8 tok/s (\(slowLabel))")
-        case ("cpu", true):  return tr("E4B · 推理速度 ~4 tok/s (\(slowLabel))",
-                                               "E4B · Inference ~4 tok/s (\(slowLabel))")
-        default:             return ""
-        }
-    }
-
     private var backendSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(tr("推理后端", "Inference Backend"))
-                .font(.headline)
-                .foregroundStyle(Theme.textPrimary)
+        VStack(alignment: .leading, spacing: 16) {
+            labelWithInfo(tr("推理", "Inference"), topic: .inference)
 
-            // 自己拼的 segmented control. 替代之前的 Picker(.segmented),
-            // 因为后者在当前 iOS / SwiftUI 版本组合下死活不响应点击。
-            // 用纯 Button 拼: 每个按钮自己 onTap 写 @State, 没有 SwiftUI Picker
-            // 的 hit-test 黑魔法干扰. 视觉跟系统 segmented 接近但是显式控制。
-            CustomSegmentedPicker(
-                selection: $preferredBackend,
-                options: [
-                    (value: "gpu", label: "GPU (Metal)"),
-                    (value: "cpu", label: "CPU"),
-                ]
-            )
+            VStack(spacing: 0) {
+                HStack(alignment: .center, spacing: 12) {
+                    labelWithInfo(tr("推理方式", "Inference Mode"), topic: .inferenceMode, compact: true)
 
-            // 当前 model + backend 组合下的速度 (随 model/backend 选择动态变化)
-            Text(estimatedSpeedText)
-                .font(.caption)
-                .foregroundStyle(Theme.textTertiary)
+                    Spacer(minLength: 16)
 
-            // 内存提醒 — 这条只对 Gemma 4 LiteRT GPU 路径成立。LiteRT GPU 模式
-            // 会 pin ~800 MB 用于 Metal 张量, 跟 CPU 相比内存压力大很多, 低内存
-            // 机型容易撞 jetsam 上限。
-            // MiniCPM-V 走 llama.cpp Metal, Metal 缓存只用临时空间 (~500 MB 模型
-            // 权重 mmap, KV 48 MB, compute buffer ~500 MB), 内存占用跟 CPU 接近,
-            // 同时 GPU 速度比 CPU 快 ~3×。给 MiniCPM-V 用户看 "建议选 CPU 省内存"
-            // 反而把人引导到差体验。所以这条 warning 只对 Gemma 4 显示。
-            if currentModelFamily == .gemma4 {
-                Label(
-                    tr(
-                        "低内存手机建议选 CPU — GPU 占内存较高。",
-                        "Low-memory devices: prefer CPU — GPU is memory-heavy."
-                    ),
-                    systemImage: "exclamationmark.triangle.fill"
-                )
-                .font(.caption)
-                .foregroundStyle(Theme.textSecondary)
-                .labelStyle(.titleAndIcon)
-                .fixedSize(horizontal: false, vertical: true)
-            }
-
-            // Gemma 4 MTP speculative decoding 仅对 Gemma 4 .litertlm 有效
-            // (它的 mtp_drafter section 是模型一部分, 别的家族没有)。
-            // MiniCPM-V / 未来其它家族进来后, 整段藏起来 — 别让用户看到一个
-            // 点了 no-op 的开关误以为没生效。
-            if currentModelFamily == .gemma4 {
-                Divider().background(Theme.border).padding(.vertical, 2)
-
-                // MTP speculative decoding. drafter 预测 K=3 个候选, verifier 一次接受/拒绝。
-                //
-                // 实测 (iPhone GPU + Metal, 2026-05): MTP 是不是净赢由两个独立闸门决定 —
-                //   (1) drafter accept rate ≥ ~30% (E2B 中文 19% / 英文 29% 都不够,
-                //       E4B 36% 才稳过算法层闸门);
-                //   (2) 全程 headroom > ~1500 MB (长输出会让 KV cache 把 headroom 压垮,
-                //       系统逼近 jetsam 阈值后 Metal 调度被限速, MTP 反而变慢)。
-                //
-                // 实测矩阵:
-                //   E2B 中/英长输出 : -27% / -43% (卡闸门 1, 接受率不足)
-                //   E4B 英文短输出  : +37%        (两个闸门都过)
-                //   E4B 中文长输出  : -25%        (卡闸门 2, 内存压力)
-                //
-                // 默认关闭, 用户自行 opt-in。
-                Toggle(isOn: $enableSpeculativeDecoding) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(tr("MTP 推测解码", "MTP speculative decoding"))
-                            .font(.subheadline)
-                            .foregroundStyle(Theme.textPrimary)
-                        Text(tr(
-                            "Gemma 4 E4B 短回复可能加速；E2B 或长回复反而变慢",
-                            "Gemma 4 E4B + short replies may speed up; E2B or long replies slow down"
-                        ))
-                        .font(.caption2)
-                        .foregroundStyle(Theme.textTertiary)
-                    }
+                    CustomSegmentedPicker(
+                        selection: $preferredBackend,
+                        options: [
+                            (value: "gpu", label: "GPU"),
+                            (value: "cpu", label: "CPU"),
+                        ]
+                    )
+                    .frame(width: 184)
                 }
-                .tint(Theme.accent)
+                .padding(.vertical, 4)
+
+                if currentModelFamily == .gemma4 {
+                    Rectangle()
+                        .fill(SettingsStyle.hairline)
+                        .frame(height: 1)
+                        .padding(.vertical, 16)
+
+                    HStack(alignment: .center, spacing: 12) {
+                        labelWithInfo(tr("推测解码", "Speculative Decoding"), topic: .speculativeDecoding, compact: true)
+
+                        Spacer()
+
+                        Toggle("", isOn: $enableSpeculativeDecoding)
+                            .labelsHidden()
+                            .tint(SettingsStyle.ink)
+                    }
+                    .padding(.vertical, 2)
+                }
             }
         }
-        .padding(16)
-        // iOS 17/18: .background(_:in:) 让 Shape 注册成 hit-test 目标会吃掉
-        // 内部 Picker 的点击. 改成 ZStack 把背景放底层 + clipShape 切角,
-        // 背景不参与 hit testing, Picker 拿到完整触控.
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Theme.bg)
-                .allowsHitTesting(false)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .strokeBorder(Theme.border, lineWidth: 1)
-                .allowsHitTesting(false)
-        )
     }
 
     // MARK: - Language
@@ -489,68 +529,101 @@ struct ConfigurationsView: View {
     /// (比 @Bindable + @Observable 的混搭更显式, 也不需要额外 @State 镜像)。
     /// 切换立即触发 SwiftUI observation, 整个 app 视图重渲染新语言。
     private var languageSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(L10n.Config.language)
-                .font(.headline)
-                .foregroundStyle(Theme.textPrimary)
+        VStack(alignment: .leading, spacing: 16) {
+            labelWithInfo(tr("语言", "Language"), topic: .language)
 
-            // 同 backendSection: 用自定义 segmented control 替代 SwiftUI Picker.
-            // setter 里只快速 set LanguageService 让 UI 立即重渲染拿到新文案;
-            // 重活 (reload skill / 改 SYSPROMPT / 重置 statusMessage) 推到下个
-            // runloop tick 异步跑, 防止按钮 tap 后阻塞主线程造成"按下不响应"的卡顿感。
-            CustomSegmentedPicker(
-                selection: Binding(
-                    get: { LanguageService.shared.selected },
-                    set: { newValue in
-                        guard newValue != LanguageService.shared.selected else { return }
-                        // 立即生效的部分: LanguageService 写 UserDefaults + 触发 @Observable
-                        // tr() 视图的重渲染. 这一步必须同步, 否则 segmented 按钮的视觉
-                        // selected 状态会跟 LanguageService.current 短时间不一致。
-                        LanguageService.shared.selected = newValue
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .center, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(tr("界面语言", "Interface Language"))
+                            .font(.system(size: 16, weight: .regular))
+                            .foregroundStyle(SettingsStyle.ink)
 
-                        // 重活异步跑. Locale 切换的 runtime cascade:
-                        //   1. Registry bundle 层: reloadAll 重读 SKILL.en.md vs SKILL.md (磁盘 + YAML 解析, ~50-150ms)
-                        //   2. Engine cache 层: reloadSkills 把 registry 的新 metadata 同步进
-                        //      engine.skillEntries (UI chips 读的是这个数组)
-                        //   3. SYSPROMPT.md 物理文件: 跑 locale-mismatch 迁移 (~10-30ms 磁盘 IO)
-                        //   4. 本地 @State systemPrompt: TextEditor 绑的是这个, 必须手动重拉
-                        //   5. inference.statusMessage: 存的是 tr() 当时的快照 string, 重写
-                        Task { @MainActor in
-                            _ = engine.skillRegistry.reloadAll()
-                            engine.reloadSkills()
-                            engine.loadSystemPrompt()
-                            systemPrompt = engine.config.systemPrompt
-                            if !engine.isModelReady {
-                                if let selectedModel = engine.availableModels.first(where: { $0.id == selectedModelID }),
-                                   engine.installer.artifactPath(for: selectedModel) == nil {
-                                    engine.setStatusMessage(tr("请先下载模型", "Download a model first"))
-                                } else {
-                                    engine.setStatusMessage(tr("等待加载模型...", "Waiting to load model..."))
+                        Text(languageStatusLine)
+                            .font(.system(size: 12, weight: .regular))
+                            .foregroundStyle(SettingsStyle.tertiary)
+                            .lineLimit(1)
+                    }
+
+                    Spacer(minLength: 12)
+                }
+
+                // 同 backendSection: 用自定义 segmented control 替代 SwiftUI Picker.
+                // setter 里只快速 set LanguageService 让 UI 立即重渲染拿到新文案;
+                // 重活 (reload skill / 改 SYSPROMPT / 重置 statusMessage) 推到下个
+                // runloop tick 异步跑, 防止按钮 tap 后阻塞主线程造成"按下不响应"的卡顿感。
+                CustomSegmentedPicker(
+                    selection: Binding(
+                        get: { LanguageService.shared.selected },
+                        set: { newValue in
+                            guard newValue != LanguageService.shared.selected else { return }
+                            // 立即生效的部分: LanguageService 写 UserDefaults + 触发 @Observable
+                            // tr() 视图的重渲染. 这一步必须同步, 否则 segmented 按钮的视觉
+                            // selected 状态会跟 LanguageService.current 短时间不一致。
+                            LanguageService.shared.selected = newValue
+
+                            // 重活异步跑. Locale 切换的 runtime cascade:
+                            //   1. Registry bundle 层: reloadAll 重读 SKILL.en.md vs SKILL.md (磁盘 + YAML 解析, ~50-150ms)
+                            //   2. Engine cache 层: reloadSkills 把 registry 的新 metadata 同步进
+                            //      engine.skillEntries (UI chips 读的是这个数组)
+                            //   3. SYSPROMPT.md 物理文件: 跑 locale-mismatch 迁移 (~10-30ms 磁盘 IO)
+                            //   4. 本地 @State systemPrompt: TextEditor 绑的是这个, 必须手动重拉
+                            //   5. Live 语音模型: active ASR/TTS 依赖当前语言, 切语言后必须刷新状态
+                            //   6. inference.statusMessage: 存的是 tr() 当时的快照 string, 重写
+                            Task { @MainActor in
+                                _ = engine.skillRegistry.reloadAll()
+                                engine.reloadSkills()
+                                engine.loadSystemPrompt()
+                                systemPrompt = engine.config.systemPrompt
+                                liveDownloader.refreshState()
+                                if !engine.isModelReady {
+                                    if let selectedModel = engine.availableModels.first(where: { $0.id == selectedModelID }),
+                                       engine.installer.artifactPath(for: selectedModel) == nil {
+                                        engine.setStatusMessage(tr("请先下载模型", "Download a model first"))
+                                    } else {
+                                        engine.setStatusMessage(tr("等待加载模型...", "Waiting to load model..."))
+                                    }
                                 }
                             }
                         }
-                    }
-                ),
-                options: AppLanguage.allCases.map { (value: $0, label: $0.displayName) }
-            )
+                    ),
+                    options: AppLanguage.allCases.map { (value: $0, label: $0.displayName) }
+                )
+            }
 
             Text(L10n.Config.languageFooter)
-                .font(.caption)
-                .foregroundStyle(Theme.textTertiary)
+                .font(.system(size: 12, weight: .regular))
+                .foregroundStyle(SettingsStyle.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(16)
-        // 同 backendSection: 避开 .background(_:in:) 吃 Picker 点击的 SwiftUI 行为
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Theme.bg)
-                .allowsHitTesting(false)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .strokeBorder(Theme.border, lineWidth: 1)
-                .allowsHitTesting(false)
-        )
+    }
+
+    private var languageStatusLine: String {
+        let selected = LanguageService.shared.selected
+        let resolved = LanguageService.shared.current.resolved
+
+        switch selected {
+        case .auto:
+            return tr(
+                "跟随系统 · 当前为 \(localizedLanguageName(resolved))",
+                "Follows system · Currently \(localizedLanguageName(resolved))"
+            )
+        case .zhHans:
+            return tr("已选择中文", "Chinese selected")
+        case .en:
+            return tr("已选择英文", "English selected")
+        }
+    }
+
+    private func localizedLanguageName(_ language: AppLanguage) -> String {
+        switch language {
+        case .auto:
+            return tr("自动", "Auto")
+        case .zhHans:
+            return tr("中文", "Chinese")
+        case .en:
+            return tr("英文", "English")
+        }
     }
 
     // MARK: - LIVE 语音模型
@@ -562,29 +635,28 @@ struct ConfigurationsView: View {
             return false
         }()
 
-        return VStack(alignment: .leading, spacing: 10) {
+        return VStack(alignment: .leading, spacing: 16) {
+            labelWithInfo(tr("语音", "Voice"), topic: .liveVoice)
+
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(tr("LIVE 语音模型", "LIVE Voice Models"))
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Theme.textPrimary)
-                    Text(tr(
-                        "LIVE 实时语音模式需要的模型。",
-                        "Required for LIVE real-time voice mode."
-                    ))
-                    .font(.caption2)
-                    .foregroundStyle(Theme.textTertiary)
-                    .padding(.top, 2)
+                    Text(tr("实时语音模型", "Live Voice Models"))
+                        .font(.system(size: 16, weight: .regular))
+                        .foregroundStyle(SettingsStyle.ink)
+
+                    Text(liveModelStatusLine(for: state))
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundStyle(SettingsStyle.tertiary)
+                        .lineLimit(1)
                 }
 
                 Spacer()
 
                 if !isDownloading {
-                    VStack(alignment: .trailing, spacing: 8) {
-                        liveModelStateButton
-                    }
+                    liveModelStateButton
                 }
             }
+            .padding(.vertical, 4)
 
             if case let .downloading(completedFiles, totalFiles, _) = state {
                 liveDownloadProgressView(
@@ -593,22 +665,13 @@ struct ConfigurationsView: View {
                 )
             }
 
-            if let detail = liveStateDetail(state) {
-                Text(detail)
-                    .font(.caption)
-                    .foregroundStyle(state.isFailure ? Theme.accent : Theme.textTertiary)
+            if case let .failed(message) = state {
+                Text(message)
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(SettingsStyle.danger)
+                    .lineLimit(2)
             }
         }
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Theme.bg)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(Theme.border, lineWidth: 1)
-                .allowsHitTesting(false)
-        )
     }
 
     @ViewBuilder
@@ -617,38 +680,66 @@ struct ConfigurationsView: View {
         case .notInstalled:
             let completedAssets = liveDownloader.completedAssetCount
             let canResume = completedAssets > 0 || liveDownloader.resumableAssetCount > 0
-            Button(canResume ? tr("继续下载", "Resume") : tr("下载", "Download")) {
+            Button(canResume ? tr("继续下载", "Resume Download") : tr("下载", "Download")) {
                 Task { await liveDownloader.downloadAll() }
             }
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(Theme.accent)
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(SettingsStyle.ink)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(Theme.accent.opacity(0.15), in: Capsule())
+            .background(SettingsStyle.selectedFill, in: Capsule())
         case .checkingSource:
             modelBadge(tr("检查中", "Checking"))
         case .downloading:
             EmptyView()
         case .downloaded:
-            Button(tr("删除", "Delete")) {
+            Button(tr("移除", "Remove")) {
                 Task { try? await liveDownloader.removeAll() }
             }
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(Theme.accent)
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(SettingsStyle.secondary)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(Theme.accent.opacity(0.15), in: Capsule())
+            .background(SettingsStyle.controlFill, in: Capsule())
         case .bundled:
-            modelBadge(tr("内置", "Bundled"), color: Theme.accentGreen)
+            modelBadge(tr("内置", "Bundled"), color: SettingsStyle.secondary)
         case .failed:
             Button(tr("重试", "Retry")) {
                 Task { await liveDownloader.downloadAll() }
             }
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(Theme.accent)
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(SettingsStyle.ink)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(Theme.accent.opacity(0.15), in: Capsule())
+            .background(SettingsStyle.selectedFill, in: Capsule())
+        }
+    }
+
+    private func liveModelStatusLine(for state: ModelInstallState) -> String {
+        switch state {
+        case .notInstalled:
+            let completedAssets = liveDownloader.completedAssetCount
+            let resumableAssets = liveDownloader.resumableAssetCount
+            if completedAssets > 0 || resumableAssets > 0 {
+                return tr(
+                    "未下载 · 可继续",
+                    "Not downloaded · Resume available"
+                )
+            }
+            return tr(
+                "未下载 · 约 \(LiveModelDefinition.estimatedSizeMB) MB",
+                "Not downloaded · About \(LiveModelDefinition.estimatedSizeMB) MB"
+            )
+        case .checkingSource:
+            return tr("检查中", "Checking")
+        case .downloading:
+            return tr("下载中", "Downloading")
+        case .downloaded:
+            return tr("已下载", "Downloaded")
+        case .bundled:
+            return tr("已内置", "Bundled")
+        case .failed:
+            return tr("下载失败", "Download failed")
         }
     }
 
@@ -676,13 +767,13 @@ struct ConfigurationsView: View {
                         "Downloading \(completedFiles)/\(totalFiles)"
                     ))
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(Theme.textPrimary)
+                    .foregroundStyle(SettingsStyle.ink)
                     .lineLimit(1)
 
                     if let metrics {
                         Text(liveDownloadMetricsText(metrics))
                             .font(.caption2.monospacedDigit())
-                            .foregroundStyle(Theme.textTertiary)
+                            .foregroundStyle(SettingsStyle.tertiary)
                             .lineLimit(1)
                     }
                 }
@@ -693,10 +784,10 @@ struct ConfigurationsView: View {
                     liveDownloader.cancelDownload()
                 }
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(Theme.textPrimary)
+                .foregroundStyle(SettingsStyle.ink)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
-                .background(Theme.bg, in: Capsule())
+                .background(SettingsStyle.selectedFill, in: Capsule())
                 .fixedSize(horizontal: true, vertical: true)
             }
 
@@ -705,7 +796,7 @@ struct ConfigurationsView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(Theme.textTertiary.opacity(0.14), in: RoundedRectangle(cornerRadius: 12))
+        .background(SettingsStyle.controlFill, in: RoundedRectangle(cornerRadius: 12))
     }
 
     private func liveDownloadMetricsText(_ metrics: ModelDownloadMetrics) -> String {
@@ -762,89 +853,82 @@ struct ConfigurationsView: View {
     }
 
     private var permissionsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(tr("权限", "Permissions"))
-                .font(.headline)
-                .foregroundStyle(Theme.textPrimary)
+        VStack(alignment: .leading, spacing: 0) {
+            labelWithInfo(tr("权限", "Permissions"), topic: .permissions)
+                .padding(.bottom, 18)
 
-            ForEach(AppPermissionKind.allCases) { kind in
+            ForEach(Array(AppPermissionKind.allCases.enumerated()), id: \.element.id) { index, kind in
                 permissionRow(for: kind)
+
+                if index < AppPermissionKind.allCases.count - 1 {
+                    Rectangle()
+                        .fill(SettingsStyle.hairline)
+                        .frame(height: 1)
+                        .padding(.vertical, 16)
+                }
             }
         }
-        .padding(14)
-        .background(Theme.bgElevated, in: RoundedRectangle(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .strokeBorder(Theme.border, lineWidth: 1)
-                .allowsHitTesting(false)
-        )
     }
 
     private func permissionRow(for kind: AppPermissionKind) -> some View {
         let status = permissionStatuses[kind] ?? .notDetermined
 
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top, spacing: 12) {
+        return HStack(alignment: .center, spacing: 12) {
                 Image(systemName: kind.icon)
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(Theme.accent)
-                    .frame(width: 28, height: 28)
-                    .background(Theme.bg, in: RoundedRectangle(cornerRadius: 8))
+                    .font(.system(size: 14, weight: .regular))
+                    .foregroundStyle(SettingsStyle.secondary)
+                    .opacity(0.76)
+                    .frame(width: 24, height: 24)
 
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text(permissionTitle(kind))
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(Theme.textPrimary)
-                        Spacer()
-                        Text(permissionStatusLabel(status))
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(status.isGranted ? Theme.accentGreen : Theme.accent)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(
-                                (status.isGranted ? Theme.accentGreen : Theme.accent)
-                                    .opacity(0.14),
-                                in: Capsule()
-                            )
-                    }
+            labelWithInfo(permissionTitle(kind), topic: .permission(kind), compact: true)
 
-                    Text(permissionDescription(kind))
-                        .font(.caption)
-                        .foregroundStyle(Theme.textSecondary)
+            Spacer(minLength: 10)
 
-                    Text(permissionStatusDetail(status))
-                        .font(.caption)
-                        .foregroundStyle(Theme.textTertiary)
-                }
-            }
+            permissionAction(for: kind, status: status)
 
-            HStack(spacing: 10) {
-                if !status.isGranted {
-                    Button(requestingPermission == kind
-                           ? tr("请求中...", "Requesting...")
-                           : tr("请求权限", "Request Access")) {
-                        requestPermission(kind)
-                    }
-                    .disabled(requestingPermission != nil)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Theme.accent)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Theme.accent.opacity(0.15), in: Capsule())
-                }
-
-                Button(tr("去设置", "Open Settings")) {
-                    openAppSettings()
-                }
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Theme.textSecondary)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(Theme.bg, in: Capsule())
-            }
+            Text(permissionStatusLabel(status))
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(status.isGranted ? SettingsStyle.ink : SettingsStyle.secondary)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(
+                    SettingsStyle.controlFill,
+                    in: Capsule()
+                )
         }
         .padding(.vertical, 4)
+    }
+
+    @ViewBuilder
+    private func permissionAction(for kind: AppPermissionKind, status: AppPermissionStatus) -> some View {
+        switch status {
+        case .notDetermined:
+            Button(requestingPermission == kind ? tr("请求中", "Requesting") : tr("请求", "Request")) {
+                requestPermission(kind)
+            }
+            .disabled(requestingPermission != nil)
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(SettingsStyle.ink)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(SettingsStyle.selectedFill, in: Capsule())
+            .overlay(
+                Capsule()
+                    .strokeBorder(SettingsStyle.hairline, lineWidth: 1)
+                    .allowsHitTesting(false)
+            )
+        case .denied, .restricted:
+            Button(tr("设置", "Settings")) {
+                openAppSettings()
+            }
+            .font(.system(size: 12, weight: .regular))
+            .foregroundStyle(SettingsStyle.secondary)
+            .opacity(0.76)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+        case .granted:
+            EmptyView()
+        }
     }
 
     @ViewBuilder
@@ -853,56 +937,52 @@ struct ConfigurationsView: View {
         case .notInstalled:
             let isResumable = engine.installer.hasResumableDownload(for: model.id)
             Button(isResumable ? tr("继续下载", "Resume") : tr("下载", "Download")) {
-                selectedModelID = model.id
                 Task {
                     try await engine.installer.install(model: model)
-                    if engine.installer.artifactPath(for: model) != nil,
-                       selectedModelID == model.id,
-                       (!engine.isModelReady || engine.catalog.loadedModel?.id != model.id) {
-                        engine.config.selectedModelID = model.id
-                        engine.reloadModel()
-                    }
                 }
             }
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(Theme.accent)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(Theme.accent.opacity(0.15), in: Capsule())
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(SettingsStyle.ink)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(SettingsStyle.selectedFill, in: Capsule())
+            .overlay(
+                Capsule()
+                    .strokeBorder(SettingsStyle.hairline, lineWidth: 1)
+                    .allowsHitTesting(false)
+            )
         case .checkingSource:
             modelBadge(tr("检查中", "Checking"))
-        case .downloading(let completedFiles, let totalFiles, _):
-            downloadProgressBadge(
-                modelID: model.id,
-                completedFiles: completedFiles,
-                totalFiles: totalFiles
-            )
-        case .downloaded:
-            modelBadge(tr("已下载", "Downloaded"), color: Theme.accentGreen)
-        case .bundled:
-            modelBadge(tr("内置", "Bundled"), color: Theme.accentGreen)
+        case .downloading:
+            EmptyView()
+        case .downloaded, .bundled:
+            EmptyView()
         case .failed:
             Button(tr("重试", "Retry")) {
-                selectedModelID = model.id
                 Task {
                     try await engine.installer.install(model: model)
                 }
             }
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(Theme.accent)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(Theme.accent.opacity(0.15), in: Capsule())
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(SettingsStyle.ink)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(SettingsStyle.selectedFill, in: Capsule())
+            .overlay(
+                Capsule()
+                    .strokeBorder(SettingsStyle.hairline, lineWidth: 1)
+                    .allowsHitTesting(false)
+            )
         }
     }
 
-    private func modelBadge(_ text: String, color: Color = Theme.textTertiary) -> some View {
+    private func modelBadge(_ text: String, color: Color = SettingsStyle.tertiary) -> some View {
         Text(text)
-            .font(.caption.weight(.semibold))
+            .font(.system(size: 12, weight: .medium))
             .foregroundStyle(color)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(color.opacity(0.14), in: Capsule())
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(SettingsStyle.controlFill, in: Capsule())
     }
 
     private func downloadProgressBadge(
@@ -923,13 +1003,13 @@ struct ConfigurationsView: View {
                         "Downloading \(completedFiles)/\(totalFiles)"
                     ))
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(Theme.textPrimary)
+                    .foregroundStyle(SettingsStyle.ink)
                     .lineLimit(1)
 
                     if let metrics {
                         Text(downloadMetricsText(metrics))
                             .font(.caption2.monospacedDigit())
-                            .foregroundStyle(Theme.textTertiary)
+                            .foregroundStyle(SettingsStyle.tertiary)
                             .lineLimit(1)
                     }
                 }
@@ -940,10 +1020,10 @@ struct ConfigurationsView: View {
                     engine.installer.cancelInstall(modelID: modelID)
                 }
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(Theme.textPrimary)
+                .foregroundStyle(SettingsStyle.ink)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
-                .background(Theme.bg, in: Capsule())
+                .background(SettingsStyle.selectedFill, in: Capsule())
                 .fixedSize(horizontal: true, vertical: true)
             }
 
@@ -952,7 +1032,7 @@ struct ConfigurationsView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(Theme.textTertiary.opacity(0.14), in: RoundedRectangle(cornerRadius: 12))
+        .background(SettingsStyle.controlFill, in: RoundedRectangle(cornerRadius: 12))
     }
 
     private func downloadMetricsText(_ metrics: DownloadProgress) -> String {
@@ -983,50 +1063,6 @@ struct ConfigurationsView: View {
             return ""
         }
         return formattedBytes(Int64(bytesPerSecond)) + "/s"
-    }
-
-    private func modelStateDetail(_ state: ModelInstallState, modelID: String) -> String? {
-        switch state {
-        case .notInstalled:
-            if engine.installer.hasResumableDownload(for: modelID) {
-                if let metrics = engine.installer.downloadProgress[modelID] {
-                    let progress = downloadMetricsText(metrics)
-                    if !progress.isEmpty {
-                        return tr("可继续下载 · \(progress)", "Ready to resume · \(progress)")
-                    }
-                }
-                return tr("可继续下载", "Ready to resume")
-            }
-            return tr("未安装", "Not Installed")
-        case .checkingSource:
-            return tr("正在准备下载。", "Preparing download.")
-        case .downloading:
-            return nil
-        case .downloaded:
-            return tr("已下载到手机本地，可直接加载。", "Downloaded on device and ready to load.")
-        case .bundled:
-            return tr("模型已随 App 内置。", "This model is bundled inside the app.")
-        case .failed(let message):
-            return message
-        }
-    }
-
-    private var modelFooterText: String {
-        guard let selectedModel = engine.availableModels.first(where: { $0.id == selectedModelID }) else {
-            return tr("点右侧按钮下载模型后再点击确定。", "Download a model first, then tap OK.")
-        }
-
-        if engine.installer.artifactPath(for: selectedModel) == nil {
-            return tr("先下载选中的模型，再点击确定加载。", "Download the selected model first, then tap OK to load it.")
-        }
-
-        if selectedModelID == engine.catalog.selectedModel.id,
-           engine.catalog.loadedModel?.id == selectedModelID,
-           engine.isModelReady {
-            return tr("点击确定会保留当前模型。", "Tap OK to keep the current model.")
-        }
-
-        return tr("点击确定后会卸载当前模型并重新加载新模型。", "Tap OK to unload the current model and reload the new one.")
     }
 
     // MARK: - 加载 / 应用
@@ -1102,18 +1138,18 @@ struct ConfigurationsView: View {
         let backendChanged = engine.config.preferredBackend != preferredBackend
         let mtpChanged = engine.config.enableSpeculativeDecoding != enableSpeculativeDecoding
 
+        guard let selectedModel = engine.availableModels.first(where: { $0.id == selectedModelID }),
+              engine.installer.artifactPath(for: selectedModel) != nil else {
+            engine.setStatusMessage(tr("请先下载模型", "Download a model first"))
+            return false
+        }
+
         engine.config.systemPrompt = systemPrompt
         engine.config.preferredBackend = preferredBackend
         engine.config.enableSpeculativeDecoding = enableSpeculativeDecoding
 
         // 同步采样参数到 LLM (沿用 ModelConfig 默认值; 下次生成立即生效)
         engine.applySamplingConfig()
-
-        guard let selectedModel = engine.availableModels.first(where: { $0.id == selectedModelID }),
-              engine.installer.artifactPath(for: selectedModel) != nil else {
-            engine.setStatusMessage(tr("请先下载模型", "Download a model first"))
-            return false
-        }
 
         engine.config.selectedModelID = selectedModelID
         let needsLoad = !engine.isModelReady || engine.catalog.loadedModel?.id != selectedModelID
@@ -1157,6 +1193,198 @@ private extension ModelInstallState {
     }
 }
 
+struct InfoDisclosureOverlay: View {
+    let title: String
+    let message: String
+    let onDismiss: () -> Void
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.22)
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture(perform: onDismiss)
+
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .top, spacing: 12) {
+                    Text(title)
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(Self.ink)
+
+                    Spacer(minLength: 12)
+
+                    Button(action: onDismiss) {
+                        ZStack {
+                            Circle()
+                                .fill(Self.controlFill)
+                                .frame(width: 28, height: 28)
+                            Image(systemName: "xmark")
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundStyle(Self.secondary)
+                                .opacity(0.72)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Text(tr("关闭", "Close")))
+                }
+
+                Text(message)
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundStyle(Self.secondary)
+                    .lineSpacing(5)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.top, 20)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 24)
+            .frame(maxWidth: 330, alignment: .leading)
+            .background(Self.surface, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .strokeBorder(Self.outline, lineWidth: 1)
+                    .allowsHitTesting(false)
+            )
+            .shadow(color: Color.black.opacity(0.08), radius: 28, y: 14)
+            .padding(.horizontal, 34)
+        }
+    }
+
+    private static let ink = Color(light: "303033", dark: "EEE9DF")
+    private static let secondary = Color(light: "6F6A63", dark: "BEB4A8")
+    private static let surface = Color(light: "F9F7F1", dark: "24211B").opacity(0.96)
+    private static let controlFill = Color(light: "ECE8E0", dark: "343027").opacity(0.84)
+    private static let outline = Color(light: "FFFFFF", dark: "3C362C").opacity(0.72)
+}
+
+private enum SettingsInfoTopic: Identifiable {
+    case enabledModel
+    case models
+    case liveVoice
+    case inference
+    case inferenceMode
+    case speculativeDecoding
+    case language
+    case systemPrompt
+    case permissions
+    case permission(AppPermissionKind)
+
+    var id: String {
+        switch self {
+        case .enabledModel: return "enabledModel"
+        case .models: return "models"
+        case .liveVoice: return "liveVoice"
+        case .inference: return "inference"
+        case .inferenceMode: return "inferenceMode"
+        case .speculativeDecoding: return "speculativeDecoding"
+        case .language: return "language"
+        case .systemPrompt: return "systemPrompt"
+        case .permissions: return "permissions"
+        case .permission(let kind): return "permission-\(kind.id)"
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .enabledModel:
+            return tr("已启用模型", "Enabled Model")
+        case .models:
+            return tr("模型", "Models")
+        case .liveVoice:
+            return tr("语音", "Voice")
+        case .inference:
+            return tr("推理", "Inference")
+        case .inferenceMode:
+            return tr("推理方式", "Inference Mode")
+        case .speculativeDecoding:
+            return tr("推测解码", "Speculative Decoding")
+        case .language:
+            return tr("语言", "Language")
+        case .systemPrompt:
+            return tr("系统提示词", "System Prompt")
+        case .permissions:
+            return tr("权限", "Permissions")
+        case .permission(let kind):
+            return permissionTitle(kind)
+        }
+    }
+
+    var message: String {
+        switch self {
+        case .enabledModel:
+            return tr("正在使用的模型。切换模型后点确定生效。", "The model in use. Changes apply after tapping OK.")
+        case .models:
+            return tr("未下载的模型需要先下载，完成后才能选择。", "Models must be downloaded before they can be selected.")
+        case .liveVoice:
+            return tr(
+                "实时语音和按住说话需要语音识别、语音合成与语音检测模型。",
+                "Live voice and hold-to-talk require speech recognition, speech synthesis, and voice detection models."
+            )
+        case .inference:
+            return tr("这里控制模型生成时使用的方式。", "Controls how the model generates responses.")
+        case .inferenceMode:
+            return tr("GPU 通常速度更高，CPU 通常更省内存。", "GPU is usually faster; CPU usually uses less memory.")
+        case .speculativeDecoding:
+            return tr("部分短回复可能更快，默认关闭。", "Some short replies may be faster. Off by default.")
+        case .language:
+            return tr(
+                "默认跟随系统。手动选择后，界面会立即切换，新对话会使用新的语言偏好。",
+                "Defaults to system. Manual changes update the interface immediately and apply to new chats."
+            )
+        case .systemPrompt:
+            return tr("控制助手默认行为和语气。修改后点确定生效。", "Controls default behavior and tone. Changes apply after tapping OK.")
+        case .permissions:
+            return tr("授权后，相关 Skill 才能访问对应系统能力。", "Permissions allow related skills to access system capabilities.")
+        case .permission(let kind):
+            return permissionMessage(kind)
+        }
+    }
+
+    private func permissionTitle(_ kind: AppPermissionKind) -> String {
+        switch kind {
+        case .microphone:
+            return tr("麦克风", "Microphone")
+        case .camera:
+            return tr("摄像头", "Camera")
+        case .calendar:
+            return tr("日历", "Calendar")
+        case .reminders:
+            return tr("提醒事项", "Reminders")
+        case .contacts:
+            return tr("通讯录", "Contacts")
+        }
+    }
+
+    private func permissionMessage(_ kind: AppPermissionKind) -> String {
+        switch kind {
+        case .microphone:
+            return tr("用于录音和实时语音输入。", "Used for recording and live voice input.")
+        case .camera:
+            return tr("用于 Live 模式观察周围环境。", "Used by Live mode to observe the surroundings.")
+        case .calendar:
+            return tr("用于创建和写入日历事项。", "Used to create and write calendar events.")
+        case .reminders:
+            return tr("用于创建提醒和待办。", "Used to create reminders and tasks.")
+        case .contacts:
+            return tr("用于保存和更新联系人。", "Used to save and update contacts.")
+        }
+    }
+}
+
+private enum SettingsStyle {
+    static let ink = Color(light: "303033", dark: "EEE9DF")
+    static let primary = Color(light: "2F3033", dark: "EEE9DF")
+    static let onPrimary = Color(light: "FFFFFF", dark: "1D1A16")
+    static let secondary = Color(light: "7A756E", dark: "B9AFA3")
+    static let muted = Color(light: "8B857C", dark: "A89F94")
+    static let tertiary = Color(light: "B9B0A5", dark: "7F766A")
+    static let hairline = Color(light: "E8E2D8", dark: "373128")
+    static let controlFill = Color(light: "ECE8E0", dark: "2C2821").opacity(0.76)
+    static let selectedFill = Color(light: "FFFFFF", dark: "211E19").opacity(0.72)
+    static let segmentThumb = Color(light: "FFFFFF", dark: "3A342B").opacity(0.88)
+    static let pressedFill = Color(light: "F0ECE5", dark: "383229")
+    static let danger = Color(light: "9E554D", dark: "E08B80")
+}
+
 // MARK: - CustomSegmentedPicker
 //
 // SwiftUI 的 `Picker(.segmented)` 在当前 iOS / Theme 配色下死活不响应点击,
@@ -1188,16 +1416,16 @@ struct CustomSegmentedPicker<Value: Hashable>: View {
                 } label: {
                     Text(option.label)
                         .font(.subheadline.weight(isSelected ? .semibold : .regular))
-                        .foregroundStyle(isSelected ? Theme.textPrimary : Theme.textSecondary)
+                        .foregroundStyle(isSelected ? SettingsStyle.ink : SettingsStyle.secondary)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
+                        .padding(.vertical, 7)
                         .background(
                             // 只有选中段渲染 thumb 背景, 用 matchedGeometryEffect
                             // 让它在不同 segment 之间连贯滑动.
                             ZStack {
                                 if isSelected {
                                     RoundedRectangle(cornerRadius: 8)
-                                        .fill(Theme.bgHover)
+                                        .fill(SettingsStyle.segmentThumb)
                                         .matchedGeometryEffect(id: "thumb", in: thumbNamespace)
                                 }
                             }
@@ -1210,7 +1438,7 @@ struct CustomSegmentedPicker<Value: Hashable>: View {
         .padding(3)
         .background(
             RoundedRectangle(cornerRadius: 10)
-                .fill(Theme.bgElevated.opacity(0.6))
+                .fill(SettingsStyle.controlFill)
                 .allowsHitTesting(false)
         )
     }
