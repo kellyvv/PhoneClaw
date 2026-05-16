@@ -8,7 +8,7 @@ A local AI Agent for iPhone. Offline. Private. Native.
 ![iOS](https://img.shields.io/badge/iOS-17%2B-blue?style=flat-square)
 ![License](https://img.shields.io/badge/License-Apache%202.0-green?style=flat-square)
 
-[中文](README.md) · [Report an Issue](https://github.com/kellyvv/phoneclaw/issues) · [Request a Feature](https://github.com/kellyvv/phoneclaw/issues)
+[TestFlight](https://testflight.apple.com/join/YuUSwq78) · [中文](README.md) · [Report an Issue](https://github.com/kellyvv/phoneclaw/issues) · [Request a Feature](https://github.com/kellyvv/phoneclaw/issues)
 
 </div>
 
@@ -25,7 +25,12 @@ A local AI Agent for iPhone. Offline. Private. Native.
 </div>
 
 
-PhoneClaw is a local AI Agent that runs entirely on your iPhone. Ships with multiple on-device models (Gemma 4 and MiniCPM-V). No internet connection. No data uploads. No cloud dependency.
+PhoneClaw is a private local Agent running on iPhone. It ships with multiple on-device models, including Gemma 4 and MiniCPM-V, and performs inference and Skill calls entirely on-device, with no cloud APIs or external model integrations required.
+
+## 2026-05-17 Update
+
+- PhoneClaw is live on TestFlight — [Join TestFlight](https://testflight.apple.com/join/YuUSwq78)
+- A private local Agent running on iPhone, performing inference and Skill calls entirely on-device, with no cloud APIs or external model integrations required
 
 ## 2026-05-12 Update
 
@@ -150,6 +155,8 @@ Model recommendation:
 | MiniCPM-V 4.6 | Multimodal: image Q&A / real-time camera in LIVE mode, A17 Pro and above recommended |
 
 ## Quick Start
+
+Recommended install: [TestFlight](https://testflight.apple.com/join/YuUSwq78). After installing, download a model in `Model Settings`, then enable the Skills you need.
 
 Building from source requires macOS + Xcode 16, iOS 17+, CocoaPods, a real device, and an Apple ID.
 

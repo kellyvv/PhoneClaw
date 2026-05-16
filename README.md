@@ -8,7 +8,7 @@
 ![iOS](https://img.shields.io/badge/iOS-17%2B-blue?style=flat-square)
 ![License](https://img.shields.io/badge/License-Apache%202.0-green?style=flat-square)
 
-[English](README_EN.md) · [报告问题](https://github.com/kellyvv/phoneclaw/issues) · [功能建议](https://github.com/kellyvv/phoneclaw/issues)
+[TestFlight](https://testflight.apple.com/join/YuUSwq78) · [English](README_EN.md) · [报告问题](https://github.com/kellyvv/phoneclaw/issues) · [功能建议](https://github.com/kellyvv/phoneclaw/issues)
 
 </div>
 
@@ -25,7 +25,12 @@
 </div>
 
 
-PhoneClaw 是一个运行在 iPhone 上的本地 AI Agent。内置 Gemma 4 和 MiniCPM-V 多个本地模型，在设备端完成推理，不依赖云端，不上传聊天内容。
+PhoneClaw 是一个运行在 iPhone 上的本地私人 Agent。内置 Gemma 4 和 MiniCPM-V 多个本地模型，在端侧完成推理和 Skill 调用，无需云端 API 或外部模型接入，不上传聊天内容。
+
+## 2026-05-17 更新
+
+- PhoneClaw 已开放 TestFlight 测试：[加入 TestFlight](https://testflight.apple.com/join/YuUSwq78)
+- 本地私人 Agent：运行在 iPhone 上，端侧完成推理和 Skill 调用，无需云端 API 或外部模型接入
 
 ## 2026-05-12 更新
 
@@ -141,7 +146,9 @@ PhoneClaw 是一个运行在 iPhone 上的本地 AI Agent。内置 Gemma 4 和 M
 
 ## 快速开始
 
-环境要求：源码构建需要 macOS + Xcode 16，iOS 17+，CocoaPods，真机 + Apple ID
+推荐安装方式：[TestFlight](https://testflight.apple.com/join/YuUSwq78)。安装后在「模型设置」下载模型，再按需开启 Skill 权限。
+
+源码构建环境要求：macOS + Xcode 16，iOS 17+，CocoaPods，真机 + Apple ID
 
 | 模型 | 适用场景 |
 |------|---------|
