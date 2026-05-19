@@ -111,11 +111,16 @@ public extension ModelDescriptor {
     /// MiniCPM-V 4.6 — 1.3B (Qwen3.5-0.8B + SigLIP2-400M), Q4_K_M GGUF。
     /// 视觉多模态主力, 视频帧理解 v4.6 强项。
     ///
-    /// 落盘三个文件 (`fileName` 指 LLM 主权重, 兄弟文件由 backend 派生):
+    /// 落盘两个文件 (`fileName` 指 LLM 主权重, 兄弟文件由 backend 派生):
     ///   - MiniCPM-V-4_6-Q4_K_M.gguf      ~500 MB    LLM 主权重 (走 llama.cpp Metal/CPU)
     ///   - MiniCPM-V-4_6-mmproj-f16.gguf  ~1.1 GB    multimodal projector
-    ///   - coreml_minicpmv46_vit_all_f32.mlmodelc/  几百 MB  ANE 加速 vision tower (可选)
     /// 总磁盘 ~1.6 GB, 内存推荐 ≥ 6 GB。
+    ///
+    /// CoreML/ANE vision tower 已下线 (2026-05, 对齐 OpenBMB main 54a9b024):
+    /// f32 mlmodelc + computeUnits=All 在 4 GB 设备上会触发 jetsam, OpenBMB 上游
+    /// 已整段移除 ANE 路径 (bridge 删了 coreml_path 字段), 默认走 ggml/Metal
+    /// 完成 ViT + merger。本地 bridge 还保留旧 ABI 字段但 backend 始终传空。
+    /// 残留 mlmodelc 文件由 LiteRTModelStore 启动期清理 (cleanupObsoleteCoreMLV46)。
     static let miniCPMV4_6 = ModelDescriptor(
         id: "minicpm-v-4_6-q4_k_m",
         displayName: "MiniCPM-V 4.6",
@@ -147,22 +152,11 @@ public extension ModelDescriptor {
                 extractedDirectoryName: nil,
                 isRequired: true
             ),
-            // 2. ANE 加速 vision tower — CoreML mlmodelc 目录, 打包成 .zip 上传。
-            //    解压后目录名 = extractedDirectoryName, bundleResolver 按 role 找。
-            //    可选: ANE 缺失时 vision encoder 会回退到 llama.cpp Metal/CPU 路径
-            //    (单帧编码从 ~400ms 涨到 5-10s), 视频/Live 场景几乎不可用, 但单图
-            //    chat 至少不会崩。
-            CompanionFile(
-                role: .coreMLVisionEncoder,
-                fileName: "coreml_minicpmv46_vit_all_f32.mlmodelc.zip",
-                downloadURLs: [
-                    URL(string: "https://data-transfer-huawei.obs.cn-north-4.myhuaweicloud.com/minicpmv46-instruct/coreml_minicpmv46_vit_all_f32.mlmodelc.zip")!,
-                ],
-                expectedFileSize: 1_029_728_188,  // HEAD 探测, 2026-05 (压缩后, STORED 方式 ≈ 原始大小)
-                archive: .zip,
-                extractedDirectoryName: "coreml_minicpmv46_vit_all_f32.mlmodelc",
-                isRequired: false  // 缺失只是慢, 不阻塞 install
-            ),
+            // 2. ANE 加速 vision tower — 已移除 (2026-05)。
+            //    历史原因和迁移说明见上方 doc 注释; OpenBMB 上游 bridge 已移除
+            //    coreml_path 字段, 本地旧 ABI 字段保留但始终传空 (见 MiniCPMVBackend)。
+            //    descriptor 这里不再声明 mlmodelc.zip companion, 新装用户不下载,
+            //    老用户磁盘上残留由 LiteRTModelStore.cleanupObsoleteCoreMLV46 清理。
         ],
         capabilities: ModelCapabilities(
             supportsVision: true,

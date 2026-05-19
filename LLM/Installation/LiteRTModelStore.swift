@@ -34,6 +34,11 @@ final class LiteRTModelStore: ModelInstaller {
     // MARK: - Init
 
     init() {
+        // 启动期一次性清理已下线的 V4.6 CoreML companion 残留 (~3 GB)。
+        // 必须在 refreshInstallStates() 之前跑, 否则 installer 会把残留目录
+        // 当成"已安装"算进状态里。详见 cleanupObsoleteCoreMLV46 doc。
+        cleanupObsoleteCoreMLV46()
+
         refreshInstallStates()
 
         // 监听模型加载失败（文件损坏）→ 立即刷新安装状态
@@ -48,6 +53,131 @@ final class LiteRTModelStore: ModelInstaller {
                 }
             }
             self?.refreshInstallStates()
+        }
+    }
+
+    // MARK: - Obsolete File Cleanup
+
+    /// MiniCPM-V 4.6 CoreML/ANE companion 的存量清理。
+    ///
+    /// 背景:
+    ///   2026-05 对齐 OpenBMB main (commit 54a9b024), V4.6 整段 CoreML/ANE 路径
+    ///   下线 (OpenBMB 上游 bridge 已移除 coreml_path 字段, PredefinedModels
+    ///   已移除 companion 声明, MiniCPMVBackend 始终传空 coremlPath)。但老用户
+    ///   磁盘上可能还残留:
+    ///     - coreml_minicpmv46_vit_all_f32.mlmodelc.zip      ~1 GB
+    ///     - coreml_minicpmv46_vit_all_f32.mlmodelc/         ~2 GB
+    ///     - (历史包) coreml_minicpmv46_vit_all_f32.mlpackage
+    ///     - (历史包) coreml_minicpmv46_vit_all_f16.mlpackage
+    ///   不主动清的话 4 GB 设备用户白占 ~3 GB Documents 空间且自己分不清能不能删。
+    ///
+    /// 此外, 下载到一半就放弃的用户在 `.downloads/<assetID>/` 下还会有这两类残留:
+    ///     - coreml_minicpmv46_vit_all_f32.mlmodelc.zip.part        (URLSession 续传缓存)
+    ///     - coreml_minicpmv46_vit_all_f32.mlmodelc.zip.resumeData  (NSURLSessionDownloadTask resume token)
+    /// 这些路径规则见 DownloadManifestStore.partialFileURL/resumeDataURL。
+    ///
+    /// 实现要点 (best-effort, 幂等):
+    ///   - 候选文件逐个 best-effort 删除, 单个失败不阻塞其它
+    ///   - partial 残留只删 coreml zip 这一个文件级别的 .part / .resumeData,
+    ///     **不整体 purge asset workspace** —— 否则会误删主 LLM / mmproj 还
+    ///     未完成的断点续传状态, 让用户重新下整个 1.6 GB。
+    ///   - 只有"所有候选都不在磁盘"时才 set UserDefaults flag, 失败下次启动重试
+    ///   - 完全没有候选时也 set flag (避免每次启动空跑 fileExists)
+    ///   - manifest JSON 必须同步重写: DownloadManifestStore.resumeState 取
+    ///     max(partialBytes, file.downloadedBytes) 决定断点, 即使 .part 已删,
+    ///     manifest 里 downloadedBytes>0 的旧 coreml entry 仍会让 V4.6 被标
+    ///     成"可继续下载"。只 filter 掉 coreml 条目, 主 LLM / mmproj 保留。
+    private static let coreMLV46CleanupKey = "PhoneClaw.coreMLV46Cleanup.v1"
+
+    /// V4.6 asset ID; 经 sanitizedAssetID 不变 (字符全在允许集), 因此 .downloads 子目录
+    /// 名就是它本身。这里 hardcode 而不调 DownloadManifestStore.workspaceDirectory,
+    /// 是为了避免 cleanup 跨 actor 边界 (init 同步路径)。
+    private static let miniCPMV4_6AssetDirectoryName = "minicpm-v-4_6-q4_k_m"
+
+    /// 已下线的 CoreML zip 文件名, 用于匹配 .part / .resumeData 前缀。
+    private static let obsoleteCoreMLZipFileName = "coreml_minicpmv46_vit_all_f32.mlmodelc.zip"
+
+    private func cleanupObsoleteCoreMLV46() {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: Self.coreMLV46CleanupKey) else { return }
+
+        let fm = FileManager.default
+        var allClear = true
+
+        // 1. 最终落盘文件 / 解压目录
+        let finalCandidates = [
+            "coreml_minicpmv46_vit_all_f32.mlmodelc.zip",
+            "coreml_minicpmv46_vit_all_f32.mlmodelc",
+            "coreml_minicpmv46_vit_all_f32.mlpackage",
+            "coreml_minicpmv46_vit_all_f16.mlpackage",
+        ]
+        for name in finalCandidates {
+            let url = modelsDirectory.appendingPathComponent(name)
+            guard fm.fileExists(atPath: url.path) else { continue }
+            do {
+                try fm.removeItem(at: url)
+                print("[Migration] removed obsolete V4.6 CoreML artifact: \(name)")
+            } catch {
+                print("[Migration] failed to remove \(name): \(error.localizedDescription)")
+                allClear = false
+            }
+        }
+
+        // 2. partial 下载残留 (.part / .resumeData) — 只清 coreml zip 这一个
+        //    文件相关的, 不动主 LLM / mmproj 的断点。
+        let v46WorkspaceURL = modelsDirectory
+            .appendingPathComponent(DownloadManifestStore.workspaceDirectoryName, isDirectory: true)
+            .appendingPathComponent(Self.miniCPMV4_6AssetDirectoryName, isDirectory: true)
+        if let entries = try? fm.contentsOfDirectory(atPath: v46WorkspaceURL.path) {
+            let prefix = Self.obsoleteCoreMLZipFileName  // 例: "..mlmodelc.zip"
+            // 我们要匹配 "<prefix>.part" / "<prefix>.resumeData", 不包括 prefix 本身
+            // (那是已落盘文件, 但它应该已经在 step 1 删过; 不在 modelsDirectory 一级
+            // 出现在 workspace 里, 是因为安装时会先在 staging 后挪走 — staging 也清掉)。
+            for entry in entries where entry.hasPrefix(prefix) {
+                let url = v46WorkspaceURL.appendingPathComponent(entry)
+                do {
+                    try fm.removeItem(at: url)
+                    print("[Migration] removed obsolete V4.6 CoreML download residue: \(entry)")
+                } catch {
+                    print("[Migration] failed to remove \(entry): \(error.localizedDescription)")
+                    allClear = false
+                }
+            }
+        }
+
+        // 3. manifest JSON 重写 — 只移除 coreml zip 条目, 保留主 LLM / mmproj。
+        //    必要性: DownloadManifestStore.resumeState 取 max(partialBytes,
+        //    file.downloadedBytes) 来判断断点 (见 DownloadManifestStore.swift),
+        //    所以即使 .part 已删, 只要 manifest 里这条 entry 的 downloadedBytes>0
+        //    还是会被识别成 resumable, UI 上把 V4.6 标成"可继续下载"误导用户。
+        //    主 LLM / mmproj 的条目不动, 保它们的断点续传状态。
+        let manifestURL = v46WorkspaceURL
+            .appendingPathComponent(DownloadManifestStore.manifestFileName, isDirectory: false)
+        if fm.fileExists(atPath: manifestURL.path) {
+            do {
+                let data = try Data(contentsOf: manifestURL)
+                let manifest = try JSONDecoder.downloadManifestDecoder.decode(DownloadManifest.self, from: data)
+                let filtered = manifest.files.filter { $0.relativePath != Self.obsoleteCoreMLZipFileName }
+                if filtered.count != manifest.files.count {
+                    let updated = DownloadManifest(
+                        schemaVersion: manifest.schemaVersion,
+                        assetID: manifest.assetID,
+                        createdAt: manifest.createdAt,
+                        updatedAt: Date(),
+                        files: filtered
+                    )
+                    let out = try JSONEncoder.downloadManifestEncoder.encode(updated)
+                    try out.write(to: manifestURL, options: [.atomic])
+                    print("[Migration] rewrote V4.6 manifest to drop CoreML entry")
+                }
+            } catch {
+                print("[Migration] failed to rewrite V4.6 download manifest: \(error.localizedDescription)")
+                allClear = false
+            }
+        }
+
+        if allClear {
+            defaults.set(true, forKey: Self.coreMLV46CleanupKey)
         }
     }
 
