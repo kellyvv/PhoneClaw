@@ -106,7 +106,7 @@ public extension ModelDescriptor {
         runtimeProfile: MLXModelProfiles.gemma4_e4b
     )
 
-    // MARK: - MiniCPM-V 4.6 (llama.cpp + mtmd-ios + ANE)
+    // MARK: - MiniCPM-V 4.6 (llama.cpp + mtmd-ios + Metal)
 
     /// MiniCPM-V 4.6 — 1.3B (Qwen3.5-0.8B + SigLIP2-400M), Q4_K_M GGUF。
     /// 视觉多模态主力, 视频帧理解 v4.6 强项。

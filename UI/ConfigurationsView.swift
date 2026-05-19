@@ -1279,7 +1279,6 @@ struct ConfigurationsView: View {
     private func applySettings() -> Bool {
         let modelChanged = engine.config.selectedModelID != selectedModelID
         let backendChanged = engine.config.preferredBackend != preferredBackend
-        let mtpChanged = engine.config.enableSpeculativeDecoding != enableSpeculativeDecoding
 
         guard let selectedModel = engine.availableModels.first(where: { $0.id == selectedModelID }),
               engine.installer.artifactPath(for: selectedModel) != nil else {
@@ -1290,10 +1289,18 @@ struct ConfigurationsView: View {
             return false
         }
 
+        // 非 Gemma 4 模型不支持 MTP; UI 的 toggle binding 已经 gate 住交互,
+        // 但 @State `enableSpeculativeDecoding` 可能仍保留上次 Gemma 4 时的
+        // true 值。这里按 selectedModel 重算 effective 值, 避免 "UI 显示关闭
+        // 但写回 config 是 true" 的不一致 (会被 reloadModel 持久化)。
+        let effectiveSpeculativeDecoding =
+            selectedModel.family == .gemma4 ? enableSpeculativeDecoding : false
+        let mtpChanged = engine.config.enableSpeculativeDecoding != effectiveSpeculativeDecoding
+
         modelSelectionMessage = nil
         engine.config.systemPrompt = systemPrompt
         engine.config.preferredBackend = preferredBackend
-        engine.config.enableSpeculativeDecoding = enableSpeculativeDecoding
+        engine.config.enableSpeculativeDecoding = effectiveSpeculativeDecoding
 
         // 同步采样参数到 LLM (沿用 ModelConfig 默认值; 下次生成立即生效)
         engine.applySamplingConfig()
