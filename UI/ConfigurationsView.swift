@@ -518,6 +518,23 @@ struct ConfigurationsView: View {
         engine.availableModels.first(where: { $0.id == selectedModelID })?.family
     }
 
+    private var currentModelSupportsSpeculativeDecoding: Bool {
+        currentModelFamily == .gemma4
+    }
+
+    private var speculativeDecodingToggleBinding: Binding<Bool> {
+        Binding(
+            get: {
+                currentModelSupportsSpeculativeDecoding ? enableSpeculativeDecoding : false
+            },
+            set: { newValue in
+                if currentModelSupportsSpeculativeDecoding {
+                    enableSpeculativeDecoding = newValue
+                }
+            }
+        )
+    }
+
     private var backendSection: some View {
         VStack(alignment: .leading, spacing: 16) {
             sectionLabel(tr("推理", "Inference"))
@@ -539,23 +556,23 @@ struct ConfigurationsView: View {
                 }
                 .padding(.vertical, 4)
 
-                if currentModelFamily == .gemma4 {
-                    Rectangle()
-                        .fill(SettingsStyle.hairline)
-                        .frame(height: 1)
-                        .padding(.vertical, 16)
+                Rectangle()
+                    .fill(SettingsStyle.hairline)
+                    .frame(height: 1)
+                    .padding(.vertical, 16)
 
-                    HStack(alignment: .center, spacing: 12) {
-                        labelWithInfo(tr("推测解码", "Speculative Decoding"), topic: .speculativeDecoding, compact: true)
+                HStack(alignment: .center, spacing: 12) {
+                    labelWithInfo(tr("推测解码", "Speculative Decoding"), topic: .speculativeDecoding, compact: true)
 
-                        Spacer()
+                    Spacer()
 
-                        Toggle("", isOn: $enableSpeculativeDecoding)
-                            .labelsHidden()
-                            .tint(SettingsStyle.ink)
-                    }
-                    .padding(.vertical, 2)
+                    Toggle("", isOn: speculativeDecodingToggleBinding)
+                        .labelsHidden()
+                        .tint(SettingsStyle.ink)
+                        .disabled(!currentModelSupportsSpeculativeDecoding)
                 }
+                .opacity(currentModelSupportsSpeculativeDecoding ? 1 : 0.42)
+                .padding(.vertical, 2)
             }
         }
     }
@@ -1453,7 +1470,10 @@ private enum SettingsInfoTopic: Identifiable {
         case .inferenceMode:
             return tr("GPU 通常速度更高，CPU 通常更省内存。", "GPU is usually faster; CPU usually uses less memory.")
         case .speculativeDecoding:
-            return tr("部分短回复可能更快，默认关闭。", "Some short replies may be faster. Off by default.")
+            return tr(
+                "仅 Gemma 4 可用；部分短回复可能更快，默认关闭。",
+                "Available for Gemma 4 only. Some short replies may be faster. Off by default."
+            )
         case .language:
             return tr(
                 "默认跟随系统。手动选择后，界面会立即切换，新对话会使用新的语言偏好。",
