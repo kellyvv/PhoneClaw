@@ -544,10 +544,13 @@ final class LiteRTBackend: InferenceService {
 
     func cancel() {
         cancelled = true
-        if liveModeActive, isGenerating {
+        guard isGenerating else { return }
+
+        if liveModeActive {
             engine?.cancelConversation()
+        } else if kvSessionActive {
+            engine?.cancelSessionGeneration()
         }
-        // Text session 仍没有显式 cancel — 通过 cancelled 标志在 stream 消费侧中断。
     }
 
     /// 恢复 persistent text session (multimodal 结束后调用).
@@ -627,7 +630,7 @@ final class LiteRTBackend: InferenceService {
                     }
 
                     for try await token in stream {
-                        if self.cancelled { break }
+                        if self.cancelled { continue }
                         tokenCount += 1
                         if firstTokenTime == nil {
                             firstTokenTime = (CFAbsoluteTimeGetCurrent() - startTime) * 1000

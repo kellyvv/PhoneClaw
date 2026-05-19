@@ -242,7 +242,8 @@ public final class ModelRuntimeCoordinator {
             //            最终会触发 finishTurn() → markTerminated() → 解除 await
             //   - false: begin() 从未调用 → stream 从未开始 → 不会有 onComplete →
             //            必须直接 markTerminated()，否则 await txn.termination 永远挂起
-            let needsStreamWait = txn.didBeginStreaming
+            let didBeginStreaming = txn.didBeginStreaming
+            let needsStreamWait = didBeginStreaming && inference.isGenerating
 
             if txn.state != .cancelling {
                 txn.cancel()
@@ -258,8 +259,12 @@ public final class ModelRuntimeCoordinator {
                 // stream 已终止，reset KV
                 await inference.resetKVSession()
             } else {
-                // Stream never started — mark terminated directly.
+                // Stream never started, or the backend already stopped before the
+                // coordinator observed completion — mark terminated directly.
                 txn.markTerminated(reason: .userCancelled)
+                if didBeginStreaming {
+                    await inference.resetKVSession()
+                }
             }
         }
 
@@ -396,4 +401,3 @@ public extension RuntimeError {
         )
     }
 }
-

@@ -312,7 +312,7 @@ extension AgentEngine {
     }
 
     func cancelActiveGeneration() {
-        guard isProcessing || inference.isGenerating else { return }
+        guard isProcessing || isModelGenerating || inference.isGenerating || coordinator.currentTransaction != nil else { return }
 
         // 1. Mark transaction as cancelling BEFORE inference.cancel(),
         //    so onComplete → finishTurn() sees .cancelling (not .streaming).

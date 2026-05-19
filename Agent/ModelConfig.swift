@@ -7,7 +7,9 @@ class ModelConfig {
     static let selectedModelDefaultsKey = "PhoneClaw.selectedModelID"
     static let enableThinkingDefaultsKey = "PhoneClaw.enableThinking"
     static let preferredBackendDefaultsKey = "PhoneClaw.preferredBackend"
+    private static let preferredBackendDefaultGPUMigrationKey = "PhoneClaw.preferredBackendDefaultGPU.v1"
     static let enableSpeculativeDecodingDefaultsKey = "PhoneClaw.enableSpeculativeDecoding"
+    static let defaultPreferredBackend = "gpu"
 
     // 采样参数不再暴露给用户调节 — 跟 KV cache = 2048 的现实对齐:
     //   maxTokens 1500 留 ~500 给输入; topK/topP/temperature 用 Gemma 4 推荐默认。
@@ -18,12 +20,9 @@ class ModelConfig {
     var enableThinking = UserDefaults.standard.bool(forKey: enableThinkingDefaultsKey)
     var selectedModelID = UserDefaults.standard.string(forKey: selectedModelDefaultsKey)
         ?? ModelDescriptor.defaultModel.id
-    /// 推理后端偏好: `"gpu"` (Metal) 或 `"cpu"` (默认). 只 LiteRT 后端有意义;
+    /// 推理后端偏好: `"gpu"` (Metal, 默认) 或 `"cpu"`. 只 LiteRT 后端有意义;
     /// MLX / 其他后端忽略。切换后会 reload 引擎 (~3-7s), 具体 UX 见 ConfigurationsView。
-    /// 默认 CPU: Sideloadly 免费签名的 App 内存上限较低, GPU + E4B 的 Metal buffer
-    /// 会 OOM; CPU 更稳妥, 用户可按需切到 GPU。
-    var preferredBackend: String = UserDefaults.standard.string(forKey: preferredBackendDefaultsKey)
-        ?? "cpu"
+    var preferredBackend: String = ModelConfig.resolvePreferredBackend()
     /// Gemma 4 MTP speculative decoding 开关。仅 LiteRT + Gemma 4 (.litertlm 含
     /// mtp_drafter section) 上有效。开启后 drafter 占 ~300-400 MB pinned RAM。
     /// 当前 V1 sampler 仅在 sequence_size=1 路径正确，sequence_size>1 时会跑诊断
@@ -31,6 +30,23 @@ class ModelConfig {
     var enableSpeculativeDecoding: Bool = UserDefaults.standard.bool(forKey: enableSpeculativeDecodingDefaultsKey)
     /// System prompt — 由 AgentEngine.loadSystemPrompt() 从 SYSPROMPT.md 注入，不在代码里硬编码。
     var systemPrompt = ""
+
+    private static func resolvePreferredBackend() -> String {
+        let defaults = UserDefaults.standard
+        let stored = defaults.string(forKey: preferredBackendDefaultsKey)
+
+        guard !defaults.bool(forKey: preferredBackendDefaultGPUMigrationKey) else {
+            return stored ?? defaultPreferredBackend
+        }
+
+        defaults.set(true, forKey: preferredBackendDefaultGPUMigrationKey)
+        guard stored == nil || stored == "cpu" else {
+            return stored ?? defaultPreferredBackend
+        }
+
+        defaults.set(defaultPreferredBackend, forKey: preferredBackendDefaultsKey)
+        return defaultPreferredBackend
+    }
 }
 
 // MARK: - SYSPROMPT 默认内容（仅在文件不存在时写入磁盘）

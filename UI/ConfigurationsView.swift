@@ -14,7 +14,7 @@ struct ConfigurationsView: View {
 
     // 本地编辑状态（确认后才应用）
     @State private var selectedModelID = ModelDescriptor.defaultModel.id
-    @State private var preferredBackend: String = "cpu"   // "gpu" / "cpu"
+    @State private var preferredBackend: String = ModelConfig.defaultPreferredBackend   // "gpu" / "cpu"
     @State private var enableSpeculativeDecoding: Bool = false
     @State private var systemPrompt: String = ""
     @State private var permissionStatuses: [AppPermissionKind: AppPermissionStatus] = [:]

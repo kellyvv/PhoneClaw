@@ -578,18 +578,7 @@ struct ContentView: View {
     private var activeModelDownloadHint: TopStatusHint? {
         let selectedModel = engine.catalog.selectedModel
         let selectedState = engine.installer.installState(for: selectedModel.id)
-        if let hint = downloadHint(for: selectedModel, state: selectedState) {
-            return hint
-        }
-
-        for model in engine.availableModels where model.id != selectedModel.id {
-            let state = engine.installer.installState(for: model.id)
-            if let hint = downloadHint(for: model, state: state) {
-                return hint
-            }
-        }
-
-        return nil
+        return downloadHint(for: selectedModel, state: selectedState)
     }
 
     private func downloadHint(for model: ModelDescriptor, state: ModelInstallState) -> TopStatusHint? {

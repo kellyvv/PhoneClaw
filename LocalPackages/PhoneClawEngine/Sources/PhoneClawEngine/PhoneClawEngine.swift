@@ -228,6 +228,7 @@ public final class LiteRTLMEngine: @unchecked Sendable {
     // QoS .default matches the background thread that C API callbacks fire on,
     // avoiding priority inversion when semaphore.wait() blocks for streaming.
     private let inferenceQueue = DispatchQueue(label: "com.litertlm.inference", qos: .default)
+    private let chatSessionLock = NSLock()
     private let conversationLock = NSLock()
 
     private static let log = Logger(subsystem: "PhoneClawEngine", category: "Engine")
@@ -271,8 +272,12 @@ public final class LiteRTLMEngine: @unchecked Sendable {
 
     deinit {
         let eng = engine
+        chatSessionLock.lock()
         let ses = chatSession
         let sesCfg = chatSessionConfig
+        chatSession = nil
+        chatSessionConfig = nil
+        chatSessionLock.unlock()
         let convTriplet = detachConversationTriplet()
         let queue = inferenceQueue
         if eng != nil || ses != nil || convTriplet.conversation != nil {
@@ -458,6 +463,7 @@ public final class LiteRTLMEngine: @unchecked Sendable {
     /// Safe to call multiple times — subsequent calls are no-ops.
     public func destroySynchronously() {
         inferenceQueue.sync { [self] in
+            chatSessionLock.lock()
             if let s = chatSession {
                 litert_lm_session_delete(s)
                 chatSession = nil
@@ -466,6 +472,7 @@ public final class LiteRTLMEngine: @unchecked Sendable {
                 litert_lm_session_config_delete(c)
                 chatSessionConfig = nil
             }
+            chatSessionLock.unlock()
             let triplet = detachConversationTriplet()
             if let c = triplet.conversation {
                 litert_lm_conversation_delete(c)
@@ -853,6 +860,7 @@ public final class LiteRTLMEngine: @unchecked Sendable {
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
             inferenceQueue.async { [self] in
                 do {
+                    chatSessionLock.lock()
                     if let s = chatSession {
                         litert_lm_session_delete(s)
                         chatSession = nil
@@ -868,9 +876,11 @@ public final class LiteRTLMEngine: @unchecked Sendable {
                     )
                     chatSession = session
                     chatSessionConfig = config
+                    chatSessionLock.unlock()
                     Self.log.info("Persistent session opened")
                     cont.resume()
                 } catch {
+                    chatSessionLock.unlock()
                     cont.resume(throwing: error)
                 }
             }
@@ -880,7 +890,11 @@ public final class LiteRTLMEngine: @unchecked Sendable {
     /// Close the persistent session, freeing KV cache memory.
     public func closeSession() {
         inferenceQueue.async { [self] in
-            guard chatSession != nil else { return }
+            chatSessionLock.lock()
+            guard chatSession != nil else {
+                chatSessionLock.unlock()
+                return
+            }
             if let s = chatSession {
                 logSessionBenchmark(s)
                 litert_lm_session_delete(s)
@@ -890,8 +904,21 @@ public final class LiteRTLMEngine: @unchecked Sendable {
                 litert_lm_session_config_delete(c)
                 chatSessionConfig = nil
             }
+            chatSessionLock.unlock()
             Self.log.info("Persistent session closed")
         }
+    }
+
+    /// Cancel the active generation in the persistent text session.
+    public func cancelSessionGeneration() {
+        chatSessionLock.lock()
+        guard let session = chatSession else {
+            chatSessionLock.unlock()
+            return
+        }
+        litert_lm_session_cancel_process(session)
+        chatSessionLock.unlock()
+        Self.log.info("Persistent text session cancel signal sent")
     }
 
     // MARK: - Persistent Conversation (Multimodal KV Cache Reuse)
@@ -1329,7 +1356,11 @@ public final class LiteRTLMEngine: @unchecked Sendable {
     public func sessionGenerateStreaming(input: String) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
             self.inferenceQueue.async { [self] in
-                guard let session = self.chatSession else {
+                chatSessionLock.lock()
+                let session = self.chatSession
+                chatSessionLock.unlock()
+
+                guard let session else {
                     continuation.finish(throwing: LiteRTLMError.inferenceFailure("No persistent session open — call openSession() first"))
                     return
                 }
