@@ -423,7 +423,7 @@ struct ConfigurationsView: View {
         case ModelDescriptor.gemma4E4B.id:
             return (tr("更强", "Stronger"), SettingsStyle.secondary)
         case ModelDescriptor.miniCPMV4_6.id:
-            return (tr("看图", "Vision"), SettingsStyle.secondary)
+            return (tr("视觉增强", "Vision+"), SettingsStyle.secondary)
         default:
             return nil
         }
@@ -443,8 +443,8 @@ struct ConfigurationsView: View {
             )
         case ModelDescriptor.miniCPMV4_6.id:
             return (
-                "图片理解，需要看图时下载",
-                "Image understanding, download when needed"
+                "复杂图片分析和视觉增强",
+                "Complex image analysis and vision assist"
             )
         default:
             return nil
@@ -1352,6 +1352,21 @@ struct ConfigurationsView: View {
         selectedModelID = model.id
     }
 
+    private func runtimeNeedsLoad(for modelID: String) -> Bool {
+        let runtimeState = engine.coordinator.sessionState
+        let runtimeModelID = runtimeState.activeModelID ?? engine.catalog.loadedModel?.id
+        guard runtimeModelID == modelID else {
+            return true
+        }
+
+        switch runtimeState {
+        case .idle, .failed:
+            return true
+        case .loading, .ready, .generating, .switching, .unloading:
+            return false
+        }
+    }
+
     private func applySettings() -> Bool {
         let modelChanged = engine.config.selectedModelID != selectedModelID
         let backendChanged = engine.config.preferredBackend != preferredBackend
@@ -1382,9 +1397,11 @@ struct ConfigurationsView: View {
         engine.applySamplingConfig()
 
         engine.config.selectedModelID = selectedModelID
+        let needsLoad = runtimeNeedsLoad(for: selectedModelID)
         // backend / MTP 变更也要 reload — LiteRTLMEngine 在 load 时构造,
-        // 这两个参数都不可热切换。
-        if modelChanged || backendChanged || mtpChanged {
+        // 这两个参数都不可热切换。needsLoad 覆盖「模型刚下载完成但
+        // selectedModelID 没变」的场景，同时避免已加载模型反复 reload。
+        if modelChanged || backendChanged || mtpChanged || needsLoad {
             engine.reloadModel()
         }
         return true
