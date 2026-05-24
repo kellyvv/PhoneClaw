@@ -327,7 +327,7 @@ extension AgentEngine {
 
         if let lastAssistant = messages.lastIndex(where: { $0.role == .assistant }) {
             let content = messages[lastAssistant].content.replacingOccurrences(of: "▍", with: "")
-            messages[lastAssistant].update(content: content.isEmpty ? PromptLocale.current.cancelledReplyPlaceholder : content)
+            messages[lastAssistant].update(content: content)
         }
 
         // 4. Async: wait for stream termination → reset KV safely.

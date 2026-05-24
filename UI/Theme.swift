@@ -57,7 +57,7 @@ struct Theme {
     static let chatSpacing: CGFloat = 24
     static let inputPadH: CGFloat = 16
     static let bubbleMinSpacer: CGFloat = 60
-    static let aiMinSpacer: CGFloat = 24
+    static let aiMinSpacer: CGFloat = 0
     #endif
 }
 

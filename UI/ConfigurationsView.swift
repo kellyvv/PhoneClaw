@@ -325,10 +325,17 @@ struct ConfigurationsView: View {
         return VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(model.displayName)
-                        .font(.system(size: 16, weight: isSelected ? .semibold : .regular))
-                        .foregroundStyle(isSelectable ? SettingsStyle.ink : SettingsStyle.secondary)
-                        .lineLimit(1)
+                    HStack(spacing: 7) {
+                        Text(model.displayName)
+                            .font(.system(size: 16, weight: isSelected ? .semibold : .regular))
+                            .foregroundStyle(isSelectable ? SettingsStyle.ink : SettingsStyle.secondary)
+                            .lineLimit(1)
+
+                        if let badge = modelRecommendationBadge(for: model) {
+                            modelBadge(badge.text, color: badge.color)
+                                .font(.system(size: 10.5, weight: .medium))
+                        }
+                    }
 
                     Text(modelInstallLabel(for: state, model: model))
                         .font(.system(size: 12, weight: .regular))
@@ -409,6 +416,51 @@ struct ConfigurationsView: View {
         }
     }
 
+    private func modelRecommendationBadge(for model: ModelDescriptor) -> (text: String, color: Color)? {
+        switch model.id {
+        case ModelDescriptor.gemma4E2B.id:
+            return (tr("推荐", "Recommended"), SettingsStyle.ink)
+        case ModelDescriptor.gemma4E4B.id:
+            return (tr("更强", "Stronger"), SettingsStyle.secondary)
+        case ModelDescriptor.miniCPMV4_6.id:
+            return (tr("看图", "Vision"), SettingsStyle.secondary)
+        default:
+            return nil
+        }
+    }
+
+    private func modelRecommendationDetail(for model: ModelDescriptor) -> (zh: String, en: String)? {
+        switch model.id {
+        case ModelDescriptor.gemma4E2B.id:
+            return (
+                "日常聊天、写作、工具调用、LIVE",
+                "Chat, writing, tools, LIVE"
+            )
+        case ModelDescriptor.gemma4E4B.id:
+            return (
+                "复杂任务和多工具规划",
+                "Complex tasks and multi-tool planning"
+            )
+        case ModelDescriptor.miniCPMV4_6.id:
+            return (
+                "图片理解，需要看图时下载",
+                "Image understanding, download when needed"
+            )
+        default:
+            return nil
+        }
+    }
+
+    private func modelDownloadButtonTitle(for model: ModelDescriptor, isResumable: Bool) -> String {
+        if isResumable {
+            return tr("继续下载", "Resume")
+        }
+        if model.id == ModelDescriptor.gemma4E2B.id {
+            return tr("下载推荐模型", "Download Recommended")
+        }
+        return tr("下载", "Download")
+    }
+
     private func runtimeHeroLabel(for model: ModelDescriptor?, state: ModelInstallState) -> String {
         guard let model else {
             return tr("未选择模型", "No Model Selected")
@@ -430,11 +482,22 @@ struct ConfigurationsView: View {
             return runtimeLabel
         }
 
+        let recommendationDetail = modelRecommendationDetail(for: model)
+
         switch state {
         case .downloaded, .bundled:
+            if let recommendationDetail {
+                return tr("已下载 · \(recommendationDetail.zh)", "Downloaded · \(recommendationDetail.en)")
+            }
             return tr("已下载", "Downloaded")
         case .notInstalled:
-            return engine.installer.hasResumableDownload(for: model.id)
+            let isResumable = engine.installer.hasResumableDownload(for: model.id)
+            if let recommendationDetail {
+                return isResumable
+                    ? tr("未下载 · 可继续 · \(recommendationDetail.zh)", "Not downloaded · resumable · \(recommendationDetail.en)")
+                    : tr("未下载 · \(recommendationDetail.zh)", "Not downloaded · \(recommendationDetail.en)")
+            }
+            return isResumable
                 ? tr("未下载 · 可继续", "Not downloaded · resumable")
                 : tr("未下载", "Not downloaded")
         case .checkingSource:
@@ -997,7 +1060,7 @@ struct ConfigurationsView: View {
             let isResumable = engine.installer.hasResumableDownload(for: model.id)
             let canRemoveLocalData = isResumable || engine.installer.hasLocalArtifacts(for: model)
             HStack(spacing: 8) {
-                Button(isResumable ? tr("继续下载", "Resume") : tr("下载", "Download")) {
+                Button(modelDownloadButtonTitle(for: model, isResumable: isResumable)) {
                     modelSelectionMessage = nil
                     Task {
                         do {

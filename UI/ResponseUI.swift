@@ -1,5 +1,8 @@
 import SwiftUI
 import Foundation
+#if canImport(UIKit)
+import UIKit
+#endif
 
 // MARK: - AI 回复
 
@@ -55,7 +58,6 @@ struct AIResponseView: View {
                         content: text,
                         isStreaming: block.isThinking
                     )
-                    .padding(.trailing, 12)
                 }
 
                 if let onRetry, !block.isThinking {
@@ -89,14 +91,28 @@ private struct StreamingMarkdownView: View {
     let isStreaming: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        #if canImport(UIKit)
+        SelectableAssistantTextView(blocks: AssistantTextBlock.parse(content))
+            .frame(maxWidth: assistantTextMaxWidth, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .animation(nil, value: content)
+        #else
+        VStack(alignment: .leading, spacing: 16) {
             ForEach(AssistantTextBlock.parse(content)) { block in
                 switch block.kind {
+                case .heading(let text, let level):
+                    Text(text)
+                        .font(.system(size: level == 1 ? 17 : 15.5, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Theme.assistantText.opacity(0.94))
+                        .lineSpacing(7)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, block.id == 0 ? 0 : 10)
+
                 case .paragraph(let text, let isLead):
                     Text(text)
                         .font(.system(size: isLead ? 14 : 14.5, weight: .regular, design: .rounded))
                         .foregroundStyle(Theme.assistantText.opacity(isLead ? 0.86 : 0.9))
-                        .lineSpacing(6)
+                        .lineSpacing(8.5)
                         .fixedSize(horizontal: false, vertical: true)
 
                 case .numbered(let number, let text):
@@ -109,7 +125,7 @@ private struct StreamingMarkdownView: View {
                         Text(text)
                             .font(.system(size: 14.25, weight: .regular, design: .rounded))
                             .foregroundStyle(Theme.assistantText.opacity(0.86))
-                            .lineSpacing(6)
+                            .lineSpacing(8)
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
@@ -123,7 +139,7 @@ private struct StreamingMarkdownView: View {
                         Text(text)
                             .font(.system(size: 14.25, weight: .regular, design: .rounded))
                             .foregroundStyle(Theme.assistantText.opacity(0.86))
-                            .lineSpacing(6)
+                            .lineSpacing(8)
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
@@ -145,19 +161,199 @@ private struct StreamingMarkdownView: View {
         .frame(maxWidth: assistantTextMaxWidth, alignment: .leading)
         .fixedSize(horizontal: false, vertical: true)
         .animation(nil, value: content)
+        #endif
     }
 
     private var assistantTextMaxWidth: CGFloat {
         #if os(macOS)
         return 620
         #else
-        return 322
+        let availableWidth = UIScale.screenWidth - Theme.chatPadH * 2
+        return max(280, availableWidth)
         #endif
     }
 }
 
+#if canImport(UIKit)
+extension Notification.Name {
+    /// 广播到所有 SelectionDismissibleTextView, 让它们清掉当前 selection。
+    /// UITextView (isSelectable=true, isEditable=false) 不会因为外部 tap 自动清选区,
+    /// 这是 UIKit 设计行为, 不是 bug; 我们通过这个通道补回"点别处就消失"的预期。
+    static let dismissAssistantTextSelection = Notification.Name("phoneclaw.dismissAssistantTextSelection")
+}
+
+private final class SelectionDismissibleTextView: UITextView {
+    private var dismissObserver: NSObjectProtocol?
+
+    override init(frame: CGRect, textContainer: NSTextContainer?) {
+        super.init(frame: frame, textContainer: textContainer)
+        dismissObserver = NotificationCenter.default.addObserver(
+            forName: .dismissAssistantTextSelection,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            // 没有选区时设 nil 是 no-op, 不会有副作用; 所以可以无脑发广播。
+            self?.selectedTextRange = nil
+        }
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    deinit {
+        if let token = dismissObserver {
+            NotificationCenter.default.removeObserver(token)
+        }
+    }
+}
+
+private struct SelectableAssistantTextView: UIViewRepresentable {
+    let blocks: [AssistantTextBlock]
+
+    func makeUIView(context: Context) -> UITextView {
+        let textView = SelectionDismissibleTextView()
+        textView.backgroundColor = .clear
+        textView.isEditable = false
+        textView.isSelectable = true
+        textView.isScrollEnabled = false
+        textView.textContainerInset = .zero
+        textView.textContainer.lineFragmentPadding = 0
+        textView.textContainer.widthTracksTextView = true
+        textView.textContainer.heightTracksTextView = false
+        textView.showsVerticalScrollIndicator = false
+        textView.showsHorizontalScrollIndicator = false
+        textView.adjustsFontForContentSizeCategory = false
+        textView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        textView.setContentCompressionResistancePriority(.required, for: .vertical)
+        return textView
+    }
+
+    func updateUIView(_ textView: UITextView, context: Context) {
+        let attributedText = Self.attributedText(from: blocks)
+        guard textView.attributedText != attributedText else { return }
+        textView.attributedText = attributedText
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
+        let width = proposal.width ?? 348
+        uiView.bounds.size.width = width
+        let size = uiView.sizeThatFits(
+            CGSize(width: width, height: CGFloat.greatestFiniteMagnitude)
+        )
+        return CGSize(width: width, height: ceil(size.height))
+    }
+
+    private static func attributedText(from blocks: [AssistantTextBlock]) -> NSAttributedString {
+        let result = NSMutableAttributedString()
+
+        for block in blocks {
+            if result.length > 0 {
+                result.append(NSAttributedString(string: "\n"))
+            }
+
+            switch block.kind {
+            case .heading(let text, let level):
+                result.append(NSAttributedString(
+                    string: text,
+                    attributes: attributes(
+                        font: roundedFont(size: level == 1 ? 17 : 15.5, weight: .semibold),
+                        color: UIColor(Theme.assistantText.opacity(0.94)),
+                        lineSpacing: 7,
+                        paragraphSpacing: 10,
+                        paragraphSpacingBefore: result.length == 0 ? 0 : 10
+                    )
+                ))
+
+            case .paragraph(let text, let isLead):
+                result.append(NSAttributedString(
+                    string: text,
+                    attributes: attributes(
+                        font: roundedFont(size: isLead ? 14 : 14.5, weight: .regular),
+                        color: UIColor(Theme.assistantText.opacity(isLead ? 0.86 : 0.9)),
+                        lineSpacing: 8.5,
+                        paragraphSpacing: 10
+                    )
+                ))
+
+            case .numbered(let number, let text):
+                result.append(NSAttributedString(
+                    string: "\(number). \(text)",
+                    attributes: attributes(
+                        font: roundedFont(size: 14.25, weight: .regular),
+                        color: UIColor(Theme.assistantText.opacity(0.86)),
+                        lineSpacing: 8,
+                        paragraphSpacing: 10,
+                        firstLineHeadIndent: 0,
+                        headIndent: 20
+                    )
+                ))
+
+            case .bullet(let text):
+                result.append(NSAttributedString(
+                    string: "• \(text)",
+                    attributes: attributes(
+                        font: roundedFont(size: 14.25, weight: .regular),
+                        color: UIColor(Theme.assistantText.opacity(0.86)),
+                        lineSpacing: 8,
+                        paragraphSpacing: 10,
+                        firstLineHeadIndent: 0,
+                        headIndent: 18
+                    )
+                ))
+
+            case .codeBlock(let text):
+                result.append(NSAttributedString(
+                    string: text,
+                    attributes: attributes(
+                        font: .monospacedSystemFont(ofSize: 12, weight: .regular),
+                        color: UIColor(Theme.textSecondary),
+                        lineSpacing: 4,
+                        paragraphSpacing: 10
+                    )
+                ))
+            }
+        }
+
+        return result
+    }
+
+    private static func attributes(
+        font: UIFont,
+        color: UIColor,
+        lineSpacing: CGFloat,
+        paragraphSpacing: CGFloat,
+        paragraphSpacingBefore: CGFloat = 0,
+        firstLineHeadIndent: CGFloat = 0,
+        headIndent: CGFloat = 0
+    ) -> [NSAttributedString.Key: Any] {
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.lineSpacing = lineSpacing
+        paragraphStyle.paragraphSpacing = paragraphSpacing
+        paragraphStyle.paragraphSpacingBefore = paragraphSpacingBefore
+        paragraphStyle.firstLineHeadIndent = firstLineHeadIndent
+        paragraphStyle.headIndent = headIndent
+        return [
+            .font: font,
+            .foregroundColor: color,
+            .paragraphStyle: paragraphStyle
+        ]
+    }
+
+    private static func roundedFont(size: CGFloat, weight: UIFont.Weight) -> UIFont {
+        let baseFont = UIFont.systemFont(ofSize: size, weight: weight)
+        guard let descriptor = baseFont.fontDescriptor.withDesign(.rounded) else {
+            return baseFont
+        }
+        return UIFont(descriptor: descriptor, size: size)
+    }
+}
+#endif
+
 private struct AssistantTextBlock: Identifiable {
     enum Kind {
+        case heading(String, level: Int)
         case paragraph(String, isLead: Bool)
         case numbered(String, String)
         case bullet(String)
@@ -203,7 +399,7 @@ private struct AssistantTextBlock: Identifiable {
             case .bullet(let existing):
                 blocks[lastIndex].kind = .bullet(clean(existing + " " + text))
                 return true
-            case .paragraph, .codeBlock:
+            case .heading, .paragraph, .codeBlock:
                 return false
             }
         }
@@ -236,6 +432,17 @@ private struct AssistantTextBlock: Identifiable {
             }
 
             let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+            if isStandaloneMarkdownMarker(line) {
+                flushParagraph()
+                continue
+            }
+
+            if let heading = headingItem(from: line) {
+                flushParagraph()
+                blocks.append(.init(id: blocks.count, kind: .heading(clean(heading.text), level: heading.level)))
+                continue
+            }
+
             if let item = numberedItem(from: line) {
                 flushParagraph()
                 blocks.append(.init(id: blocks.count, kind: .numbered(item.number, clean(item.text))))
@@ -254,6 +461,21 @@ private struct AssistantTextBlock: Identifiable {
         flushParagraph()
         flushCodeBlock()
         return blocks
+    }
+
+    private static func headingItem(from line: String) -> (level: Int, text: String)? {
+        var level = 0
+        var index = line.startIndex
+        while index < line.endIndex, line[index] == "#" {
+            level += 1
+            index = line.index(after: index)
+        }
+        guard (1...4).contains(level), index < line.endIndex, line[index].isWhitespace else {
+            return nil
+        }
+        let text = line[index...].trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return nil }
+        return (level, text)
     }
 
     private static func numberedItem(from line: String) -> (number: String, text: String)? {
@@ -278,6 +500,10 @@ private struct AssistantTextBlock: Identifiable {
             return String(line.dropFirst(marker.count))
         }
         return nil
+    }
+
+    private static func isStandaloneMarkdownMarker(_ line: String) -> Bool {
+        ["*", "**", "***", "_", "__", "___", "-", "--", "---"].contains(line)
     }
 
     private static func clean(_ raw: String) -> String {

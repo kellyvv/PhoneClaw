@@ -210,6 +210,12 @@ extension AgentEngine {
                     self.recordCompletedObservation(plan: multimodalPlan)
                     self.finishTurn()
                 case .failure(let error):
+                    if self.isUserCancellationError(error) {
+                        log("[Agent] multimodal cancelled")
+                        self.settleCancelledMessage(at: msgIndex)
+                        self.finishTurn(userCancelled: true)
+                        return
+                    }
                     log("[Agent] multimodal failed: \(error.localizedDescription)")
                     self.messages[msgIndex].update(role: .system, content: "❌ \(error.localizedDescription)")
                     self.recordCompletedObservation(
@@ -523,6 +529,12 @@ extension AgentEngine {
                         self.finishTurn()
                     }
                 case .failure(let error):
+                    if self.isUserCancellationError(error) {
+                        log("[Agent] generation cancelled")
+                        self.settleCancelledMessage(at: msgIndex)
+                        self.finishTurn(userCancelled: true)
+                        return
+                    }
                     self.messages[msgIndex].update(role: .system, content: "❌ \(error.localizedDescription)")
                     self.recordCompletedObservation(
                         plan: textPromptPlan,
@@ -600,6 +612,15 @@ extension AgentEngine {
                     log("[Agent] LLM raw: \(text.prefix(300))")
                     continuation.resume(returning: text)
                 case .failure(let error):
+                    if self.isUserCancellationError(error) {
+                        log("[Agent] LLM cancelled")
+                        if self.messages.indices.contains(msgIndex) {
+                            self.settleCancelledMessage(at: msgIndex)
+                        }
+                        self.finishTurn(userCancelled: true)
+                        continuation.resume(returning: nil)
+                        return
+                    }
                     if self.messages.indices.contains(msgIndex) {
                         self.messages[msgIndex].update(role: .system, content: "❌ \(error.localizedDescription)")
                     }
@@ -638,9 +659,10 @@ extension AgentEngine {
     ///   terminated with an error reason. If nil, the turn succeeded normally.
     ///   If the transaction is in `.cancelling` state (user pressed stop),
     ///   it's terminated as cancelled regardless of this parameter.
-    func finishTurn(error: String? = nil) {
-        if let txn = coordinator.currentTransaction, !txn.isTerminal {
-            if txn.state == .cancelling {
+    func finishTurn(error: String? = nil, userCancelled: Bool = false) {
+        let txn = coordinator.currentTransaction
+        if let txn, !txn.isTerminal {
+            if userCancelled || txn.state == .cancelling {
                 // Cancel flow in progress — mark terminated so coordinator's
                 // async cancel can proceed with KV reset.
                 txn.markTerminated(reason: .userCancelled)
@@ -662,6 +684,36 @@ extension AgentEngine {
     }
 
     // MARK: - Helpers
+
+    func isUserCancellationError(_ error: Error) -> Bool {
+        if coordinator.currentTransaction?.state == .cancelling {
+            return true
+        }
+        if error is CancellationError {
+            return true
+        }
+
+        let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain, nsError.code == NSURLErrorCancelled {
+            return true
+        }
+        if nsError.domain == NSCocoaErrorDomain, nsError.code == NSUserCancelledError {
+            return true
+        }
+
+        let message = error.localizedDescription.lowercased()
+        return message.contains("cancelled")
+            || message.contains("canceled")
+            || message.contains("process canceled")
+    }
+
+    func settleCancelledMessage(at index: Int) {
+        guard messages.indices.contains(index) else { return }
+        let content = messages[index].content
+            .replacingOccurrences(of: "▍", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        messages[index].update(role: .assistant, content: content, skillName: messages[index].skillName)
+    }
 
     func promptImages(
         historyDepth: Int,

@@ -103,6 +103,17 @@ class AgentEngine {
         coordinator.sessionState.canGenerate
     }
 
+    /// Model weights/session are loaded. This remains true while a generation
+    /// is running, unlike `isModelReady` which means "can accept a new request".
+    var isModelLoaded: Bool {
+        switch coordinator.sessionState {
+        case .ready, .generating:
+            return true
+        default:
+            return false
+        }
+    }
+
     /// A generation is in progress (coordinator has an active transaction).
     /// Replaces UI reads of `inference.isGenerating`.
     var isModelGenerating: Bool {

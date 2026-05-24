@@ -54,6 +54,14 @@ private struct TopStatusHint: Equatable {
     let isWarning: Bool
 }
 
+private struct StarterAction: Identifiable {
+    let id: String
+    let title: String
+    let prompt: String
+    let symbolName: String
+    let opensPhotoPicker: Bool
+}
+
 private struct ScrollSignal: Equatable {
     let lastMessageID: UUID?
     let messageCount: Int
@@ -62,6 +70,7 @@ private struct ScrollSignal: Equatable {
 }
 
 struct ContentView: View {
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.scenePhase) private var scenePhase
     @State private var engine = AgentEngine()
     @State private var audioCapture = AudioCaptureService()
@@ -152,48 +161,84 @@ struct ContentView: View {
         }
     }
 
+    private var starterActions: [StarterAction] {
+        [
+            StarterAction(
+                id: "write-article",
+                title: tr("帮我写文章", "Write an article"),
+                prompt: tr(
+                    "请帮我写一篇 800 字左右的文章，主题是：为什么本地 AI 会成为手机上的重要能力。要求结构清晰、语气自然、有小标题，最后给出三个要点总结。",
+                    "Please write an article of about 800 words on the topic: why local AI will become an important capability on phones. Make it clearly structured, natural in tone, include section headings, and end with three key takeaways."
+                ),
+                symbolName: "doc.text",
+                opensPhotoPicker: false
+            ),
+            StarterAction(
+                id: "schedule",
+                title: tr("安排日程", "Schedule"),
+                prompt: tr(
+                    "帮我预定下明天下午两点的产品会议。",
+                    "Schedule a product meeting for tomorrow at 2 PM."
+                ),
+                symbolName: "calendar.badge.plus",
+                opensPhotoPicker: false
+            ),
+            StarterAction(
+                id: "activity",
+                title: tr("今天的运动量", "Today's activity"),
+                prompt: tr(
+                    "今天的运动量怎么样？",
+                    "How is my activity today?"
+                ),
+                symbolName: "figure.walk",
+                opensPhotoPicker: false
+            ),
+            StarterAction(
+                id: "analyze-image",
+                title: tr("分析图片", "Analyze image"),
+                prompt: tr(
+                    "请分析这张图片，告诉我关键内容、可能的问题和下一步建议。",
+                    "Please analyze this image and tell me the key content, possible issues, and next-step suggestions."
+                ),
+                symbolName: "photo",
+                opensPhotoPicker: true
+            )
+        ]
+    }
+
+    private var shouldShowStarterActions: Bool {
+        engine.messages.isEmpty
+            && inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && selectedImages.isEmpty
+            && importedAudioSnapshot == nil
+            && !audioCapture.isCapturing
+            && !showAttachmentTray
+            && !isVoiceInputMode
+    }
+
     var body: some View {
-        ZStack(alignment: .top) {
-            Theme.bg.ignoresSafeArea()
-
-            welcomeView
-                .opacity(engine.messages.isEmpty ? 1 : 0)
-                .scaleEffect(engine.messages.isEmpty ? 1 : 0.985)
-                .allowsHitTesting(engine.messages.isEmpty)
-                .accessibilityHidden(!engine.messages.isEmpty)
-
-            VStack(spacing: 0) {
-                Color.clear
-                    .frame(height: UIScale.topChromeHeight)
-                chatList
-            }
-            .opacity(engine.messages.isEmpty ? 0 : 1)
-            .allowsHitTesting(!engine.messages.isEmpty)
-            .accessibilityHidden(engine.messages.isEmpty)
-
+        VStack(spacing: 0) {
             topBar
-        }
-        .ignoresSafeArea(engine.messages.isEmpty ? .keyboard : [], edges: .bottom)
-        .animation(.easeInOut(duration: 0.28), value: engine.messages.isEmpty)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            VStack(spacing: 0) {
-                composerAttachmentsPanel
-                if showAttachmentTray {
-                    HStack {
-                        attachmentTray
-                        Spacer(minLength: 0)
-                    }
-                    .padding(.horizontal, Theme.inputPadH + 10)
-                    .padding(.bottom, 8)
-                    .transition(.asymmetric(
-                        insertion: .opacity.combined(with: .move(edge: .bottom)),
-                        removal: .opacity.combined(with: .scale(scale: 0.98, anchor: .bottomLeading))
-                    ))
-                }
-                inputBar
+
+            ZStack {
+                chatList
+                    .opacity(engine.messages.isEmpty ? 0 : 1)
+                    .allowsHitTesting(!engine.messages.isEmpty)
+                    .accessibilityHidden(engine.messages.isEmpty)
+
+                welcomeView
+                    .opacity(engine.messages.isEmpty ? 1 : 0)
+                    .scaleEffect(engine.messages.isEmpty ? 1 : 0.985)
+                    .allowsHitTesting(engine.messages.isEmpty)
+                    .accessibilityHidden(!engine.messages.isEmpty)
             }
-            .animation(.easeOut(duration: 0.2), value: showAttachmentTray)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipped()
+
+            composerDock
         }
+        .background(Theme.bg.ignoresSafeArea())
+        .animation(.easeInOut(duration: 0.28), value: engine.messages.isEmpty)
         .overlay {
             voiceModelPromptOverlay
         }
@@ -229,6 +274,10 @@ struct ContentView: View {
         .onChange(of: isInputFocused) { _, focused in
             if focused {
                 showAttachmentTray = false
+                #if canImport(UIKit)
+                // 聚焦输入框 = 用户要往别处去, 顺手清掉 AI 回复 UITextView 的选区。
+                NotificationCenter.default.post(name: .dismissAssistantTextSelection, object: nil)
+                #endif
             }
         }
         .onChange(of: engine.installer.installStates) { oldStates, newStates in
@@ -375,11 +424,22 @@ struct ContentView: View {
                             )
                         }
                     }
+
                 }
                 .padding(.horizontal, Theme.chatPadH)
                 .padding(.vertical, 20)
             }
             .scrollIndicators(.hidden)
+            // 任意点击 chatList → 清掉所有 AI 回复 UITextView 的选区。
+            // simultaneousGesture 不会拦截内部按钮 (regenerate / expand skill 等) 的 tap,
+            // 它们照样能触发, 我们的清选区动作只是并行跑一下。
+            .simultaneousGesture(
+                TapGesture().onEnded {
+                    #if canImport(UIKit)
+                    NotificationCenter.default.post(name: .dismissAssistantTextSelection, object: nil)
+                    #endif
+                }
+            )
             .task(id: scrollSignal) {
                 let signal = scrollSignal
                 await Task.yield()
@@ -390,12 +450,6 @@ struct ContentView: View {
                 guard focused else { return }
                 followKeyboardScroll(proxy, duration: 0.32)
             }
-            #if canImport(UIKit)
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { notification in
-                guard isInputFocused else { return }
-                followKeyboardScroll(proxy, duration: keyboardAnimationDuration(from: notification))
-            }
-            #endif
         }
     }
 
@@ -410,15 +464,6 @@ struct ContentView: View {
         } else {
             proxy.scrollTo(lastID, anchor: .bottom)
         }
-    }
-
-    private func keyboardAnimationDuration(from notification: Notification) -> Double {
-        #if canImport(UIKit)
-        let raw = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? NSNumber
-        return min(max(raw?.doubleValue ?? 0.32, 0.22), 0.48)
-        #else
-        return 0.32
-        #endif
     }
 
     private func followKeyboardScroll(_ proxy: ScrollViewProxy, duration: Double) {
@@ -504,7 +549,7 @@ struct ContentView: View {
                             height: UIScale.topStatusChipDiameter
                         )
                     Circle()
-                        .fill(engine.isModelReady ? Theme.accentMuted : Theme.textTertiary)
+                        .fill(engine.isModelLoaded ? Theme.accentMuted : Theme.textTertiary)
                         .frame(
                             width: UIScale.topStatusChipDotSize,
                             height: UIScale.topStatusChipDotSize
@@ -718,15 +763,19 @@ struct ContentView: View {
 
     // MARK: - 欢迎页
 
-    // MARK: - welcomeView (fixed top anchor)
+    // MARK: - welcomeView (centered in middle content area)
     //
-    // 品牌签名不再放进 `VStack + Spacer`.
-    // 键盘出现时 bottom safeAreaInset 会改变可用高度, Spacer 会重新分配空间,
-    // 导致品牌签名跟着输入法漂移. 这里改为顶部固定偏移, 只让输入栏响应键盘.
+    // BrandMark 跟 chatList 共享 root VStack 中间的 ZStack 容器, 在容器内**居中**。
+    // 容器高度 = 屏幕高 - topBar - composerDock, 键盘升起时 SwiftUI 默认避让会
+    // 压缩这个容器, BrandMark 跟着压缩后的容器中心走 — 不会被推出可见区, 也
+    // 不会再跟键盘联动出错。
+    //
+    // 历史: 之前用 `.padding(.top, welcomeBrandTopOffset) + alignment: .top` 是
+    // 为了对抗旧 ZStack + safeAreaInset + 手写 keyboardLift 方案下的漂移; 那一
+    // 整套方案现在已经全部删除, 不需要顶部固定偏移这种 workaround 了。
     private var welcomeView: some View {
         BrandMarkView(size: UIScale.orbSize)
-            .padding(.top, UIScale.welcomeBrandTopOffset)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             .allowsHitTesting(false)
     }
 
@@ -770,6 +819,78 @@ struct ContentView: View {
                 }
             }
             .padding(.horizontal, Theme.chatPadH)
+        }
+    }
+
+    private var composerDock: some View {
+        VStack(spacing: 0) {
+            composerAttachmentsPanel
+            if shouldShowStarterActions {
+                starterActionsView
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .move(edge: .bottom)),
+                        removal: .opacity
+                    ))
+            }
+            if showAttachmentTray {
+                HStack {
+                    attachmentTray
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, Theme.inputPadH + 10)
+                .padding(.bottom, 8)
+                .transition(.asymmetric(
+                    insertion: .opacity.combined(with: .move(edge: .bottom)),
+                    removal: .opacity.combined(with: .scale(scale: 0.98, anchor: .bottomLeading))
+                ))
+            }
+            inputBar
+        }
+        .background(alignment: .bottom) {
+            inputAreaBackground
+        }
+        .animation(.easeOut(duration: 0.2), value: showAttachmentTray)
+    }
+
+    private var starterActionsView: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(starterActions) { action in
+                Button {
+                    applyStarterAction(action)
+                } label: {
+                    HStack(spacing: 11) {
+                        Image(systemName: action.symbolName)
+                            .font(.system(size: 15.5, weight: .regular))
+                            .foregroundStyle(Theme.textSecondary.opacity(0.78))
+                            .frame(width: 22, height: 22)
+
+                        Text(action.title)
+                            .font(.system(size: 16, weight: .regular, design: .rounded))
+                            .foregroundStyle(Theme.textSecondary.opacity(0.9))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.9)
+                    }
+                    .frame(height: 34, alignment: .leading)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, Theme.inputPadH + 10)
+        .padding(.bottom, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func applyStarterAction(_ action: StarterAction) {
+        showAttachmentTray = false
+        inputText = action.prompt
+        isVoiceInputMode = false
+        isInputFocused = true
+
+        if action.opensPhotoPicker {
+            #if canImport(PhotosUI)
+            showPhotoPicker = true
+            #endif
         }
     }
 
@@ -856,6 +977,24 @@ struct ContentView: View {
     // 设计稿:整个输入框是一个 white capsule,内部 [+] | text | [waveform/send]
     // 三个子元素都"贴着"胶囊内壁,而不是各自独立按钮并排。左右按钮 chip 形
     // (圆形浅底),输入框无自身背景。
+    private var inputAreaBackground: some View {
+        Group {
+            if !engine.messages.isEmpty {
+                LinearGradient(
+                    stops: [
+                        .init(color: Theme.bg.opacity(colorScheme == .dark ? 0.10 : 0.16), location: 0),
+                        .init(color: Theme.bg.opacity(colorScheme == .dark ? 0.82 : 0.72), location: 0.36),
+                        .init(color: Theme.bg.opacity(1), location: 1)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .ignoresSafeArea(edges: .bottom)
+                .allowsHitTesting(false)
+            }
+        }
+    }
+
     private var inputBar: some View {
         HStack(spacing: UIScale.chipTextSpacing) {
             // 左:+ 附件菜单 — 圆形 chip
@@ -908,15 +1047,31 @@ struct ContentView: View {
         .padding(.horizontal, UIScale.chipInnerMargin)
         .padding(.vertical, (UIScale.pillHeight - UIScale.chipDiameter) / 2)
         .background(Theme.bgElevated, in: Capsule())
-        .shadow(color: Color.black.opacity(0.05), radius: UIScale.pillShadowBlur, x: 0, y: 4)
+        .overlay(
+            Capsule()
+                .strokeBorder(Theme.borderSubtle.opacity(colorScheme == .dark ? 0.56 : 0.18), lineWidth: 1)
+        )
+        .shadow(
+            color: Color.black.opacity(colorScheme == .dark ? 0 : 0.035),
+            radius: colorScheme == .dark ? 0 : 10,
+            x: 0,
+            y: colorScheme == .dark ? 0 : 3
+        )
         .padding(.horizontal, UIScale.pillHorizontalMargin)
         .padding(.vertical, UIScale.inputBarBottomGap)
     }
 
     private var composerTextField: some View {
         ZStack(alignment: .leading) {
-            if inputText.isEmpty && !isInputFocused {
+            if shouldShowComposerPromptCarousel {
                 ComposerPromptCarousel(prompts: composerSkillPrompts)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            } else if inputText.isEmpty {
+                Text(composerSkillPrompts.first ?? tr("问点什么…", "Ask anything..."))
+                    .font(.system(size: UIScale.pillTextSize, weight: .regular, design: .rounded))
+                    .foregroundStyle(Theme.textTertiary.opacity(0.62))
+                    .lineLimit(1)
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)
             }
@@ -928,6 +1083,8 @@ struct ContentView: View {
                 .foregroundStyle(Theme.textPrimary)
                 .onSubmit { Task { await send() } }
             #else
+            composerTextMirror
+
             TextField("", text: $inputText, axis: .vertical)
                 .lineLimit(1...5)
                 .font(.system(size: UIScale.pillTextSize, weight: .regular, design: .rounded))
@@ -938,6 +1095,17 @@ struct ContentView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .clipped()
+    }
+
+    private var composerTextMirror: some View {
+        Text(inputText.isEmpty ? " " : inputText)
+            .font(.system(size: UIScale.pillTextSize, weight: .regular, design: .rounded))
+            .lineLimit(1...5)
+            .lineSpacing(2)
+            .fixedSize(horizontal: false, vertical: true)
+            .opacity(0)
+            .accessibilityHidden(true)
+            .allowsHitTesting(false)
     }
 
     // MARK: - 输入栏右侧按钮组 (mic 模式切换 + 动态主操作)
@@ -960,8 +1128,8 @@ struct ContentView: View {
         if canCancelGeneration {
             return .init(
                 icon: "stop.fill",
-                bgColor: Color.red.opacity(0.92),
-                fgColor: Theme.bg,
+                bgColor: Theme.accentSubtle,
+                fgColor: Theme.accentMuted,
                 action: { engine.cancelActiveGeneration() }
             )
         }
@@ -1317,6 +1485,14 @@ struct ContentView: View {
             || !selectedImages.isEmpty
             || hasCompletedDraft
             || importedAudioSnapshot != nil
+    }
+
+    private var shouldShowComposerPromptCarousel: Bool {
+        inputText.isEmpty
+            && !hasComposedInput
+            && engine.messages.isEmpty
+            && !engine.isProcessing
+            && !engine.isModelGenerating
     }
 
     private var canSend: Bool {
@@ -1852,13 +2028,6 @@ struct UserBubble: View {
                             RoundedRectangle(cornerRadius: 15, style: .continuous)
                                 .strokeBorder(Theme.userBubbleStroke, lineWidth: 1)
                         )
-                        .contextMenu {
-                            Button {
-                                UIPasteboard.general.string = text
-                            } label: {
-                                Label(tr("复制", "Copy"), systemImage: "doc.on.doc")
-                            }
-                        }
                 }
             }
         }
