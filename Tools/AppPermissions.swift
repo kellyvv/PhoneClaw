@@ -9,6 +9,7 @@ enum AppPermissionKind: String, CaseIterable, Identifiable {
     case microphone
     case camera
     case calendar
+    case calendarRead
     case reminders
     case contacts
 
@@ -19,6 +20,7 @@ enum AppPermissionKind: String, CaseIterable, Identifiable {
         case .microphone: return "麦克风"
         case .camera: return "摄像头"
         case .calendar: return "日历"
+        case .calendarRead: return "日历读取"
         case .reminders: return "提醒事项"
         case .contacts: return "通讯录"
         }
@@ -29,6 +31,7 @@ enum AppPermissionKind: String, CaseIterable, Identifiable {
         case .microphone: return "允许录音并采集实时音频输入"
         case .camera: return "允许在 Live 模式中观察周围环境"
         case .calendar: return "允许创建和写入日历事项"
+        case .calendarRead: return "允许读取日程用于本地分析"
         case .reminders: return "允许创建提醒和待办"
         case .contacts: return "允许查询、保存和删除联系人"
         }
@@ -39,6 +42,7 @@ enum AppPermissionKind: String, CaseIterable, Identifiable {
         case .microphone: return "mic"
         case .camera: return "camera"
         case .calendar: return "calendar"
+        case .calendarRead: return "calendar.badge.clock"
         case .reminders: return "bell"
         case .contacts: return "person.crop.circle"
         }
@@ -126,6 +130,23 @@ extension ToolRegistry {
                 return .restricted
             }
 
+        case .calendarRead:
+            let status = EKEventStore.authorizationStatus(for: .event)
+            switch status {
+            case .fullAccess, .authorized:
+                return .granted
+            case .writeOnly:
+                return .notDetermined
+            case .notDetermined:
+                return .notDetermined
+            case .denied:
+                return .denied
+            case .restricted:
+                return .restricted
+            @unknown default:
+                return .restricted
+            }
+
         case .reminders:
             let status = EKEventStore.authorizationStatus(for: .reminder)
             switch status {
@@ -183,6 +204,16 @@ extension ToolRegistry {
         case .calendar:
             return try await withCheckedThrowingContinuation { continuation in
                 SystemStores.event.requestWriteOnlyAccessToEvents { granted, error in
+                    if let error {
+                        continuation.resume(throwing: error)
+                    } else {
+                        continuation.resume(returning: granted)
+                    }
+                }
+            }
+        case .calendarRead:
+            return try await withCheckedThrowingContinuation { continuation in
+                SystemStores.event.requestFullAccessToEvents { granted, error in
                     if let error {
                         continuation.resume(throwing: error)
                     } else {
