@@ -27,7 +27,9 @@
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
 	<key>NSCalendarsUsageDescription</key>
-	<string>PhoneClaw needs calendar access to create events</string>
+	<string>PhoneClaw uses Calendar access to create events and read schedules only when you ask for local planning analysis.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>PhoneClaw reads calendar events only when you ask for schedule summaries, availability checks, or local planning analysis.</string>
 	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
 	<string>PhoneClaw needs to create calendar events</string>
 	<key>NSCameraUsageDescription</key>
