@@ -29,6 +29,7 @@ PhoneClaw is a private local Agent running on iPhone. It ships with multiple on-
 
 ## 2026-06-01 Update
 
+- PhoneClaw is live on TestFlight — [Join TestFlight](https://testflight.apple.com/join/YuUSwq78)
 - Added Calendar read support: query today's, tomorrow's, this week's, and next 7 days' schedule, with busyness and free-time analysis
 - Improved Web Search and long-answer browsing: realtime information can be summarized, and history remains scrollable while the model is responding
 
