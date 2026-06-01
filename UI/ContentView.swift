@@ -64,6 +64,7 @@ private struct StarterAction: Identifiable {
 
 private struct ScrollSignal: Equatable {
     let lastMessageID: UUID?
+    let lastMessageRole: String?
     let messageCount: Int
     let lastMessageContentCount: Int
     let isProcessing: Bool
@@ -85,6 +86,7 @@ struct ContentView: View {
     /// 记录每个 THINK 卡片的展开状态（key = ResponseBlock.id）
     @State private var expandedThoughts: Set<UUID> = []
     @State private var keyboardScrollTask: Task<Void, Never>?
+    @State private var shouldAutoFollowChat = true
     @FocusState private var isInputFocused: Bool
 
     // MARK: - Voice Input Mode
@@ -122,8 +124,9 @@ struct ContentView: View {
         let lastMessage = engine.messages.last
         return ScrollSignal(
             lastMessageID: lastMessage?.id,
+            lastMessageRole: lastMessage?.role.rawValue,
             messageCount: engine.messages.count,
-            lastMessageContentCount: lastMessage?.content.count ?? 0,
+            lastMessageContentCount: shouldAutoFollowChat ? (lastMessage?.content.count ?? 0) : 0,
             isProcessing: engine.isProcessing
         )
     }
@@ -191,6 +194,16 @@ struct ContentView: View {
                     "How is my activity today?"
                 ),
                 symbolName: "figure.walk",
+                opensPhotoPicker: false
+            ),
+            StarterAction(
+                id: "web-search",
+                title: tr("联网搜索", "Web search"),
+                prompt: tr(
+                    "联网搜索今天的 AI 新闻",
+                    "Search the web: latest artificial intelligence news"
+                ),
+                symbolName: "magnifyingglass",
                 opensPhotoPicker: false
             ),
             StarterAction(
@@ -407,7 +420,7 @@ struct ContentView: View {
     private var chatList: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                VStack(spacing: Theme.chatSpacing) {
+                LazyVStack(spacing: Theme.chatSpacing) {
                     ForEach(displayItems) { item in
                         switch item {
                         case .user(let msg):
@@ -429,7 +442,6 @@ struct ContentView: View {
                             )
                         }
                     }
-
                 }
                 .padding(.horizontal, Theme.chatPadH)
                 .padding(.vertical, 20)
@@ -445,11 +457,16 @@ struct ContentView: View {
                     #endif
                 }
             )
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 8).onChanged { _ in
+                    shouldAutoFollowChat = false
+                }
+            )
             .task(id: scrollSignal) {
                 let signal = scrollSignal
                 await Task.yield()
                 guard !Task.isCancelled else { return }
-                scrollTo(proxy, animated: !signal.isProcessing)
+                handleScrollSignal(signal, proxy: proxy)
             }
             .onChange(of: isInputFocused) { _, focused in
                 guard focused else { return }
@@ -471,8 +488,21 @@ struct ContentView: View {
         }
     }
 
+    @MainActor
+    private func handleScrollSignal(_ signal: ScrollSignal, proxy: ScrollViewProxy) {
+        if signal.lastMessageRole == ChatMessage.Role.user.rawValue {
+            shouldAutoFollowChat = true
+            scrollTo(proxy, animated: true, duration: 0.18)
+            return
+        }
+
+        guard shouldAutoFollowChat else { return }
+        scrollTo(proxy, animated: !signal.isProcessing)
+    }
+
     private func followKeyboardScroll(_ proxy: ScrollViewProxy, duration: Double) {
         keyboardScrollTask?.cancel()
+        shouldAutoFollowChat = true
         keyboardScrollTask = Task { @MainActor in
             await Task.yield()
             guard !Task.isCancelled else { return }

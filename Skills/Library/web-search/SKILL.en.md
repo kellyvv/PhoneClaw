@@ -7,7 +7,7 @@ icon: magnifyingglass
 disabled: false
 type: network
 requires-time-anchor: true
-chip_prompt: "Search the web for today's AI news"
+chip_prompt: "Search the web: latest artificial intelligence news"
 chip_label: "Web Search"
 
 triggers:
@@ -33,7 +33,7 @@ allowed-tools:
   - web-fetch
 
 examples:
-  - query: "Search the web for today's AI news"
+  - query: "Search the web: latest artificial intelligence news"
     scenario: "Search current information"
   - query: "Look up the latest news about OpenAI"
     scenario: "Search latest news"
@@ -42,7 +42,7 @@ examples:
 
 # Sync anchor (see scripts/check-skill-sync.sh):
 translation-source-commit: e61fd26
-translation-source-sha256: 63bfab6b478802e201692c0d4d7cd2f265930352bd21031f4f5e900fdeb985df
+translation-source-sha256: 3696b06cbd9ab32d63fb1549a0e1a2b936d30ffec44cef0331d1093897412325
 ---
 
 # Web Search
@@ -62,7 +62,7 @@ You retrieve public web information only when the user clearly needs current inf
 
 ## Search Flow
 
-1. Turn the user's need into a concise search query, preserving the primary entity/event, time range, and location; for "latest/today/news" requests, include the current year or date by default.
+1. Turn the user's need into a concise search query, preserving the primary entity/event, time range, and location; for "latest/today/news" requests, include the current year or date by default. Treat "today", "today's", "latest", and "current" as time modifiers, not search subjects; for "today's AI news", search for "artificial intelligence news 2026" or "AI news June 1 2026", never "today" alone.
 2. By default call `web-search` with `max_results` = 5.
 3. First decide whether the results actually answer the user's question: usable news/fact entries should have a concrete title, event, source, and preferably a date.
 4. If the user asks to summarize a specific webpage, or one search result is clearly the primary source but the snippet is insufficient, you may call `web-fetch` once for that URL.

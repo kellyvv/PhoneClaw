@@ -102,9 +102,11 @@ enum WebTools {
 
         let maxResults = clampedInt(args["max_results"], defaultValue: 5, minValue: 1, maxValue: 8)
         let fetchedAt = iso8601String(from: Date())
+        let isNewsQuery = isNewsLikeQuery(query)
+        let providerQuery = normalizedSearchQuery(query, isNewsQuery: isNewsQuery)
         var providerErrors: [String] = []
 
-        let providers: [(String, (String, Int) async throws -> [SearchResult])] = isNewsLikeQuery(query)
+        let providers: [(String, (String, Int) async throws -> [SearchResult])] = isNewsQuery
             ? [
                 ("bing-news-rss", searchBingNewsRSS),
                 ("duckduckgo-html", searchDuckDuckGo),
@@ -117,17 +119,17 @@ enum WebTools {
 
         for (providerName, provider) in providers {
             do {
-                let results = uniqueResults(try await provider(query, maxResults))
+                let results = uniqueResults(try await provider(providerQuery, maxResults))
                     .prefix(maxResults)
                     .map { $0 }
                 if !results.isEmpty {
                     return searchSuccess(
-                        query: query,
+                        query: providerQuery,
                         fetchedAt: fetchedAt,
                         provider: providerName,
                         results: results,
                         providerErrors: providerErrors,
-                        isNewsQuery: isNewsLikeQuery(query)
+                        isNewsQuery: isNewsQuery
                     )
                 }
                 providerErrors.append("\(providerName): empty")
@@ -143,7 +145,8 @@ enum WebTools {
         let detail = successPayload(
             result: summary,
             extras: [
-                "query": query,
+                "query": providerQuery,
+                "original_query": query,
                 "fetched_at": fetchedAt,
                 "provider": "none",
                 "provider_errors": providerErrors,
@@ -656,6 +659,40 @@ enum WebTools {
         return markers.contains { lower.contains($0) }
     }
 
+    private static func normalizedSearchQuery(_ query: String, isNewsQuery: Bool) -> String {
+        var value = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let commandPatterns = [
+            #"(?i)\bsearch\s+the\s+(web|internet)\s*(for|:)?\s*"#,
+            #"(?i)\bsearch\s+(online\s+)?(for|:)\s*"#,
+            #"(?i)\blook\s+up\s+"#,
+            #"(?i)\bfind\s+(online\s+)?"#
+        ]
+        for pattern in commandPatterns {
+            value = value.replacingOccurrences(of: pattern, with: "", options: .regularExpression)
+        }
+
+        if isNewsQuery {
+            let timeModifierPatterns = [
+                #"(?i)\btoday'?s\b"#,
+                #"(?i)\btoday\b"#,
+                #"(?i)\bcurrent\b"#,
+                #"今天|今日"#
+            ]
+            for pattern in timeModifierPatterns {
+                value = value.replacingOccurrences(of: pattern, with: " ", options: .regularExpression)
+            }
+        }
+
+        value = normalizeWhitespace(value)
+        guard !value.isEmpty else { return query }
+
+        if isNewsQuery, firstCapture(pattern: #"20\d{2}"#, in: value) == nil {
+            let year = Calendar.current.component(.year, from: Date())
+            value += " \(year)"
+        }
+        return value
+    }
+
     private static func isLikelySourceEntry(_ result: SearchResult) -> Bool {
         if let publishedAt = result.publishedAt, !publishedAt.isEmpty {
             return false
@@ -689,7 +726,8 @@ enum WebTools {
         let text = "\(result.title) \(result.snippet)".lowercased()
         let markers = [
             "未官宣", "被曝", "曝光", "传闻", "据称", "有望", "可能", "爆料", "泄露", "流出",
-            "rumor", "rumour", "leak", "leaked", "reportedly", "unannounced", "expected to", "could", "may "
+            "rumor", "rumour", "leak", "leaked", "reportedly", "unannounced", "expected to", "could",
+            "may already", "may be", "may have", "may soon", "may launch", "may release"
         ]
         return markers.contains { text.contains($0) }
     }
@@ -721,7 +759,7 @@ enum WebTools {
     }
 
     private static func newsSearchQuery(_ query: String) -> String {
-        if firstCapture(pattern: #"\b20\d{2}\b"#, in: query) != nil {
+        if firstCapture(pattern: #"20\d{2}"#, in: query) != nil {
             return query
         }
         let year = Calendar.current.component(.year, from: Date())
