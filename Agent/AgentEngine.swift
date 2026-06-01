@@ -70,6 +70,7 @@ class AgentEngine {
 
     let plannerRevision = "planner-v3-local-selection"
     var lastTurnMatchedSkillIds: [String] = []
+    var lastTurnRawModelOutputs: [String] = []
     let legacyContextBudgetPlanner: ContextBudgetPlanner
     let hotfixContextBudgetPlanner: ContextBudgetPlanner
     var promptObservationBuffer = HotfixTurnObservationRingBuffer()

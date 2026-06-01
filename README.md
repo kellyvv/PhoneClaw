@@ -265,7 +265,7 @@ description: 这个 Skill 的作用
 version: "1.0.0"
 icon: star
 disabled: false
-type: device          # device = 调系统 API; content = 纯 prompt 类（翻译/总结/改写）
+type: device          # device = 调系统 API; content = 纯 prompt 类; network = 访问公开互联网
 
 triggers:
   - 关键词1
@@ -287,6 +287,7 @@ examples:
 
 - **`device`**：模型先 emit `<tool_call>` 调用真实 iOS API；典型例子有 `calendar` / `clipboard` / `contacts`
 - **`content`**：模型直接根据 SKILL.md 指令处理用户输入并输出最终答案，不走任何 tool；典型例子是 `translate`
+- **`network`**：模型只在用户明确要求实时信息、联网搜索或读取网页时调用网络工具；典型例子是 `web-search`
 
 如果这个 Skill 需要真正调用系统能力，再去 `Tools/ToolRegistry.swift` + `Tools/Handlers/<Name>.swift` 注册对应工具。框架会在启动时自动校验 `allowed-tools` 与 `ToolRegistry` 是否同步，写错的 tool 名会立刻在控制台暴露。
 

@@ -184,6 +184,7 @@
 		D3A1B2C3D4E5F60718290009 /* Reminders.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3A1B2C3D4E5F60718290109 /* Reminders.swift */; };
 		D3A1B2C3D4E5F60718290010 /* Contacts.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3A1B2C3D4E5F60718290110 /* Contacts.swift */; };
 		D3A1B2C3D4E5F60718290011 /* Health.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3A1B2C3D4E5F60718290111 /* Health.swift */; };
+		D3A1B2C3D4E5F60718290012 /* Web.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3A1B2C3D4E5F60718290112 /* Web.swift */; };
 		D56B8094D6B249DC038FAF8F /* TTSService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F06A8F86444AB26C7373919B /* TTSService.swift */; };
 		D69250E717959D2D59D57ABD /* (null) in Sources */ = {isa = PBXBuildFile; };
 		D7B5B8D3378DF49369C7F306 /* (null) in Sources */ = {isa = PBXBuildFile; };
@@ -324,6 +325,7 @@
 		D3A1B2C3D4E5F60718290109 /* Reminders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Reminders.swift; sourceTree = "<group>"; };
 		D3A1B2C3D4E5F60718290110 /* Contacts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Contacts.swift; sourceTree = "<group>"; };
 		D3A1B2C3D4E5F60718290111 /* Health.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Health.swift; sourceTree = "<group>"; };
+		D3A1B2C3D4E5F60718290112 /* Web.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Web.swift; sourceTree = "<group>"; };
 		D5E6F7081A2B3C4D5E6F7094 /* piz_compressed.exr */ = {isa = PBXFileReference; lastKnownFileType = file; name = piz_compressed.exr; path = App/piz_compressed.exr; sourceTree = SOURCE_ROOT; };
 		D5E6F7081A2B3C4D5E6F7096 /* studio_env.hdr */ = {isa = PBXFileReference; lastKnownFileType = text; name = studio_env.hdr; path = App/studio_env.hdr; sourceTree = SOURCE_ROOT; };
 		DAF684F9A04FAEE76440F69C /* OrbAudioAnalyser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OrbAudioAnalyser.swift; path = Live/Audio/OrbAudioAnalyser.swift; sourceTree = SOURCE_ROOT; };
@@ -668,6 +670,7 @@
 				D3A1B2C3D4E5F60718290109 /* Reminders.swift */,
 				D3A1B2C3D4E5F60718290110 /* Contacts.swift */,
 				D3A1B2C3D4E5F60718290111 /* Health.swift */,
+				D3A1B2C3D4E5F60718290112 /* Web.swift */,
 			);
 			path = Handlers;
 			sourceTree = "<group>";
@@ -1022,6 +1025,7 @@
 				D3A1B2C3D4E5F60718290009 /* Reminders.swift in Sources */,
 				D3A1B2C3D4E5F60718290010 /* Contacts.swift in Sources */,
 				D3A1B2C3D4E5F60718290011 /* Health.swift in Sources */,
+				D3A1B2C3D4E5F60718290012 /* Web.swift in Sources */,
 				BB2000000000000000000001 /* LLMTypes.swift in Sources */,
 				BB2000000000000000000002 /* InferenceService.swift in Sources */,
 				BB2000000000000000000003 /* ModelCatalogProtocol.swift in Sources */,

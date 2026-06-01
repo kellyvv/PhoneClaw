@@ -226,6 +226,37 @@ extension AgentEngine {
         }
     }
 
+    func shouldUseCompactToolFollowUp(
+        _ prompt: String,
+        toolName: String? = nil
+    ) -> Bool {
+        if let toolName, Self.prefersCompactToolFollowUp(toolName: toolName) {
+            log("[Agent] tool follow-up compact prompt: tool=\(toolName)")
+            return true
+        }
+
+        let estimatedPromptTokens = PromptTokenEstimator.estimate(prompt)
+        let reservedOutputTokens = min(
+            inference.maxOutputTokens,
+            selectedModelCapabilities.defaultReservedOutputTokens
+        )
+        let budget = selectedModelCapabilities.safeContextBudgetTokens
+        let shouldCompact = estimatedPromptTokens + reservedOutputTokens > budget
+        if shouldCompact {
+            log("[Agent] tool follow-up compact prompt: estimated=\(estimatedPromptTokens) reserved=\(reservedOutputTokens) budget=\(budget)")
+        }
+        return shouldCompact
+    }
+
+    private static func prefersCompactToolFollowUp(toolName: String) -> Bool {
+        switch toolName {
+        case "web-search", "web-fetch":
+            return true
+        default:
+            return false
+        }
+    }
+
     func fallbackReplyForEmptySkillFollowUp(skillName: String) -> String {
         tr(
             "我已经准备好这项能力了，但还缺少下一步。请把需求说得更具体一些。",
@@ -637,10 +668,24 @@ extension AgentEngine {
                 toolResultSummary: canonicalResult.summary
             )
 
+            let selectedFollowUpPrompt = shouldUseCompactToolFollowUp(followUpPrompt, toolName: call.name)
+                ? PromptBuilder.buildCompactToolAnswerPrompt(
+                    userQuestion: userQuestion,
+                    toolName: call.name,
+                    toolResultSummary: canonicalResult.summary,
+                    currentImageCount: images.count
+                )
+                : followUpPrompt
+
             messages.append(ChatMessage(role: .assistant, content: "▍"))
             let followUpIndex = messages.count - 1
 
-            guard let nextText = await streamLLM(prompt: followUpPrompt, msgIndex: followUpIndex, images: images) else {
+            guard let nextText = await streamLLM(prompt: selectedFollowUpPrompt, msgIndex: followUpIndex, images: images) else {
+                messages[followUpIndex].update(role: .assistant, content: fallbackReplyForEmptyToolFollowUp(
+                    toolName: call.name,
+                    toolResultSummary: canonicalResult.summary,
+                    toolResultDetail: toolResultDetail
+                ))
                 finishTurn()
                 return
             }
@@ -649,7 +694,7 @@ extension AgentEngine {
                 log("[Agent] 检测到第 \(round + 1) 轮工具调用")
                 messages[followUpIndex].update(content: "")
                 await executeToolChain(
-                    prompt: followUpPrompt, fullText: nextText,
+                    prompt: selectedFollowUpPrompt, fullText: nextText,
                     userQuestion: userQuestion, images: images, round: round + 1, maxRounds: maxRounds
                 )
             } else {

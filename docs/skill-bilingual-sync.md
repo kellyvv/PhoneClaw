@@ -58,7 +58,7 @@ git commit -m "feat(skills): calendar — add end_time rule"
 ### 手动检查 (不 commit 也想看)
 
 ```bash
-./scripts/check-skill-sync.sh              # 扫全仓 6 个 skill
+./scripts/check-skill-sync.sh              # 扫全仓所有内置 skill
 ./scripts/check-skill-sync.sh calendar     # 只看单个
 ./scripts/check-skill-sync.sh --staged-only # 只看 staged 的 SKILL.md (pre-commit 用)
 ```

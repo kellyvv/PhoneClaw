@@ -29,9 +29,12 @@ struct SkillExample {
 /// - content: 对文本做变换 (translate/summarize/rewrite/...).
 ///            只要用户意图是该类操作就立即 load_skill, 包括"翻译这段"
 ///            这种带指代词的请求 (skill body 会指导从历史定位源文本)。
+/// - network: 访问公开互联网信息 (web search / fetch).
+///            只有当用户明确要求实时信息、联网搜索或读取网页时才 load_skill。
 enum SkillType: String, Sendable {
     case device
     case content
+    case network
 }
 
 struct SkillMetadata {
