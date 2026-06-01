@@ -258,7 +258,6 @@ struct ContentView: View {
         .task {
             guard !ProcessInfo.processInfo.isRunningXCTest else { return }
             engine.setup()
-            Telemetry.recordAppOpen()
             // 不在这里 initialize hold-to-talk ASR. 改为用户第一次按住说话时
             // 通过 ASRService.ensureInitialized 懒加载, 避免 cold start 就占用 ASR 内存 (zh ~160MB / en ~180MB).
         }
@@ -268,14 +267,11 @@ struct ContentView: View {
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
                 audioCapture.refreshPermissionStatus()
-                Telemetry.recordAppOpen()
                 return
             }
             engine.flushPendingSessionSave()
             engine.cancelActiveGeneration()
             _ = audioCapture.stopCapture()
-            Telemetry.endSession()
-            Telemetry.flush()
         }
         .onChange(of: engine.messages.isEmpty) { wasEmpty, isEmpty in
             // 新会话: 卸载 hold-to-talk ASR 以释放内存 (zh ~160MB / en ~180MB). 下次按住说话会 lazy 重新加载.
@@ -283,7 +279,6 @@ struct ContentView: View {
             // 保证我们只响应 "有消息 -> 清空" 这个方向, 忽略新开一条消息的方向.
             if isEmpty && !wasEmpty {
                 print("[UI] New session detected → unloading ASR")
-                Telemetry.endSession()
                 holdASRWarmupTask?.cancel()
                 holdASRWarmupTask = nil
                 holdToTalkASR.unload()

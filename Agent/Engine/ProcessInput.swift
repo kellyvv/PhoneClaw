@@ -41,13 +41,6 @@ extension AgentEngine {
         }
         guard !isProcessing else { return }
         guard !normalizedText.isEmpty || !promptAttachments.isEmpty || audioInput != nil else { return }
-        Telemetry.recordMessageSent(
-            modelID: catalog.selectedModel.id,
-            modality: .from(
-                hasImages: !displayAttachments.isEmpty || !promptAttachments.isEmpty,
-                hasAudio: audioInput != nil
-            )
-        )
         isProcessing = true
         lastTurnRawModelOutputs.removeAll()
         beginGenerationTracking()
@@ -673,8 +666,6 @@ extension AgentEngine {
     ///   it's terminated as cancelled regardless of this parameter.
     func finishTurn(error: String? = nil, userCancelled: Bool = false) {
         let txn = coordinator.currentTransaction
-        let shouldRecordTelemetry = !(txn?.isTerminal ?? true)
-        let wasCancelled = userCancelled || txn?.state == .cancelling
         if let txn, !txn.isTerminal {
             if userCancelled || txn.state == .cancelling {
                 // Cancel flow in progress — mark terminated so coordinator's
@@ -693,14 +684,6 @@ extension AgentEngine {
                 txn.commit()
                 coordinator.completeGeneration()
             }
-        }
-        if shouldRecordTelemetry && !wasCancelled {
-            Telemetry.recordFirstResponseReceived(
-                modelID: catalog.selectedModel.id,
-                ttftMs: inference.stats.ttftMs,
-                success: error == nil,
-                failureReason: error == nil ? nil : "generation_error"
-            )
         }
         isProcessing = false
     }

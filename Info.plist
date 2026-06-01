@@ -16,10 +16,6 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
-	<key>PhoneClawTelemetryEndpoint</key>
-	<string>$(PHONECLAW_TELEMETRY_ENDPOINT)</string>
-	<key>PhoneClawTelemetryToken</key>
-	<string>$(PHONECLAW_TELEMETRY_TOKEN)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>ITSAppUsesNonExemptEncryption</key>
