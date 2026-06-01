@@ -1,8 +1,8 @@
 ---
 name: Calendar
 name-zh: 日历
-description: '创建新的日历事项 (会议/约会/日程)。'
-version: "1.0.0"
+description: '创建日历事项, 查询日程, 分析忙闲和空闲时间。'
+version: "1.1.0"
 icon: calendar
 disabled: false
 type: device
@@ -18,20 +18,58 @@ triggers:
   - 约会
   - 碰面
   - 安排
+  - 行程
+  - 空闲
+  - 忙不忙
+  - 有没有空
 
 allowed-tools:
   - calendar-create-event
+  - calendar-query-events
 
 examples:
   - query: "帮我创建明天下午两点的产品评审会议"
     scenario: "新建日历事项"
+  - query: "我今天有哪些日程?"
+    scenario: "查询今日日程"
+  - query: "帮我分析一下这周忙不忙"
+    scenario: "本周日程分析"
 ---
 
-# 日历事项创建
+# 日历
 
 严格遵循下面的参数规则, 不要自由发挥, 不要反问多余问题。
 
-## 参数
+## 工具选择
+
+- 新建/创建/添加/安排会议、约会、日程 → 调 `calendar-create-event`
+- 查询今天/明天/本周有什么日程、行程安排 → 调 `calendar-query-events`
+- 分析忙不忙、有没有空、找空闲时间 → 先调 `calendar-query-events`, 再基于工具返回的 `events` / `busy_minutes` / `free_windows` 总结
+- 读取日程前不要编造；必须先调用查询工具
+
+## 查询和分析参数
+
+`calendar-query-events` 参数:
+- `period`: 预设范围。今天=`today`, 明天=`tomorrow`, 本周=`this_week`, 下周=`next_week`, 未来 7 天=`next_7_days`
+- `start`: 用户说的时间/日期/时段, 直接照抄, 如 "今天" / "明天下午" / "6月3日 14:00"
+- `end`: 用户明确给结束范围才填
+- `days`: "未来 N 天" 这类范围用数字
+- `calendar`: 用户指定某个日历才填
+- `limit`: 默认省略
+- `include_notes`: 默认不要传 true; 只有用户明确要求查看备注/详情时才传 true
+
+查询常见映射:
+- "今天有什么日程" → `{"period":"today"}`
+- "明天下午有没有空" → `{"start":"明天下午"}`
+- "这周忙不忙" → `{"period":"this_week"}`
+- "未来 7 天行程" → `{"period":"next_7_days"}`
+
+查询后回复:
+- 简洁总结事件数量、关键日程和忙碌程度
+- 如果用户问有没有空, 结合 `free_windows` 判断; 有足够空窗就说有空, 否则指出冲突时段
+- 不要输出 JSON、工具名或内部字段名
+
+## 创建参数
 
 **硬参** (必填, 缺失就简短追问一次):
 - `start`: 用户话语里的时间表达, **直接照抄原话**, 工具会自己解析。
@@ -42,7 +80,7 @@ examples:
 - `location`: 地点
 - `notes`: 备注
 
-## start 提取规则
+### start 提取规则
 
 用户话语里**只要有任何时间线索就视为 start 已提供**, 把那段时间表达直接照抄进 `start` 字段:
 - 相对时间: "明天下午两点" / "今晚八点" / "后天中午"
@@ -56,14 +94,14 @@ examples:
 
 如果用户完全没给时间 (如"安排个会议"), 先简短追问 "什么时候?"。
 
-## title 提取规则
+### title 提取规则
 
 - 用户话语里有名词短语 (如"产品评审会议" / "跟李总开会") → 直接当 title
 - 只有光杆动作 (如"安排个会" / "在明天下午 3 点安排一个会议") → **追问一次**: "要安排什么事呢?" / "主题是什么?"
 - 用户后续补的短语 (如"产品评审, 跟设计团队") → 组合成 title ("产品评审 - 设计团队")
 - 追问后用户再次含糊 → 用 "会议" 作为兜底 title, 不再追问第二次
 
-## 跨轮参数合并 (关键)
+### 跨轮参数合并 (关键)
 
 判断"参数是否齐全"时, 必须**合并整个对话历史中的用户消息**, 不是只看当前一轮:
 
@@ -73,13 +111,13 @@ examples:
 
 **反面教材** (不要这样): 上一轮给了时间、本轮给事由, 你却反问 "希望定在什么时候?" —— 这是把上一轮的用户消息当空气了, 是错误行为。
 
-## 行为
+### 创建行为
 
 - **两个硬参都拿到 (不管是哪一轮给的)** → 立刻 emit tool_call, 不解释
 - **完整历史里都缺 start 或 title** → 简短一句话追问缺的那一个, **不要输出 tool_call**
 - 永远不追问 end/location/notes 这些软参
 
-## 完成后回复
+### 创建完成后回复
 
 - 工具成功后, 用一句自然中文确认结果, 不要提工具名、JSON 或内部步骤
 - 优先说用户关心的信息: 事项名称 + 时间
@@ -91,4 +129,8 @@ examples:
 
 <tool_call>
 {"name": "calendar-create-event", "arguments": {"title": "产品评审会议", "start": "明天下午两点"}}
+</tool_call>
+
+<tool_call>
+{"name": "calendar-query-events", "arguments": {"period": "today"}}
 </tool_call>
