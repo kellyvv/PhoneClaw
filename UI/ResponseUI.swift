@@ -511,7 +511,8 @@ private struct AssistantTextBlock: Identifiable {
         for token in [
             "**", "__", "`",
             "(DEVICE_SKILLS)", "（DEVICE_SKILLS）",
-            "(CONTENT_SKILLS)", "（CONTENT_SKILLS）"
+            "(CONTENT_SKILLS)", "（CONTENT_SKILLS）",
+            "(NETWORK_SKILLS)", "（NETWORK_SKILLS）"
         ] {
             text = text.replacingOccurrences(of: token, with: "")
         }

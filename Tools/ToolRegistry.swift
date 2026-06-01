@@ -201,5 +201,6 @@ class ToolRegistry {
         RemindersTools.register(into: self)
         ContactsTools.register(into: self)
         HealthTools.register(into: self)
+        WebTools.register(into: self)
     }
 }

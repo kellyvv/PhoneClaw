@@ -332,6 +332,7 @@ description: What this skill does
 version: "1.0.0"
 icon: star
 disabled: false
+type: device          # device = native API; content = prompt-only; network = public internet access
 
 triggers:
   - keyword1
@@ -349,7 +350,7 @@ examples:
 Tell the model when to call tools, how to structure arguments, and when to answer directly.
 ```
 
-If this skill needs to call native iOS APIs, register the tool in `Tools/ToolRegistry.swift` (and add a handler under `Tools/Handlers/`). The framework validates `allowed-tools` against the registry at startup, so any typo will surface immediately in the console.
+The `type` field controls routing: `device` calls native iOS APIs, `content` is prompt-only text processing, and `network` is for explicit live web search or webpage reading. If this skill needs to call native APIs or network tools, register the tool in `Tools/ToolRegistry.swift` (and add a handler under `Tools/Handlers/`). The framework validates `allowed-tools` against the registry at startup, so any typo will surface immediately in the console.
 
 
 ## FAQ

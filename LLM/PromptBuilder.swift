@@ -241,8 +241,8 @@ struct PromptBuilder {
         // 第一段加 "禁止自称 Gemma" 进一步缓解.
         let rawBase = (systemPrompt ?? defaultSystemPrompt).trimmingCharacters(in: .whitespacesAndNewlines)
         return rawBase + tr(
-            "\n\n【当前模式: 闲聊】本轮严禁输出 <tool_call>, 严禁提及 Skill / load_skill / 工具调用, 也不要复述 DEVICE_SKILLS / CONTENT_SKILLS 这类内部分类名. 上文所有 Skill 调用规则本轮一律不适用. 回答语言跟随用户当轮输入, 默认简洁. 自我介绍或说明能力时, 用自然短段回答, 不要写成 README、编号清单或系统说明书. 除非用户明确要求拼音、发音、翻译或语言学习, 否则不要附加拼音、罗马音、英文发音或括号解释.",
-            "\n\n[Current mode: casual chat] This turn: do NOT emit <tool_call>, do NOT mention Skill / load_skill / tool invocation, and do NOT repeat internal category names such as DEVICE_SKILLS or CONTENT_SKILLS. All Skill invocation rules above do not apply this turn. Reply in the same language the user used this turn, concise by default. When introducing yourself or explaining capabilities, use short natural prose, not a README, numbered list, or system manual. Unless the user explicitly asks for pinyin, pronunciation, translation, or language learning help, do not add pinyin, romanization, pronunciation guides, or parenthetical language notes."
+            "\n\n【当前模式: 闲聊】本轮严禁输出 <tool_call>, 严禁提及 Skill / load_skill / 工具调用, 也不要复述 DEVICE_SKILLS / CONTENT_SKILLS / NETWORK_SKILLS 这类内部分类名. 上文所有 Skill 调用规则本轮一律不适用. 回答语言跟随用户当轮输入, 默认简洁. 自我介绍或说明能力时, 用自然短段回答, 不要写成 README、编号清单或系统说明书. 除非用户明确要求拼音、发音、翻译或语言学习, 否则不要附加拼音、罗马音、英文发音或括号解释.",
+            "\n\n[Current mode: casual chat] This turn: do NOT emit <tool_call>, do NOT mention Skill / load_skill / tool invocation, and do NOT repeat internal category names such as DEVICE_SKILLS, CONTENT_SKILLS, or NETWORK_SKILLS. All Skill invocation rules above do not apply this turn. Reply in the same language the user used this turn, concise by default. When introducing yourself or explaining capabilities, use short natural prose, not a README, numbered list, or system manual. Unless the user explicitly asks for pinyin, pronunciation, translation, or language learning help, do not add pinyin, romanization, pronunciation guides, or parenthetical language notes."
         )
     }
 
@@ -310,9 +310,10 @@ struct PromptBuilder {
             : (systemPrompt ?? defaultSystemPrompt)
 
         // 构建 Skill 概要列表（只列名称 + 一句话描述，不暴露 Tool）
-        // 按 SkillType 分两组, 给模型不同调用规则。
+        // 按 SkillType 分组, 给模型不同调用规则。
         let deviceSkills = tools.filter { $0.type == .device }
         let contentSkills = tools.filter { $0.type == .content }
+        let networkSkills = tools.filter { $0.type == .network }
         func renderList(_ list: [SkillInfo]) -> String {
             if list.isEmpty { return tr("（无）\n", "(none)\n") }
             return list.map { "- **\($0.name)**: \($0.description)" }.joined(separator: "\n") + "\n"
@@ -324,13 +325,16 @@ struct PromptBuilder {
         let isPreloaded = !preloadedSkills.isEmpty
         let deviceListText: String
         let contentListText: String
+        let networkListText: String
         if isPreloaded {
             let markerText = tr("（已锁定能力见下方 — Locked ability shown below）\n", "(locked ability shown below)\n")
             deviceListText = markerText
             contentListText = markerText
+            networkListText = markerText
         } else {
             deviceListText = renderList(deviceSkills)
             contentListText = renderList(contentSkills)
+            networkListText = renderList(networkSkills)
         }
         // 兼容旧版 SYSPROMPT.md (仅 ___SKILLS___) 的扁平列表
         let flatListText: String = {
@@ -341,11 +345,14 @@ struct PromptBuilder {
 
         if isMultimodalTurn {
             prompt += basePrompt
-        } else if basePrompt.contains("___DEVICE_SKILLS___") || basePrompt.contains("___CONTENT_SKILLS___") {
-            // 新版双占位符: 按类别分别注入
+        } else if basePrompt.contains("___DEVICE_SKILLS___")
+            || basePrompt.contains("___CONTENT_SKILLS___")
+            || basePrompt.contains("___NETWORK_SKILLS___") {
+            // 新版分类占位符: 按类别分别注入
             var resolved = basePrompt
             resolved = resolved.replacingOccurrences(of: "___DEVICE_SKILLS___", with: deviceListText)
             resolved = resolved.replacingOccurrences(of: "___CONTENT_SKILLS___", with: contentListText)
+            resolved = resolved.replacingOccurrences(of: "___NETWORK_SKILLS___", with: networkListText)
             prompt += resolved
         } else if basePrompt.contains("___SKILLS___") {
             // 旧版扁平占位符: 保留向后兼容
@@ -405,7 +412,9 @@ struct PromptBuilder {
             }
             for sk in preloadedSkills {
                 prompt += "\n━━ Skill: \(sk.displayName) ━━\n"
-                prompt += sk.compactSchema + "\n"
+                prompt += "<untrusted_skill_instruction_block>\n"
+                prompt += sanitizedPreloadedSkillInstructions(sk.compactSchema) + "\n"
+                prompt += "</untrusted_skill_instruction_block>\n"
             }
             prompt += "━━━━━━━━━━━━━━━━━━━━\n"
         }
@@ -463,6 +472,14 @@ struct PromptBuilder {
         prompt += "<|turn>model\n"
 
         return prompt
+    }
+
+    private static func sanitizedPreloadedSkillInstructions(_ raw: String) -> String {
+        raw
+            .replacingOccurrences(of: "<untrusted_skill_instruction_block>", with: "[escaped-skill-block-tag]")
+            .replacingOccurrences(of: "</untrusted_skill_instruction_block>", with: "[escaped-skill-block-tag]")
+            .replacingOccurrences(of: "<|turn>", with: "<|turn escaped>")
+            .replacingOccurrences(of: "<turn|>", with: "<turn escaped>")
     }
 
     static func buildLightweightTextPrompt(
@@ -845,6 +862,102 @@ struct PromptBuilder {
         <|turn>model
 
         """
+    }
+
+    /// Tool follow-up 的紧凑回答模式。
+    ///
+    /// 用在小上下文本地模型已经接近 token 上限，或工具结果天然较长（例如联网搜索）
+    /// 的场景。这里刻意不带完整历史，只带用户当前问题和压缩后的工具结果，避免 R2
+    /// 再次吃掉完整 R1 prompt/history。
+    static func buildCompactToolAnswerPrompt(
+        userQuestion: String,
+        toolName: String,
+        toolResultSummary: String,
+        currentImageCount: Int = 0
+    ) -> String {
+        let result = compactToolResultSummary(toolResultSummary)
+        let toolSpecificInstructions = compactToolAnswerInstructions(toolName: toolName)
+        if LanguageService.shared.current.isChinese {
+            return """
+            <|turn>system
+            \(defaultSystemPrompt)
+            你正在根据一个已经执行完成的工具结果回答用户。只输出最终答案，不要再次调用工具。
+            回答必须简洁：优先 3-6 条要点；每条 1 句；总长度尽量控制在 500 字以内。
+            如果工具结果包含来源、链接或时间，保留这些可核验信息。不要编造工具结果之外的信息。
+            \(toolSpecificInstructions)
+            <turn|>
+            <|turn>user
+            用户问题：
+            \(userQuestion)\(imagePromptSuffix(count: currentImageCount))
+
+            工具 \(toolName) 返回：
+            \(result)
+
+            请基于工具返回内容直接回答用户。
+            不要输出 JSON、字段名、模板、代码块或中间步骤。不要提到内部工具调用流程。
+            <turn|>
+            <|turn>model
+
+            """
+        } else {
+            return """
+            <|turn>system
+            \(defaultSystemPrompt)
+            You are answering from a completed tool result. Output only the final answer; do not call tools again.
+            Keep the answer concise: prefer 3-6 bullets, one sentence each, and keep it under about 300 words.
+            Preserve verifiable source URLs, dates, or timestamps when present. Do not invent facts beyond the tool result.
+            \(toolSpecificInstructions)
+            <turn|>
+            <|turn>user
+            User question:
+            \(userQuestion)\(imagePromptSuffix(count: currentImageCount))
+
+            Tool \(toolName) returned:
+            \(result)
+
+            Answer the user directly based on the tool result.
+            Do not output JSON, field names, templates, code blocks, or intermediate steps. Do not mention internal tool-calling flow.
+            <turn|>
+            <|turn>model
+
+            """
+        }
+    }
+
+    private static func compactToolAnswerInstructions(toolName: String) -> String {
+        switch toolName {
+        case "web-search":
+            return tr(
+                "对 web-search：先判断搜索结果是否能回答用户问题。不要把首页、频道页、站点简介或媒体介绍当作新闻事实；只有结果包含明确标题、日期、事件或官方/可信来源时，才称为最新消息。带[未确认/传闻]的结果必须明确说未确认，不能说成已发布或确定会发布；每条新闻/传闻必须保留来源 URL。带[相关但非精确匹配]的结果不要列为用户所问对象的消息。否则直接说“这次搜索没有返回明确可核验的最新消息”，再列出可查看来源。",
+                "For web-search: first decide whether the results actually answer the user's question. Do not treat homepages, category pages, site descriptions, or media blurbs as news facts; call something latest news only when the result has a concrete title, date, event, or official/credible source. Results labeled [unconfirmed/rumor] must be described as unconfirmed, not as released or certain; every news/rumor item must keep its source URL. Do not list results labeled [related, not exact match] as news about the object the user asked for. Otherwise say that the search did not return clearly verifiable latest information, then list possible sources to check."
+            )
+        case "web-fetch":
+            return tr(
+                "对 web-fetch：只总结已读取网页正文；如果正文不足以回答，明确说明页面中没有找到对应信息。",
+                "For web-fetch: summarize only the fetched page text; if the page text is insufficient, clearly say the requested information was not found on the page."
+            )
+        default:
+            return ""
+        }
+    }
+
+    private static func compactToolResultSummary(
+        _ summary: String,
+        maxCharacters: Int = 3200
+    ) -> String {
+        let normalized = summary
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalized.count > maxCharacters else {
+            return normalized
+        }
+
+        let clipped = String(normalized.prefix(maxCharacters))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return LanguageService.shared.current.isChinese
+            ? "\(clipped)\n\n（工具结果较长，以上为截断后的可用部分。）"
+            : "\(clipped)\n\n(Tool result was long; the usable portion above was truncated.)"
     }
 
     /// 工具执行完成后, 构造 follow-up prompt 让模型用 tool_result 回答用户.

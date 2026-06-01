@@ -21,7 +21,6 @@ triggers:
   - yesterday's steps
   - walked yesterday
   - this week
-  - recently
   - last few days
   - distance
   - how far
@@ -33,6 +32,7 @@ triggers:
   - heartbeat
   - sleep
   - slept
+  - sleeping
   - last night's sleep
   - this week's sleep
   - fitness
@@ -60,8 +60,8 @@ examples:
     scenario: "Check this week's step count"
 
 # Sync anchor (see scripts/check-skill-sync.sh):
-translation-source-commit: 034c373
-translation-source-sha256: f540d142133d8246547563fceed3f0a54540a1907516ab863e7833c5d3ede33d
+translation-source-commit: e61fd26
+translation-source-sha256: 8d5b5471a5202acc35070ed0153bcbee8996328fbe5b4ef600fd25e6dd608d64
 ---
 
 # Health Data Query

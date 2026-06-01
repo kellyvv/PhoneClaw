@@ -107,7 +107,7 @@ extension AgentEngine {
     ///   固定窗口 4 经常错过 skill 上下文, 导致多轮对话失去 sticky 能力。
     ///   语义边界与 message 数量解耦, 任何长度的 agent loop 都能正确接住。
     ///
-    /// P1-1 源头修复: AgentEngine 只对 type: device 的 skill 打 eager tag,
+    /// P1-1 源头修复: AgentEngine 只对 type: device/network 的 skill 打 eager tag,
     /// content skill (translate 等) 从源头不参与 sticky, 避免一问一答
     /// 纯变换后的闲聊被污染回 translate。
     ///

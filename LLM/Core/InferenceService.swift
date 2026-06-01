@@ -15,6 +15,13 @@ private let callbackControlMarkers = [
     "[[/PHONECLAW_THINK]]"
 ]
 
+private func isTokenLimitError(_ error: Error) -> Bool {
+    let text = error.localizedDescription.lowercased()
+    return text.contains("max number of tokens reached")
+        || text.contains("maximum number of tokens")
+        || text.contains("token limit")
+}
+
 // MARK: - Inference Service Protocol
 //
 // Agent / Live 调用 LLM 的唯一入口。
@@ -328,7 +335,13 @@ private func streamWithBatchedCallbacks(
             await MainActor.run { onComplete(.success(completedResponse)) }
         } catch {
             await flushPending(force: true)
-            await MainActor.run { onComplete(.failure(error)) }
+            if !fullResponse.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               isTokenLimitError(error) {
+                let completedResponse = fullResponse
+                await MainActor.run { onComplete(.success(completedResponse)) }
+            } else {
+                await MainActor.run { onComplete(.failure(error)) }
+            }
         }
     }
 }

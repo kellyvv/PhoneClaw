@@ -129,9 +129,13 @@ extension AgentEngine {
            !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
 
             // 旧版模板检测: 缺新占位符且仍然包含旧扁平占位符 → 备份后覆盖
-            let hasNewPlaceholders = content.contains("___DEVICE_SKILLS___")
+            let hasDeviceOrContentPlaceholders = content.contains("___DEVICE_SKILLS___")
                 || content.contains("___CONTENT_SKILLS___")
+            let hasNetworkPlaceholder = content.contains("___NETWORK_SKILLS___")
+            let hasNewPlaceholders = hasDeviceOrContentPlaceholders || hasNetworkPlaceholder
             let hasOldPlaceholder = content.contains("___SKILLS___")
+            let looksLikeLegacyOfflineDefault = content.contains("你完全离线运行，不联网")
+                || content.contains("You run entirely offline")
 
             // Locale-mismatch 检测: 内容恰好是 zh 或 en 的默认 prompt
             // (用户从未编辑过), 且跟当前 locale default 不一致 → 自动迁移。
@@ -141,7 +145,14 @@ extension AgentEngine {
             let isUnmodifiedDefault = (content == zhDefault) || (content == enDefault)
             let localeMismatch = isUnmodifiedDefault && (content != current)
 
-            if !hasNewPlaceholders && hasOldPlaceholder {
+            if !hasNetworkPlaceholder && hasDeviceOrContentPlaceholders && looksLikeLegacyOfflineDefault {
+                let backup = dir.appendingPathComponent("SYSPROMPT.md.bak")
+                try? fm.removeItem(at: backup)
+                try? fm.moveItem(at: file, to: backup)
+                try? current.write(to: file, atomically: true, encoding: .utf8)
+                config.systemPrompt = current
+                log("[Agent] SYSPROMPT migrated: 默认离线模板已备份到 SYSPROMPT.md.bak, 新联网搜索默认已写入")
+            } else if !hasNewPlaceholders && hasOldPlaceholder {
                 let backup = dir.appendingPathComponent("SYSPROMPT.md.bak")
                 try? fm.removeItem(at: backup)
                 try? fm.moveItem(at: file, to: backup)
