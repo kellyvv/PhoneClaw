@@ -92,7 +92,7 @@ private struct StreamingMarkdownView: View {
 
     var body: some View {
         #if canImport(UIKit)
-        SelectableAssistantTextView(blocks: AssistantTextBlock.parse(content))
+        SelectableAssistantTextView(content: content)
             .frame(maxWidth: assistantTextMaxWidth, alignment: .leading)
             .fixedSize(horizontal: false, vertical: true)
             .animation(nil, value: content)
@@ -210,7 +210,11 @@ private final class SelectionDismissibleTextView: UITextView {
 }
 
 private struct SelectableAssistantTextView: UIViewRepresentable {
-    let blocks: [AssistantTextBlock]
+    let content: String
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
 
     func makeUIView(context: Context) -> UITextView {
         let textView = SelectionDismissibleTextView()
@@ -231,9 +235,9 @@ private struct SelectableAssistantTextView: UIViewRepresentable {
     }
 
     func updateUIView(_ textView: UITextView, context: Context) {
-        let attributedText = Self.attributedText(from: blocks)
-        guard textView.attributedText != attributedText else { return }
-        textView.attributedText = attributedText
+        guard context.coordinator.appliedContent != content else { return }
+        textView.attributedText = context.coordinator.attributedText(for: content)
+        context.coordinator.appliedContent = content
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
@@ -243,6 +247,25 @@ private struct SelectableAssistantTextView: UIViewRepresentable {
             CGSize(width: width, height: CGFloat.greatestFiniteMagnitude)
         )
         return CGSize(width: width, height: ceil(size.height))
+    }
+
+    final class Coordinator {
+        var appliedContent: String?
+        private var cachedContent: String?
+        private var cachedAttributedText: NSAttributedString?
+
+        func attributedText(for content: String) -> NSAttributedString {
+            if cachedContent == content, let cachedAttributedText {
+                return cachedAttributedText
+            }
+
+            let attributedText = SelectableAssistantTextView.attributedText(
+                from: AssistantTextBlock.parse(content)
+            )
+            cachedContent = content
+            cachedAttributedText = attributedText
+            return attributedText
+        }
     }
 
     private static func attributedText(from blocks: [AssistantTextBlock]) -> NSAttributedString {
