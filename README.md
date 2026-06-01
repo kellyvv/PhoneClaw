@@ -27,6 +27,11 @@
 
 PhoneClaw 是一个运行在 iPhone 上的本地私人 Agent。内置 Gemma 4 和 MiniCPM-V 多个本地模型，在端侧完成推理和 Skill 调用，无需云端 API 或外部模型接入，不上传聊天内容。
 
+## 2026-06-01 更新
+
+- 新增日历读取：可查询今天、明天、本周和未来 7 天日程，支持忙闲和空闲时间分析
+- 优化联网搜索和长回复浏览：获取实时信息后可整理回答，模型输出时也能正常上下查看历史
+
 ## 2026-05-17 更新
 
 - PhoneClaw 已开放 TestFlight 测试：[加入 TestFlight](https://testflight.apple.com/join/YuUSwq78)

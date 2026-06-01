@@ -27,6 +27,11 @@ A local AI Agent for iPhone. Offline. Private. Native.
 
 PhoneClaw is a private local Agent running on iPhone. It ships with multiple on-device models, including Gemma 4 and MiniCPM-V, and performs inference and Skill calls entirely on-device, with no cloud APIs or external model integrations required.
 
+## 2026-06-01 Update
+
+- Added Calendar read support: query today's, tomorrow's, this week's, and next 7 days' schedule, with busyness and free-time analysis
+- Improved Web Search and long-answer browsing: realtime information can be summarized, and history remains scrollable while the model is responding
+
 ## 2026-05-17 Update
 
 - PhoneClaw is live on TestFlight — [Join TestFlight](https://testflight.apple.com/join/YuUSwq78)
