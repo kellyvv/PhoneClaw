@@ -27,28 +27,33 @@ A local AI Agent for iPhone. Offline. Private. Native.
 
 PhoneClaw is a private local Agent running on iPhone. It ships with multiple on-device models, including Gemma 4 and MiniCPM-V, and performs inference and Skill calls entirely on-device, with no cloud APIs or external model integrations required.
 
-## 2026-06-01 Update
+## Latest Updates
+
+**2026-06-01**
 
 - PhoneClaw is live on TestFlight — [Join TestFlight](https://testflight.apple.com/join/YuUSwq78)
 - Added Calendar read support: query today's, tomorrow's, this week's, and next 7 days' schedule, with busyness and free-time analysis
 - Improved Web Search and long-answer browsing: realtime information can be summarized, and history remains scrollable while the model is responding
 
-## 2026-05-17 Update
+<details>
+<summary>Update history</summary>
+
+### 2026-05-17
 
 - PhoneClaw is live on TestFlight — [Join TestFlight](https://testflight.apple.com/join/YuUSwq78)
 - A private local Agent running on iPhone, performing inference and Skill calls entirely on-device, with no cloud APIs or external model integrations required
 
-## 2026-05-12 Update
+### 2026-05-12
 
 - Released v1.4.0 — [Download](https://github.com/kellyvv/PhoneClaw/releases/tag/v1.4.0)
 - Added MiniCPM-V 4.6 multimodal model — image Q&A and real-time camera recognition in LIVE mode
 - Fixed several known issues in LIVE mode
 
-## 2026-05-07 Update
+### 2026-05-07
 
 - Added MTP speculative decoding toggle (experimental — only speeds up Gemma 4 E4B with short replies).
 
-## 2026-04-25 Update
+### 2026-04-25
 
 - Released v1.3.1 — [Download](https://github.com/kellyvv/PhoneClaw/releases/tag/v1.3.1)
 - Added English LIVE mode
@@ -57,54 +62,54 @@ PhoneClaw is a private local Agent running on iPhone. It ships with multiple on-
 - Added English localization — the app automatically switches based on system language.
 - Refactored the download module: resumable downloads, background downloads, and automatic fastest-mirror selection based on current network conditions.
 
-## 2026-04-23 Update
+### 2026-04-23
 
 - Released v1.2.2 — added the ability to choose between GPU or CPU inference backend directly from the settings page; CPU is now the default to fit within Sideloadly-signed memory limits.
 - ⚠️ **Sideloadly-signed IPA usage note**: due to the memory cap of sideload-signing, **the E4B model only works on CPU** (GPU will fail). We recommend using **the E2B model** — it's fully featured and more stable under the cap.
 - 💡 **If you can, build from source with Xcode**: Xcode-signed builds aren't subject to the sideload memory cap — you can run E2B / E4B with GPU enabled for best performance. [Download](https://github.com/kellyvv/PhoneClaw/releases/tag/v1.2.2)
 
-## 2026-04-20 Update
+### 2026-04-20
 
 - Released an unsigned IPA — sign and install to iPhone via [Sideloadly](https://sideloadly.io/), no Xcode or Mac development environment required. [Download](https://github.com/kellyvv/PhoneClaw/releases/tag/v1.1.0)
 
-## 2026-04-18 Update
+### 2026-04-18
 
 - Added in-app download for LIVE mode voice models — download directly from the settings page and start using LIVE mode
 
-## 2026-04-17 Update
+### 2026-04-17
 
 - Added **LIVE Mode**: a new real-time voice interaction mode with natural conversation flow — interrupt anytime without waiting for the model to finish speaking
 - LIVE Mode supports **camera input**: the model can recognize and understand the environment, objects, and scenes captured by the camera in real time, enabling multimodal "see and speak" interaction
 
-## 2026-04-10 Update
+### 2026-04-10
 
 - Added Health Skill: read HealthKit data including today's/yesterday's steps, weekly step trends, walking distance, active calories, resting heart rate, last night's sleep, weekly sleep summary, and recent workouts — 9 tools total, all data processed locally and never uploaded
 - Improved multi-turn response speed: cross-turn KV cache reuse reduces time-to-first-token by ~3.5x for consecutive queries within the same skill
 - The 9 health tools are automatically selected by the model based on user intent — no need to specify a query type
 
-## 2026-04-09 Update
+### 2026-04-09
 
 - Ongoing framework and infrastructure work. Major improvement to the multi-turn agent framework: the Router now correctly preserves skill context across turns, and even small models can reliably complete multi-turn tool calls.
 
-## 2026-04-08 Update
+### 2026-04-08
 
 - Model downloads now include a ModelScope mirror, so users in mainland China can download Gemma 4 without a VPN
 - Major rework of memory management: the inference budget is now dynamically derived from actual available memory, with the obsolete prompt-length subtraction removed, so long prompts and long answers are no longer falsely truncated; multi-turn tool calls also keep their context more reliably
 
-## 2026-04-07 Update
+### 2026-04-07
 
 - Added voice input, with on-device audio analysis and recognition
 - Added Thinking Mode, available from the top-right corner in chat
 - Added chat history, with support for new sessions, switching, and deletion
 - Improved memory management and inference budgeting for long answers, multimodal requests, and model switching
 
-## 2026-04-06 Update
+### 2026-04-06
 
 - The default install flow is back to a shell app, with models downloaded on-device as needed
 - The settings page now includes model download, permission status, and bilingual display names
 - Contacts, reminders, calendar, device info, and clipboard flows have received a round of stability fixes
 
-
+</details>
 
 ## Core Features
 
