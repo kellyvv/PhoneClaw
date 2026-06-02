@@ -137,17 +137,23 @@ PhoneClaw is a private local Agent running on iPhone. It ships with multiple on-
 
 ## Built-in Skill Examples
 
-**Calendar**: Create calendar events using natural language — title, time, and location all supported.
+**Calendar**: Create calendar events, query schedules, and analyze busyness or free time using natural language.
 
 > "Schedule a meeting at Hightech Park tomorrow at 2pm"
+
+> "What is on my calendar today?"
+
+> "How busy am I this week?"
 
 **Reminders**: Set time-based reminders that fire a system push notification exactly on schedule.
 
 > "Remind me tonight at 8 to send the file to my boss"
 
-**Contacts**: Save or update contacts with name, phone, company, email, and notes. Automatically deduped by phone number.
+**Contacts**: Search, save, update, or delete contacts with name, phone, company, email, and notes. Automatically deduped by phone number.
 
 > "Save Wang's number 13812345678, he's from Bytedance"
+
+> "Check Sarah Lee's phone number"
 
 **Clipboard**: Read and write the system clipboard. Useful as a data relay in multi-step tasks.
 
@@ -157,12 +163,21 @@ PhoneClaw is a private local Agent running on iPhone. It ships with multiple on-
 
 > "Translate that last line into Japanese"
 
-**Health Data**: Read HealthKit steps, distance, calories, heart rate, sleep, and workout records. All data stays on-device.
+**Health Data**: Read HealthKit steps, distance, calories, heart rate, sleep, and workout records after user authorization. All data stays on-device.
 
 > "How many steps did I take today?"
+
 > "How did I sleep last night?"
+
 > "How are my steps this week?"
+
 > "What's my resting heart rate?"
+
+**Web Search**: When explicitly requested, search public webpages or read a URL, then summarize realtime information into an answer.
+
+> "Search the web for today's AI news"
+
+> "Read and summarize this page: https://example.com"
 
 ## Requirements
 
