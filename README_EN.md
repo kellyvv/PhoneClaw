@@ -14,7 +14,7 @@ A local AI Agent for iPhone. Offline. Private. Native.
 
 <div align="center">
 
-[Core Features](#core-features) · [Built-in Skills](#built-in-skill-examples) · [Quick Start](#5-minute-quick-start) · [Custom Skills](#custom-skills) · [FAQ](#faq) · [Roadmap](#roadmap)
+[Core Features](#core-features) · [Built-in Skills](#built-in-skill-examples) · [Technical Notes](#technical-notes) · [Quick Start](#quick-start) · [Custom Skills](#custom-skills) · [FAQ](#faq) · [Roadmap](#roadmap)
 
 </div>
 
@@ -134,6 +134,13 @@ PhoneClaw is a private local Agent running on iPhone. It ships with multiple on-
 **Mobile Memory Optimization**: Includes model switching, system prompt editing, cache cleanup, and history trimming tuned for iPhone on-device inference limits.
 
 **Bilingual Experience**: Choose Auto, Chinese, or English in settings. The UI, default system prompt, built-in Skills, tool results, and permission text switch together.
+
+## Technical Notes
+
+- [On-device Gemma on iPhone](docs/ON_DEVICE_GEMMA.md)
+- [PhoneClaw Skill System](docs/SKILL_SYSTEM.md)
+- [iOS Memory and Context Limits](docs/IOS_MEMORY_LIMITS.md)
+- [Promotion Kit](docs/PROMOTION_KIT.md)
 
 ## Built-in Skill Examples
 
