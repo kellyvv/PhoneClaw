@@ -113,13 +113,27 @@ PhoneClaw is a private local Agent running on iPhone. It ships with multiple on-
 
 ## Core Features
 
-**Image Understanding (Multimodal)**: Take a photo or pick one from your library, then ask questions directly. Identify objects, read charts, describe scenes — all inference happens on your device, and your photos never leave your phone.
+**Private Local Agent**: Run inference and Skill calls directly on iPhone. Use natural language to work with Calendar, Reminders, Contacts, Clipboard, Health data, and other local tasks.
+
+**Image Understanding and LIVE Vision**: Ask questions about photos from the camera or photo picker, or enable the camera in LIVE mode so the model can understand the scene in real time.
+
+**Personal Data Analysis**: Read local schedules, Health data, contacts, reminders, and clipboard content to generate summaries, availability analysis, and next-step suggestions. Personal data is processed on-device by default.
+
+**Realtime Information**: When explicitly requested, search public webpages, fetch readable webpage text, and summarize live information into an actionable answer.
+
+**Voice Interaction**: Supports voice input and LIVE real-time conversation for hands-free questions, notes, and actions.
+
+## Technical and Experience Features
 
 **File-Driven Skill System**: Each capability is defined by a single Markdown file (SKILL.md). Adding or modifying a skill requires no recompilation. Skills are language-agnostic — anyone can write and share them.
 
-**100% Offline & Private**: All inference runs entirely on your iPhone. No network connections are made by default. Your conversations, images, and personal data are never uploaded or routed through any third-party server.
+**Model Management and Resumable Downloads**: Gemma main models and LIVE voice models can be downloaded, canceled, resumed, and retried directly on iPhone, or bundled into the app at build time.
 
-**Flexible Model Management**: Supports Gemma 4 E2B/E4B and MiniCPM-V 4.6. Download models directly on your iPhone, or bundle them into the app at build time. Includes a built-in model switcher, system prompt editor, and automatic history trimming for iPhone memory constraints.
+**Offline by Default with Clear Privacy Boundaries**: Inference and local Skill calls run on-device by default. The app only accesses the public web when the user explicitly asks for Web Search or webpage reading. Conversations, images, and personal data are not uploaded to PhoneClaw servers.
+
+**Mobile Memory Optimization**: Includes model switching, system prompt editing, cache cleanup, and history trimming tuned for iPhone on-device inference limits.
+
+**Bilingual Experience**: Choose Auto, Chinese, or English in settings. The UI, default system prompt, built-in Skills, tool results, and permission text switch together.
 
 ## Built-in Skill Examples
 
