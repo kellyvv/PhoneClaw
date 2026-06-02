@@ -374,35 +374,45 @@ The latest code first attempts to reuse an existing writable reminder list. If n
 
 ### 1. More iOS native APIs
 
-- File and directory access
-- Photos — reading, organizing, describing, searching
-- Notes
-- Local notifications
-- Maps and location
-- Safari / URL opening and context passing
-- More read/write coverage for contacts, calendar, and reminders
+- [ ] File and directory access
+- [x] Image picking, description, and Q&A
+- [ ] Photo library reading, organization, and search
+- [ ] Notes
+- [x] Reminder due-time alerts
+- [ ] General local notifications
+- [ ] Maps and location
+- [x] URL webpage reading and context passing
+- [ ] Safari / URL Scheme handoff to external apps
+- [x] Contacts search, create, update, and delete
+- [x] Calendar creation, schedule reading, busyness, and free-time analysis
+- [x] Reminder creation
+- [x] Read-only HealthKit analysis
 
 ### 2. More Skills
 
 Continue breaking capabilities into focused Skills rather than embedding all logic in a single large prompt. Directions worth adding:
 
-- File management
-- Photo understanding and organization
-- Schedule planning
-- Personal information management
-- Local knowledge base search
-- Voice input / text-to-speech
+- [ ] File management
+- [x] Image understanding
+- [ ] Photo organization
+- [x] Schedule creation, querying, and busyness analysis
+- [x] Personal information management: contacts, calendar, reminders, clipboard, and Health data
+- [ ] Local knowledge base search
+- [x] Voice input / text-to-speech
+- [x] Web Search / webpage reading
+- [x] Translation
 
 ### 3. More local models
 
 Beyond the main chat model, suitable additions include:
 
-- OCR model
-- Speech recognition model
-- Speech synthesis model
-- Embedding / Reranker model
-- A smaller tool argument extraction model
-- A stronger planning model or multi-model pipeline
+- [x] Vision / multimodal model
+- [ ] OCR model
+- [x] Speech recognition model
+- [x] Speech synthesis model
+- [ ] Embedding / Reranker model
+- [ ] A smaller tool argument extraction model
+- [ ] A stronger planning model or multi-model pipeline
 
 This moves PhoneClaw from "one big model doing everything" toward "multiple local models working together."
 
@@ -410,15 +420,21 @@ This moves PhoneClaw from "one big model doing everything" toward "multiple loca
 
 PhoneClaw will not assume desktop-style control over arbitrary apps. Instead it will use what iOS actually allows:
 
-- App Intents / Shortcuts
-- URL Scheme / Deep Link
-- Share Sheet extensions
-- Clipboard relay
-- System notifications and app launching
+- [ ] App Intents / Shortcuts
+- [ ] URL Scheme / Deep Link
+- [ ] Share Sheet extensions
+- [x] Clipboard relay
+- [x] System reminder notifications
+- [ ] System notification wake-up and cross-app orchestration
 
 A realistic goal: pass content between apps, open a specific app to a specific screen, and compress multi-step operations into a single natural language command.
 
 ### 5. External hardware and visual input
+
+- [x] LIVE camera real-time recognition
+- [ ] External video input
+- [ ] Screen understanding
+- [ ] External hardware integration
 
 Explore connecting external video input and screen understanding with local models, so PhoneClaw goes beyond answering questions in isolation and develops stronger real-world perception and scheduling capabilities.
 
