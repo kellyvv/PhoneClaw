@@ -536,8 +536,16 @@ struct ContentView: View {
     }
 
     private func toggleThinkingMode() {
+        guard currentModelSupportsThinking else {
+            showTransientTopNotice(tr("当前模型不支持思考模式", "Current model does not support Thinking mode"))
+            return
+        }
+
         engine.config.enableThinking.toggle()
         engine.applySamplingConfig()
+        showTransientTopNotice(
+            engine.config.enableThinking ? tr("思考模式已开启", "Thinking mode on") : tr("思考模式已关闭", "Thinking mode off")
+        )
         // 切换 Think 需要清 KV cache: system prompt 的 <|think|> 段变化后,
         // 若当前会话已有 context, 下一轮走 delta prompt 路径会**复用**旧
         // system prompt, 模型继续按旧设置 reasoning. reset 强制下一轮重新
@@ -555,38 +563,18 @@ struct ContentView: View {
 
     // MARK: - 顶部栏
 
-    // MARK: - topBar (v2: 极简两元素)
+    // MARK: - topBar (v2: 对称轻量入口)
     //
-    // 设计稿:左 chip (历史会话入口 + 状态指示) + 右 gear (设置)
+    // 设计稿:左侧「新会话 + 历史状态」, 右侧「Think + 设置」; 中间只给状态提示。
     // 移除项 (跟用户当面讨论确认):
     //   - Gemma 4 E2B 模型名 → 进 settings 看
     //   - LIVE 按钮 → 中央 orb 已有 "进入 LIVE" 入口
-    //   - 思考模式 toggle → 暂存,后续放到别处 (待定)
     private var topBar: some View {
         HStack(spacing: 0) {
-            // 左:历史状态 chip.
-            // 28pt 外圈 + 6pt 内点 + opacity 0.6 — 这不是"按钮", 是"悬浮状态痕迹".
-            // 视觉重量比 orb / Dynamic Island 都要轻, 不抢戏.
-            Button(action: {
-                engine.flushPendingSessionSave()
-                showHistory = true
-            }) {
-                ZStack {
-                    Circle()
-                        .fill(Theme.bgHover.opacity(UIScale.topStatusChipBgOpacity))
-                        .frame(
-                            width: UIScale.topStatusChipDiameter,
-                            height: UIScale.topStatusChipDiameter
-                        )
-                    Circle()
-                        .fill(engine.isModelLoaded ? Theme.accentMuted : Theme.textTertiary)
-                        .frame(
-                            width: UIScale.topStatusChipDotSize,
-                            height: UIScale.topStatusChipDotSize
-                        )
-                }
+            HStack(spacing: 10) {
+                newSessionTopBarButton
+                historyStatusButton
             }
-            .buttonStyle(.plain)
 
             Spacer(minLength: 12)
 
@@ -597,18 +585,103 @@ struct ContentView: View {
 
             Spacer(minLength: 12)
 
-            // 右:settings gear — 裸 icon,opacity 0.72 让它"浮在空气里".
-            Button(action: { showConfigurations = true }) {
-                Image(systemName: "gearshape")
-                    .font(.system(size: UIScale.gearIconSize, weight: .regular))
-                    .foregroundStyle(Theme.textSecondary)
-                    .opacity(UIScale.gearIconOpacity)
+            HStack(spacing: 10) {
+                thinkingModeButton
+                settingsTopBarButton
             }
-            .buttonStyle(.plain)
         }
         .padding(.horizontal, Theme.inputPadH)
         .padding(.vertical, 10)
         .animation(.easeInOut(duration: 0.18), value: activeTopStatusHint)
+        .animation(.easeInOut(duration: 0.18), value: engine.config.enableThinking)
+        .animation(.easeInOut(duration: 0.18), value: currentModelSupportsThinking)
+    }
+
+    private var newSessionTopBarButton: some View {
+        Button(action: {
+            engine.flushPendingSessionSave()
+            engine.startNewSession()
+        }) {
+            Image(systemName: "square.and.pencil")
+                .font(.system(size: UIScale.gearIconSize, weight: .regular))
+                .foregroundStyle(Theme.textSecondary)
+                .opacity(UIScale.gearIconOpacity)
+                .frame(
+                    width: UIScale.topStatusChipDiameter,
+                    height: UIScale.topStatusChipDiameter
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(tr("新会话", "New chat")))
+    }
+
+    private var historyStatusButton: some View {
+        Button(action: {
+            engine.flushPendingSessionSave()
+            showHistory = true
+        }) {
+            ZStack {
+                Circle()
+                    .fill(Theme.bgHover.opacity(UIScale.topStatusChipBgOpacity))
+                    .frame(
+                        width: UIScale.topStatusChipDiameter,
+                        height: UIScale.topStatusChipDiameter
+                    )
+                Circle()
+                    .fill(engine.isModelLoaded ? Theme.accentMuted : Theme.textTertiary)
+                    .frame(
+                        width: UIScale.topStatusChipDotSize,
+                        height: UIScale.topStatusChipDotSize
+                    )
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(tr("历史记录", "History")))
+    }
+
+    private var thinkingModeButton: some View {
+        let isSupported = currentModelSupportsThinking
+        let isActive = isSupported && engine.config.enableThinking
+
+        return Button(action: toggleThinkingMode) {
+            Text("T")
+                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                .foregroundStyle(
+                    isSupported
+                        ? (isActive ? Theme.accentMuted : Theme.textSecondary)
+                        : Theme.textTertiary
+                )
+                .opacity(isSupported ? (isActive ? 0.96 : 0.68) : 0.36)
+                .frame(
+                    width: UIScale.topStatusChipDiameter,
+                    height: UIScale.topStatusChipDiameter
+                )
+                .background(
+                    Circle()
+                        .fill(isActive ? Theme.accentSubtle : Color.clear)
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(tr("思考模式", "Thinking mode")))
+        .accessibilityValue(Text(isActive ? tr("已开启", "On") : tr("已关闭", "Off")))
+    }
+
+    private var settingsTopBarButton: some View {
+        Button(action: { showConfigurations = true }) {
+            Image(systemName: "gearshape")
+                .font(.system(size: UIScale.gearIconSize, weight: .regular))
+                .foregroundStyle(Theme.textSecondary)
+                .opacity(UIScale.gearIconOpacity)
+                .frame(
+                    width: UIScale.topStatusChipDiameter,
+                    height: UIScale.topStatusChipDiameter
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(tr("设置", "Settings")))
     }
 
     private var activeTopStatusHint: TopStatusHint? {
@@ -1547,10 +1620,8 @@ struct ContentView: View {
         LiveModelDefinition.isAvailable
     }
 
-    /// 顶部 "思考" 按钮是否显示。只有声明 supportsThinking=true 的模型才显示, 否则
-    /// 整个按钮藏掉 (而不是 disable+灰色) — disable 还在那里占位但点不亮, 反而更
-    /// 让用户疑惑。比如 MiniCPM-V 4.6 没思考模式, 整个按钮在 v4.6 加载时消失。
-    private var showThinkingButton: Bool {
+    /// 当前选中模型是否支持 thinking。顶部 T 始终保留位置, 但非 thinking 模型置灰。
+    private var currentModelSupportsThinking: Bool {
         currentModelCapabilities.supportsThinking
     }
 

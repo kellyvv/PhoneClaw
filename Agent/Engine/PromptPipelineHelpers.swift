@@ -15,6 +15,10 @@ extension AgentEngine {
         catalog.selectedModel.capabilities
     }
 
+    var effectiveEnableThinking: Bool {
+        config.enableThinking && selectedModelCapabilities.supportsThinking
+    }
+
     func promptShape(
         requiresMultimodal: Bool,
         shouldUseFullAgentPrompt: Bool,
@@ -23,7 +27,7 @@ extension AgentEngine {
         if requiresMultimodal {
             return .multimodal
         }
-        if config.enableThinking {
+        if effectiveEnableThinking {
             return .thinking
         }
         if shouldUseFullAgentPrompt {
@@ -147,7 +151,7 @@ extension AgentEngine {
             userMessage: normalizedText,
             history: lightHistory,
             systemPrompt: config.systemPrompt,
-            enableThinking: config.enableThinking,
+            enableThinking: effectiveEnableThinking,
             historyDepth: lightHistory.count,
             includeImageHistoryMarkers: includeImageHistoryMarkers,
             imageFollowUpBridgeSummary: imageFollowUpBridgeSummary
@@ -161,7 +165,7 @@ extension AgentEngine {
             imageFollowUpBridgeSummary: imageFollowUpBridgeSummary,
             history: priorHistory,
             systemPrompt: config.systemPrompt,
-            enableThinking: config.enableThinking,
+            enableThinking: effectiveEnableThinking,
             historyDepth: priorHistory.count,
             showListSkillsHint: matchedSkillIdsForTurn.isEmpty,
             preloadedSkills: preloadedSkills
@@ -176,7 +180,7 @@ extension AgentEngine {
             streamingPrompt = PromptBuilder.buildDeltaTurnPrompt(
                 userMessage: normalizedText,
                 currentImageCount: 0,
-                enableThinking: config.enableThinking
+                enableThinking: effectiveEnableThinking
             )
         } else {
             streamingPrompt = agentPrompt ?? lightPrompt

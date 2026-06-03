@@ -166,7 +166,7 @@ extension AgentEngine {
             let systemPrompt = PromptBuilder.multimodalSystemPrompt(
                 hasImages: !promptImages.isEmpty,
                 hasAudio: audioInput != nil,
-                enableThinking: config.enableThinking
+                enableThinking: effectiveEnableThinking
             )
             let multimodalPlan = makePromptPlan(
                 prompt: systemPrompt.isEmpty ? normalizedText : systemPrompt + "\n" + normalizedText,
@@ -289,7 +289,7 @@ extension AgentEngine {
                 userMessage: normalizedText,
                 assistantSummary: imageFollowUpBridgeSummary,
                 systemPrompt: config.systemPrompt,
-                enableThinking: config.enableThinking
+                enableThinking: effectiveEnableThinking
             )
             promptBundle = (
                 lightPrompt: imageFollowUpTextPrompt,
@@ -357,7 +357,7 @@ extension AgentEngine {
                         userMessage: normalizedText,
                         assistantSummary: imageFollowUpBridgeSummary,
                         systemPrompt: config.systemPrompt,
-                        enableThinking: config.enableThinking
+                        enableThinking: effectiveEnableThinking
                     )
                     promptBundle = (
                         lightPrompt: imageFollowUpTextPrompt,

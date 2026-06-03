@@ -206,7 +206,7 @@ extension AgentEngine {
             assistantSummary: assistantSummary,
             partialAnswer: trimmedDraft,
             systemPrompt: config.systemPrompt,
-            enableThinking: config.enableThinking
+            enableThinking: effectiveEnableThinking
         )
         log("[ImageFollowUp] repair=triggered")
 
