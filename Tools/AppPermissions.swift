@@ -2,6 +2,9 @@ import AVFoundation
 import Contacts
 import EventKit
 import Foundation
+#if os(iOS) && canImport(HealthKit)
+import HealthKit
+#endif
 
 // MARK: - 权限模型
 
@@ -12,6 +15,7 @@ enum AppPermissionKind: String, CaseIterable, Identifiable {
     case calendarRead
     case reminders
     case contacts
+    case health
 
     var id: String { rawValue }
 
@@ -23,6 +27,7 @@ enum AppPermissionKind: String, CaseIterable, Identifiable {
         case .calendarRead: return "日历读取"
         case .reminders: return "提醒事项"
         case .contacts: return "通讯录"
+        case .health: return "健康数据"
         }
     }
 
@@ -34,6 +39,7 @@ enum AppPermissionKind: String, CaseIterable, Identifiable {
         case .calendarRead: return "允许读取日程用于本地分析"
         case .reminders: return "允许创建提醒和待办"
         case .contacts: return "允许查询、保存和删除联系人"
+        case .health: return "允许读取 HealthKit 健康数据用于本地摘要"
         }
     }
 
@@ -45,6 +51,7 @@ enum AppPermissionKind: String, CaseIterable, Identifiable {
         case .calendarRead: return "calendar.badge.clock"
         case .reminders: return "bell"
         case .contacts: return "person.crop.circle"
+        case .health: return "heart"
         }
     }
 }
@@ -178,6 +185,16 @@ extension ToolRegistry {
             @unknown default:
                 return .restricted
             }
+
+        case .health:
+            #if os(iOS) && canImport(HealthKit)
+            guard HKHealthStore.isHealthDataAvailable() else {
+                return .restricted
+            }
+            return HealthTools.hasRequestedReadAuthorization ? .granted : .notDetermined
+            #else
+            return .granted
+            #endif
         }
     }
 
@@ -241,6 +258,22 @@ extension ToolRegistry {
                     }
                 }
             }
+        case .health:
+            #if os(iOS) && canImport(HealthKit)
+            guard HKHealthStore.isHealthDataAvailable() else {
+                return false
+            }
+            if let error = await HealthTools.requestAllReadAuthorization() {
+                throw NSError(
+                    domain: "PhoneClaw.HealthPermission",
+                    code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: error]
+                )
+            }
+            return true
+            #else
+            return true
+            #endif
         }
     }
 }

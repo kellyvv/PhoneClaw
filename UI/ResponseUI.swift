@@ -686,11 +686,17 @@ struct SkillCardView: View {
         if toolNameContains("contacts-delete") {
             return "trash"
         }
+        if toolNameContains("health-report") {
+            return "doc.text.magnifyingglass"
+        }
         if toolNameContains("health-sleep") {
             return "moon"
         }
         if toolNameContains("health-workout") {
             return "figure.run"
+        }
+        if toolNameContains("health-weight") {
+            return "scalemass"
         }
         if toolNameContains("health-active-energy") {
             return "flame"
@@ -733,11 +739,17 @@ struct SkillCardView: View {
             if toolNameContains("clipboard-read") {
                 return tr("读取了剪贴板", "Read Clipboard")
             }
+            if toolNameContains("health-report") {
+                return tr("生成了健康报告", "Generated Health Report")
+            }
             if toolNameContains("health-sleep") {
                 return tr("读取了睡眠", "Read Sleep")
             }
             if toolNameContains("health-workout") {
                 return tr("读取了运动记录", "Read Workouts")
+            }
+            if toolNameContains("health-weight") {
+                return tr("读取了体重", "Read Weight")
             }
             if toolNameContains("health-distance") {
                 return tr("读取了距离", "Read Distance")
@@ -787,11 +799,17 @@ struct SkillCardView: View {
         if toolNameContains("clipboard-read") {
             return tr("正在读取剪贴板…", "Reading Clipboard…")
         }
+        if toolNameContains("health-report") {
+            return tr("正在生成健康报告…", "Generating Health Report…")
+        }
         if toolNameContains("health-sleep") {
             return tr("正在读取睡眠…", "Reading Sleep…")
         }
         if toolNameContains("health-workout") {
             return tr("正在读取运动记录…", "Reading Workouts…")
+        }
+        if toolNameContains("health-weight") {
+            return tr("正在读取体重…", "Reading Weight…")
         }
         if toolNameContains("health-distance") {
             return tr("正在读取距离…", "Reading Distance…")

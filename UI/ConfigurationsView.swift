@@ -1264,6 +1264,8 @@ struct ConfigurationsView: View {
             return tr("提醒事项", "Reminders")
         case .contacts:
             return tr("通讯录", "Contacts")
+        case .health:
+            return tr("健康数据", "Health Data")
         }
     }
 
@@ -1281,6 +1283,8 @@ struct ConfigurationsView: View {
             return tr("允许创建提醒和待办", "Allow creating reminders and tasks")
         case .contacts:
             return tr("允许保存和更新联系人", "Allow saving and updating contacts")
+        case .health:
+            return tr("允许读取步数、心率、睡眠、体重等健康数据", "Allow reading steps, heart rate, sleep, weight, and other Health data")
         }
     }
 
@@ -1712,6 +1716,8 @@ private enum SettingsInfoTopic: Identifiable {
             return tr("提醒事项", "Reminders")
         case .contacts:
             return tr("通讯录", "Contacts")
+        case .health:
+            return tr("健康数据", "Health Data")
         }
     }
 
@@ -1729,6 +1735,8 @@ private enum SettingsInfoTopic: Identifiable {
             return tr("用于创建提醒和待办。", "Used to create reminders and tasks.")
         case .contacts:
             return tr("用于保存和更新联系人。", "Used to save and update contacts.")
+        case .health:
+            return tr("用于读取步数、距离、活动能量、心率、睡眠、运动、体重和心率变异性，并在本地生成摘要。", "Used to read steps, distance, active energy, heart rate, sleep, workouts, weight, and HRV for local summaries.")
         }
     }
 }

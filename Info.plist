@@ -33,7 +33,7 @@
 	<key>NSContactsUsageDescription</key>
 	<string>PhoneClaw needs to store contact information</string>
 	<key>NSHealthShareUsageDescription</key>
-	<string>PhoneClaw reads Health data (steps, sleep, etc.) locally to generate summaries and insights. Nothing leaves your device.</string>
+	<string>PhoneClaw reads Health data (steps, distance, active energy, heart rate, sleep, workouts, weight, and HRV) locally to generate summaries and insights. Nothing leaves your device.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>PhoneClaw does not write Health data. This permission description is included because HealthKit access requires a write-purpose string for App Store validation.</string>
 	<key>NSMicrophoneUsageDescription</key>

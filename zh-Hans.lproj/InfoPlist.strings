@@ -10,4 +10,4 @@
 "NSContactsUsageDescription" = "PhoneClaw 需要存储联系人信息";
 "NSCameraUsageDescription" = "PhoneClaw 需要摄像头以便在 Live 模式中观察周围环境";
 "NSMicrophoneUsageDescription" = "PhoneClaw 需要麦克风来录制语音并采集音频输入";
-"NSHealthShareUsageDescription" = "PhoneClaw 需要读取健康数据（例如步数、睡眠）以便在本地为你生成摘要和建议, 数据不会离开本机。";
+"NSHealthShareUsageDescription" = "PhoneClaw 需要读取健康数据（步数、距离、活动能量、心率、睡眠、运动、体重和心率变异性）以便在本地为你生成摘要和建议, 数据不会离开本机。";
