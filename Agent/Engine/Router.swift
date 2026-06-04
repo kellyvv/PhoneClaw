@@ -171,6 +171,100 @@ extension AgentEngine {
         return nil
     }
 
+    // MARK: - 模型意图路由
+
+    /// 当 trigger/sticky 都没有命中时, 用一个极小的模型分类器判断是否需要
+    /// network skill。候选集完全来自 SKILL.md metadata, 不在代码里维护业务词表。
+    func modelIntentRoutedSkillIds(for userQuestion: String) async -> [String] {
+        let candidates = networkIntentRoutingCandidates()
+        guard !candidates.ids.isEmpty, !candidates.summary.isEmpty else { return [] }
+
+        let prompt = PromptBuilder.buildSkillIntentRoutingPrompt(
+            userQuestion: userQuestion,
+            availableNetworkSkillsSummary: candidates.summary
+        )
+
+        let savedTopK = inference.samplingTopK
+        let savedTopP = inference.samplingTopP
+        let savedTemperature = inference.samplingTemperature
+        let savedMaxOutputTokens = inference.maxOutputTokens
+
+        inference.samplingTopK = 1
+        inference.samplingTopP = 1.0
+        inference.samplingTemperature = 0
+        inference.maxOutputTokens = min(savedMaxOutputTokens, 12)
+        defer {
+            inference.samplingTopK = savedTopK
+            inference.samplingTopP = savedTopP
+            inference.samplingTemperature = savedTemperature
+            inference.maxOutputTokens = savedMaxOutputTokens
+        }
+
+        let rawDecision = await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
+            inference.generate(
+                prompt: prompt,
+                onToken: { _ in },
+                onComplete: { result in
+                    switch result {
+                    case .success(let text):
+                        continuation.resume(returning: text)
+                    case .failure(let error):
+                        log("[IntentRouter] classification failed: \(error.localizedDescription)")
+                        continuation.resume(returning: nil)
+                    }
+                }
+            )
+        }
+
+        await inference.resetKVSession()
+
+        guard let rawDecision,
+              let selected = parseNetworkIntentRoute(rawDecision, candidateIds: candidates.ids) else {
+            log("[IntentRouter] selected=none candidates=\(candidates.ids.count)")
+            return []
+        }
+
+        log("[IntentRouter] selected=\(selected) candidates=\(candidates.ids.count)")
+        return [selected]
+    }
+
+    private func networkIntentRoutingCandidates() -> (summary: String, ids: Set<String>) {
+        let entries = skillEntries.filter { entry in
+            entry.isEnabled && entry.type == .network
+        }
+        let lines = entries.map { entry in
+            let normalizedDescription = entry.description
+                .replacingOccurrences(of: "\n", with: " ")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return "- \(entry.id): \(normalizedDescription)"
+        }
+        return (lines.joined(separator: "\n"), Set(entries.map(\.id)))
+    }
+
+    private func parseNetworkIntentRoute(_ rawValue: String, candidateIds: Set<String>) -> String? {
+        let normalized = rawValue
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "`", with: "")
+            .lowercased()
+        guard !normalized.isEmpty else { return nil }
+
+        let stripped = normalized.trimmingCharacters(
+            in: CharacterSet.whitespacesAndNewlines
+                .union(CharacterSet(charactersIn: "\"'.,:;[]{}()"))
+        )
+        if stripped == "none" || stripped == "null" || stripped == "no-skill" || stripped == "no_skill" {
+            return nil
+        }
+
+        for id in candidateIds.sorted(by: { $0.count > $1.count }) {
+            let candidate = id.lowercased()
+            if stripped == candidate || containsAsWord(candidate, in: normalized) {
+                return id
+            }
+        }
+        return nil
+    }
+
     // MARK: - 路由决策
 
     func shouldUseToolingPrompt(for userQuestion: String) -> Bool {

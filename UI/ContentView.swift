@@ -258,6 +258,7 @@ struct ContentView: View {
         .task {
             guard !ProcessInfo.processInfo.isRunningXCTest else { return }
             engine.setup()
+            Telemetry.recordAppOpen()
             // 不在这里 initialize hold-to-talk ASR. 改为用户第一次按住说话时
             // 通过 ASRService.ensureInitialized 懒加载, 避免 cold start 就占用 ASR 内存 (zh ~160MB / en ~180MB).
         }
@@ -267,11 +268,14 @@ struct ContentView: View {
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
                 audioCapture.refreshPermissionStatus()
+                Telemetry.recordAppOpen()
                 return
             }
             engine.flushPendingSessionSave()
             engine.cancelActiveGeneration()
             _ = audioCapture.stopCapture()
+            Telemetry.endSession()
+            Telemetry.flush()
         }
         .onChange(of: engine.messages.isEmpty) { wasEmpty, isEmpty in
             // 新会话: 卸载 hold-to-talk ASR 以释放内存 (zh ~160MB / en ~180MB). 下次按住说话会 lazy 重新加载.
@@ -279,6 +283,7 @@ struct ContentView: View {
             // 保证我们只响应 "有消息 -> 清空" 这个方向, 忽略新开一条消息的方向.
             if isEmpty && !wasEmpty {
                 print("[UI] New session detected → unloading ASR")
+                Telemetry.endSession()
                 holdASRWarmupTask?.cancel()
                 holdASRWarmupTask = nil
                 holdToTalkASR.unload()
@@ -433,7 +438,9 @@ struct ContentView: View {
                                 onToggleThinking: { toggleThinking(block.id) },
                                 onRetry: canRetry(item: item, block: block)
                                     ? { Task { await engine.retryLastResponse() } }
-                                    : nil
+                                    : nil,
+                                followUpSuggestions: followUpSuggestions(for: item, block: block),
+                                onFollowUpSuggestion: applyFollowUpSuggestion
                             )
                         }
                     }
@@ -535,6 +542,47 @@ struct ContentView: View {
         }
     }
 
+    private func followUpSuggestions(for item: DisplayItem, block: ResponseBlock) -> [FollowUpSuggestion] {
+        guard item.id == displayItems.last?.id else { return [] }
+        guard !engine.isProcessing, !block.isThinking else { return [] }
+        guard block.skills.isEmpty else { return [] }
+        guard block.responseText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
+            return []
+        }
+        guard inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              selectedImages.isEmpty,
+              importedAudioSnapshot == nil,
+              !audioCapture.isCapturing
+        else {
+            return []
+        }
+
+        return [
+            FollowUpSuggestion(
+                id: "expand",
+                title: tr("展开说说", "Tell me more"),
+                prompt: tr("继续展开刚才的回答。", "Tell me more about your last answer.")
+            ),
+            FollowUpSuggestion(
+                id: "example",
+                title: tr("举个例子", "Give an example"),
+                prompt: tr("举一个具体例子。", "Give me a concrete example.")
+            ),
+            FollowUpSuggestion(
+                id: "summary",
+                title: tr("总结三点", "Summarize"),
+                prompt: tr("把刚才的内容总结成三点。", "Summarize that in three points.")
+            )
+        ]
+    }
+
+    private func applyFollowUpSuggestion(_ suggestion: FollowUpSuggestion) {
+        showAttachmentTray = false
+        isVoiceInputMode = false
+        inputText = suggestion.prompt
+        isInputFocused = true
+    }
+
     private func toggleThinkingMode() {
         guard currentModelSupportsThinking else {
             showTransientTopNotice(tr("当前模型不支持思考模式", "Current model does not support Thinking mode"))
@@ -565,15 +613,17 @@ struct ContentView: View {
 
     // MARK: - topBar (v2: 对称轻量入口)
     //
-    // 设计稿:左侧「新会话 + 历史状态」, 右侧「Think + 设置」; 中间只给状态提示。
+    // 设计稿:左侧「历史状态 + 新会话」, 右侧「Think + 设置」; 中间只给状态提示。
+    // 历史状态 chip 与 设置 gear 完全沿用 main 的逻辑/风格/位置 (历史最外、gear 最外);
+    // 新会话 与 Think 是后加的, 统一成跟 gear 同一种安静线性图标语言。
     // 移除项 (跟用户当面讨论确认):
     //   - Gemma 4 E2B 模型名 → 进 settings 看
     //   - LIVE 按钮 → 中央 orb 已有 "进入 LIVE" 入口
     private var topBar: some View {
         HStack(spacing: 0) {
-            HStack(spacing: 10) {
-                newSessionTopBarButton
+            HStack(spacing: 8) {
                 historyStatusButton
+                newSessionTopBarButton
             }
 
             Spacer(minLength: 12)
@@ -585,7 +635,7 @@ struct ContentView: View {
 
             Spacer(minLength: 12)
 
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 thinkingModeButton
                 settingsTopBarButton
             }
@@ -602,10 +652,19 @@ struct ContentView: View {
             engine.flushPendingSessionSave()
             engine.startNewSession()
         }) {
-            Image(systemName: "square.and.pencil")
-                .font(.system(size: UIScale.gearIconSize, weight: .regular))
+            // + 包在圆角方块里 — 跟 Think 的 T 方块同款 chip (尺寸/圆角/描边一致),
+            // 让左内 + 与右内 T 成对称一对; 它是一次性动作, 没有点亮态。
+            // + 比 T 细 (细十字 vs 字母), 同 pt 看着偏轻; 放大到 14pt 补足视觉分量,
+            // 让两个 chip 的"满度"对齐。
+            Image(systemName: "plus")
+                .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(Theme.textSecondary)
                 .opacity(UIScale.gearIconOpacity)
+                .frame(width: 22, height: 22)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .strokeBorder(Theme.textSecondary.opacity(0.42), lineWidth: 1)
+                )
                 .frame(
                     width: UIScale.topStatusChipDiameter,
                     height: UIScale.topStatusChipDiameter
@@ -622,12 +681,11 @@ struct ContentView: View {
             showHistory = true
         }) {
             ZStack {
+                // 可见外圈缩到 24 (略大于 +/T chip 的 22), 不再像 28 那样偏大;
+                // 外层仍保留 28 点击区, 跟其它三个图标的 tap / 垂直对齐一致。
                 Circle()
                     .fill(Theme.bgHover.opacity(UIScale.topStatusChipBgOpacity))
-                    .frame(
-                        width: UIScale.topStatusChipDiameter,
-                        height: UIScale.topStatusChipDiameter
-                    )
+                    .frame(width: 24, height: 24)
                 Circle()
                     .fill(engine.isModelLoaded ? Theme.accentMuted : Theme.textTertiary)
                     .frame(
@@ -635,6 +693,11 @@ struct ContentView: View {
                         height: UIScale.topStatusChipDotSize
                     )
             }
+            .frame(
+                width: UIScale.topStatusChipDiameter,
+                height: UIScale.topStatusChipDiameter
+            )
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text(tr("历史记录", "History")))
@@ -644,22 +707,33 @@ struct ContentView: View {
         let isSupported = currentModelSupportsThinking
         let isActive = isSupported && engine.config.enableThinking
 
+        // 字母 T 包在圆角方块里 — 零噪点的字母, 跟 gear/pencil 同属"低细节"一家;
+        // 壳呼应 app 内「思考」块的 accentSubtle 圆角方块 (ResponseUI). 品牌色只在开启时点亮。
+        let tint: Color = isSupported
+            ? (isActive ? Theme.accentMuted : Theme.textSecondary)
+            : Theme.textTertiary
+        let glyphOpacity: Double = isSupported ? (isActive ? 0.96 : UIScale.gearIconOpacity) : 0.36
+
         return Button(action: toggleThinkingMode) {
             Text("T")
-                .font(.system(size: 14, weight: .semibold, design: .rounded))
-                .foregroundStyle(
-                    isSupported
-                        ? (isActive ? Theme.accentMuted : Theme.textSecondary)
-                        : Theme.textTertiary
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundStyle(tint)
+                .opacity(glyphOpacity)
+                .frame(width: 22, height: 22)
+                .background(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(isActive ? Theme.accentSubtle : Color.clear)
                 )
-                .opacity(isSupported ? (isActive ? 0.96 : 0.68) : 0.36)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .strokeBorder(
+                            isActive ? Color.clear : tint.opacity(isSupported ? 0.42 : 0.24),
+                            lineWidth: 1
+                        )
+                )
                 .frame(
                     width: UIScale.topStatusChipDiameter,
                     height: UIScale.topStatusChipDiameter
-                )
-                .background(
-                    Circle()
-                        .fill(isActive ? Theme.accentSubtle : Color.clear)
                 )
                 .contentShape(Rectangle())
         }

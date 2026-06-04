@@ -125,12 +125,20 @@ extension AgentEngine {
                     definition.metadata.displayName
                 ]
                 return candidates.contains { candidate in
-                    !candidate.isEmpty && candidate.compare(
+                    guard !candidate.isEmpty else { return false }
+                    if candidate.compare(
                         rawSkillName,
                         options: [.caseInsensitive, .diacriticInsensitive],
                         range: nil,
                         locale: .current
-                    ) == .orderedSame
+                    ) == .orderedSame {
+                        return true
+                    }
+                    // [思考态兜底] 真机实证: 思考态下模型常把 skill「类别名」当 load_skill 参数
+                    // (如 "联网搜索类" = name-zh "联网搜索" + 后缀), exact 匹配不上 → 被 drop → skill 不触发。
+                    // 纯数据驱动: 只要 SKILL.md 声明的候选名 (id/name/name-zh/displayName) 是参数的子串
+                    // 就接受 —— 不硬编任何领域词 / 后缀表 / 数字阈值。
+                    return rawSkillName.localizedCaseInsensitiveContains(candidate)
                 }
             }?.id
         }()
@@ -211,4 +219,5 @@ extension AgentEngine {
         }
         return results
     }
+
 }

@@ -231,7 +231,7 @@ The default recommended flow is now:
 
 You only need the `Models/` directory on your Mac if you want to bundle a model inside the app itself.
 
-Directory names must match exactly as shown below. Install the Hugging Face CLI first:
+Gemma 4 now runs on LiteRT-LM: each model is a single `.litertlm` file (no MLX weight directory). Install the Hugging Face CLI first:
 
 ```bash
 brew install hf
@@ -241,40 +241,34 @@ pip install -U "huggingface_hub"
 
 E2B only (recommended):
 ```bash
-mkdir -p ./Models/gemma-4-e2b-it-4bit
-hf download mlx-community/gemma-4-e2b-it-4bit --local-dir ./Models/gemma-4-e2b-it-4bit
+mkdir -p ./Models
+hf download litert-community/gemma-4-E2B-it-litert-lm gemma-4-E2B-it.litertlm --local-dir ./Models
 ```
 
 E4B only:
 ```bash
-mkdir -p ./Models/gemma-4-e4b-it-4bit
-hf download mlx-community/gemma-4-e4b-it-4bit --local-dir ./Models/gemma-4-e4b-it-4bit
+mkdir -p ./Models
+hf download litert-community/gemma-4-E4B-it-litert-lm gemma-4-E4B-it.litertlm --local-dir ./Models
 ```
 
 Both models:
 ```bash
-mkdir -p ./Models/gemma-4-e2b-it-4bit ./Models/gemma-4-e4b-it-4bit
-hf download mlx-community/gemma-4-e2b-it-4bit --local-dir ./Models/gemma-4-e2b-it-4bit
-hf download mlx-community/gemma-4-e4b-it-4bit --local-dir ./Models/gemma-4-e4b-it-4bit
+mkdir -p ./Models
+hf download litert-community/gemma-4-E2B-it-litert-lm gemma-4-E2B-it.litertlm --local-dir ./Models
+hf download litert-community/gemma-4-E4B-it-litert-lm gemma-4-E4B-it.litertlm --local-dir ./Models
 ```
 
-Expected directory structure after download:
+Expected files after download:
 
 ```
 Models/
-├── gemma-4-e2b-it-4bit/
-│   ├── config.json
-│   ├── tokenizer.json
-│   ├── processor_config.json
-│   ├── chat_template.jinja
-│   ├── model.safetensors
-│   └── model.safetensors.index.json
-└── gemma-4-e4b-it-4bit/
+├── gemma-4-E2B-it.litertlm
+└── gemma-4-E4B-it.litertlm
 ```
 
 > `Models/` is gitignored and will not be committed.
-> Approximate repository sizes on Hugging Face: E2B ~3.58 GB, E4B ~5.22 GB.
-> You can also download manually from the model page and place files in the correct directory.
+> Approximate file sizes: E2B ~2.4 GB, E4B ~3.4 GB.
+> In mainland China, set `HF_ENDPOINT=https://hf-mirror.com` to use the mirror, or download the same file from the ModelScope mirror.
 
 **LIVE Mode (voice interaction) additional models**
 
@@ -344,10 +338,10 @@ By default, the project no longer bundles anything from `Models/` into the app.
 
 ### Option B — E2B only
 
-1. Keep `Models/gemma-4-e2b-it-4bit`, remove `Models/gemma-4-e4b-it-4bit`
-2. In Xcode's Project Navigator, delete the unused model folder reference and choose Remove Reference
-3. In PhoneClaw > Build Phases > Copy Bundle Resources, manually add back the model you want to ship and confirm only that one remains
-4. Edit `availableModels` in `LLM/MLX/MLXLocalLLMService.swift` to only include the models actually shipped (otherwise the settings page will show options that don't exist)
+1. Keep `Models/gemma-4-E2B-it.litertlm`, remove `Models/gemma-4-E4B-it.litertlm`
+2. In Xcode's Project Navigator, delete the unused model file reference and choose Remove Reference
+3. In PhoneClaw > Build Phases > Copy Bundle Resources, make sure `gemma-4-E2B-it.litertlm` is included (as a single file, not a folder reference) and confirm only that one remains
+4. Edit `allModels` in `LLM/Models/PredefinedModels.swift` to only include the models actually shipped (otherwise the settings page will show options that don't exist)
 
 ### Option C — Both E2B and E4B
 
@@ -355,12 +349,12 @@ Download both models:
 
 ```bash
 brew install hf
-mkdir -p ./Models/gemma-4-e2b-it-4bit ./Models/gemma-4-e4b-it-4bit
-hf download mlx-community/gemma-4-e2b-it-4bit --local-dir ./Models/gemma-4-e2b-it-4bit
-hf download mlx-community/gemma-4-e4b-it-4bit --local-dir ./Models/gemma-4-e4b-it-4bit
+mkdir -p ./Models
+hf download litert-community/gemma-4-E2B-it-litert-lm gemma-4-E2B-it.litertlm --local-dir ./Models
+hf download litert-community/gemma-4-E4B-it-litert-lm gemma-4-E4B-it.litertlm --local-dir ./Models
 ```
 
-Then add both folder references back into Xcode's `Copy Bundle Resources`.
+Then add both `.litertlm` files into Xcode's `Copy Bundle Resources`.
 
 
 ## Adding Custom Skills
@@ -406,7 +400,7 @@ Why are there no permission dialogs after install?
 The corresponding Skill has likely not reached the system API call yet. If you previously denied permission, iOS will not prompt again — go to system Settings to re-enable.
 
 Why does the model fail to load after switching?
-Verify that the model directory name matches `availableModels` in code, that the model has finished downloading on-device if you are using the shell-only install flow, or that it was actually included in the app bundle if you are shipping it built-in, and that the device has enough memory.
+Verify that the model file name matches `allModels` in `LLM/Models/PredefinedModels.swift`, that the model has finished downloading on-device if you are using the shell-only install flow, or that it was actually included in the app bundle if you are shipping it built-in, and that the device has enough memory.
 
 Why does creating a reminder fail?
 The latest code first attempts to reuse an existing writable reminder list. If none is found, it tries to automatically create a PhoneClaw list. If that also fails, the system reminder source itself is likely read-only.
@@ -484,10 +478,10 @@ Explore connecting external video input and screen understanding with local mode
 
 - [Hugging Face CLI documentation](https://huggingface.co/docs/huggingface_hub/guides/cli)
 - [Hugging Face download guide](https://huggingface.co/docs/huggingface_hub/en/guides/download)
-- [Gemma 4 E2B MLX model](https://huggingface.co/mlx-community/gemma-4-e2b-it-4bit)
-- [Gemma 4 E4B MLX model](https://huggingface.co/mlx-community/gemma-4-e4b-it-4bit)
-- [Gemma 4 E2B (ModelScope mirror)](https://modelscope.cn/models/mlx-community/gemma-4-e2b-it-4bit)
-- [Gemma 4 E4B (ModelScope mirror)](https://modelscope.cn/models/mlx-community/gemma-4-e4b-it-4bit)
+- [Gemma 4 E2B LiteRT model](https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm)
+- [Gemma 4 E4B LiteRT model](https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm)
+- [Gemma 4 E2B (ModelScope mirror)](https://modelscope.cn/models/litert-community/gemma-4-E2B-it-litert-lm)
+- [Gemma 4 E4B (ModelScope mirror)](https://modelscope.cn/models/litert-community/gemma-4-E4B-it-litert-lm)
 - [MiniCPM-V 4.6 model](https://huggingface.co/openbmb/MiniCPM-V-4_6)
 - [OpenBMB MiniCPM-V iOS Demo](https://github.com/OpenBMB/MiniCPM-V-Apps)
 

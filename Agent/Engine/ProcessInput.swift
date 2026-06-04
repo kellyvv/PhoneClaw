@@ -41,8 +41,18 @@ extension AgentEngine {
         }
         guard !isProcessing else { return }
         guard !normalizedText.isEmpty || !promptAttachments.isEmpty || audioInput != nil else { return }
+        Telemetry.recordMessageSent(
+            modelID: catalog.selectedModel.id,
+            modality: .from(
+                hasImages: !displayAttachments.isEmpty || !promptAttachments.isEmpty,
+                hasAudio: audioInput != nil
+            ),
+            inputLanguage: .detect(from: displayText)
+        )
         isProcessing = true
         lastTurnRawModelOutputs.removeAll()
+        lastTurnPromptDiagnostics.removeAll()
+        lastTurnStreamingPrompt = nil
         beginGenerationTracking()
 
         let currentUserMessage = ChatMessage(
@@ -85,7 +95,10 @@ extension AgentEngine {
 
         applySamplingConfig()
 
-        let matchedSkillIdsForTurn = requiresMultimodal ? [] : matchedSkillIds(for: normalizedText)
+        var matchedSkillIdsForTurn = requiresMultimodal ? [] : matchedSkillIds(for: normalizedText)
+        if !requiresMultimodal, matchedSkillIdsForTurn.isEmpty {
+            matchedSkillIdsForTurn = await modelIntentRoutedSkillIds(for: normalizedText)
+        }
         // 暴露给 CLI harness (ScenarioRunner) 做断言. iOS UI 不读, 0 行为影响.
         self.lastTurnMatchedSkillIds = matchedSkillIdsForTurn
         // T2 (2026-04-17): 把 Planner 入口从 matched>=2 降到 matched>=1.
@@ -105,7 +118,7 @@ extension AgentEngine {
         let shouldUsePlanner = !requiresMultimodal && matchedSkillIdsForTurn.count >= 2
         let shouldUseFullAgentPrompt =
             !requiresMultimodal
-            && shouldUseToolingPrompt(for: normalizedText)
+            && !matchedSkillIdsForTurn.isEmpty
         let activeSkillInfos: [SkillInfo]
         if shouldUseFullAgentPrompt {
             if matchedSkillIdsForTurn.isEmpty {
@@ -394,14 +407,17 @@ extension AgentEngine {
         let lightPrompt = promptBundle.lightPrompt
         let plannerInputPrompt = promptBundle.plannerInputPrompt
         let streamingPrompt = promptBundle.streamingPrompt
+        lastTurnStreamingPrompt = streamingPrompt
         let canUseDelta = promptBundle.canUseDelta
         if canUseDelta {
             log("[Agent] KV cache delta mode: \(streamingPrompt.count) chars (vs full \(lightPrompt.count) chars)")
         }
         await prepareSessionGroupTransitionIfNeeded(for: textPromptPlan)
-        #if DEBUG
         log("[Agent] text prompt mode=\(shouldUseFullAgentPrompt ? "agent" : "light"), planner-input-chars=\(plannerInputPrompt.count), streaming-chars=\(streamingPrompt.count), skills=\(activeSkillInfos.count)")
-        #endif
+        logPromptDiagnostics(
+            label: shouldUseFullAgentPrompt ? "processInput.agent" : "processInput.light",
+            prompt: streamingPrompt
+        )
 
         let msgIndex: Int
         if let existingIndex = earlyAssistantPlaceholderIndex,
@@ -485,9 +501,6 @@ extension AgentEngine {
                 switch result {
                 case .success(let fullText):
                     self.lastTurnRawModelOutputs.append(fullText)
-                    #if DEBUG
-                    log("[Agent] 1st raw: \(fullText.prefix(300))")
-                    #endif
 
                     if self.parseToolCall(fullText) != nil {
                         self.messages[msgIndex].update(content: "")
@@ -503,34 +516,56 @@ extension AgentEngine {
                             )
                         }
                         return
-                    } else {
-                        let cleaned = self.cleanOutput(fullText)
-                        self.recordCompletedObservation(plan: textPromptPlan)
-                        if forceImageFollowUpTextPrompt,
-                           let imageFollowUpBridgeSummary,
-                           !cleaned.isEmpty {
-                            Task { [weak self] in
-                                guard let self else { return }
-                                let repaired = await self.streamImageFollowUpStableReply(
-                                    cleanedDraft: cleaned,
-                                    assistantSummary: imageFollowUpBridgeSummary,
-                                    userQuestion: normalizedText,
-                                    msgIndex: msgIndex
-                                )
-                                if self.messages.indices.contains(msgIndex) {
-                                    self.messages[msgIndex].update(
-                                        content: repaired.isEmpty ? PromptLocale.current.emptyReplyPlaceholder : repaired
-                                    )
-                                }
-                                self.finishTurn()
-                            }
-                            return
-                        }
-                        self.messages[msgIndex].update(
-                            content: cleaned.isEmpty ? PromptLocale.current.emptyReplyPlaceholder : cleaned
-                        )
-                        self.finishTurn()
                     }
+
+                    let cleaned = self.cleanOutput(fullText)
+                    if shouldUseFullAgentPrompt,
+                       matchedSkillIdsForTurn.count == 1,
+                       !preloadedSkills.isEmpty,
+                       self.canFallbackToPreloadedSkillTool(skillIds: matchedSkillIdsForTurn) {
+                        log("[Agent] preloaded skill fallback triggered after missing tool_call")
+                        self.messages[msgIndex].update(content: "")
+                        self.recordCompletedObservation(plan: textPromptPlan)
+                        Task {
+                            await self.executePreloadedSkillToolFallback(
+                                extractionPromptBase: lightPrompt,
+                                toolChainPrompt: streamingPrompt,
+                                userQuestion: normalizedText,
+                                skillIds: matchedSkillIdsForTurn,
+                                preloadedSkills: preloadedSkills,
+                                images: promptImages,
+                                msgIndex: msgIndex,
+                                fallbackText: cleaned
+                            )
+                        }
+                        return
+                    }
+
+                    self.recordCompletedObservation(plan: textPromptPlan)
+                    if forceImageFollowUpTextPrompt,
+                       let imageFollowUpBridgeSummary,
+                       !cleaned.isEmpty {
+                        Task { [weak self] in
+                            guard let self else { return }
+                            let repaired = await self.streamImageFollowUpStableReply(
+                                cleanedDraft: cleaned,
+                                assistantSummary: imageFollowUpBridgeSummary,
+                                userQuestion: normalizedText,
+                                msgIndex: msgIndex
+                            )
+                            if self.messages.indices.contains(msgIndex) {
+                                self.messages[msgIndex].update(
+                                    content: repaired.isEmpty ? PromptLocale.current.emptyReplyPlaceholder : repaired
+                                )
+                            }
+                            self.finishTurn()
+                        }
+                        return
+                    }
+                    self.messages[msgIndex].update(
+                        content: cleaned.isEmpty ? PromptLocale.current.emptyReplyPlaceholder : cleaned
+                    )
+                    self.finishTurn()
                 case .failure(let error):
                     if self.isUserCancellationError(error) {
                         log("[Agent] generation cancelled")
@@ -554,6 +589,7 @@ extension AgentEngine {
     // MARK: - Skill 结果后的后续推理（支持多轮工具链）
 
     func streamLLM(prompt: String, images: [CIImage]) async -> String? {
+        logPromptDiagnostics(label: "streamLLM.headless", prompt: prompt)
         return await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
             inference.generate(
                 prompt: prompt,
@@ -574,6 +610,7 @@ extension AgentEngine {
     }
 
     func streamLLM(prompt: String, msgIndex: Int, images: [CIImage]) async -> String? {
+        logPromptDiagnostics(label: "streamLLM.ui", prompt: prompt)
         var buffer = ""
         return await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
             var toolCallDetected = false
@@ -666,6 +703,8 @@ extension AgentEngine {
     ///   it's terminated as cancelled regardless of this parameter.
     func finishTurn(error: String? = nil, userCancelled: Bool = false) {
         let txn = coordinator.currentTransaction
+        let shouldRecordTelemetry = !(txn?.isTerminal ?? true)
+        let wasCancelled = userCancelled || txn?.state == .cancelling
         if let txn, !txn.isTerminal {
             if userCancelled || txn.state == .cancelling {
                 // Cancel flow in progress — mark terminated so coordinator's
@@ -684,6 +723,14 @@ extension AgentEngine {
                 txn.commit()
                 coordinator.completeGeneration()
             }
+        }
+        if shouldRecordTelemetry && !wasCancelled {
+            Telemetry.recordFirstResponseReceived(
+                modelID: catalog.selectedModel.id,
+                ttftMs: inference.stats.ttftMs,
+                success: error == nil,
+                failureReason: error == nil ? nil : "generation_error"
+            )
         }
         isProcessing = false
     }

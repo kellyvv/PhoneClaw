@@ -64,6 +64,12 @@ class LiveAudioIO {
 
     /// 中断恢复观察者
     private var interruptionObserver: Any?
+    private var routeChangeObserver: Any?
+
+    private var playbackStartedAt: CFAbsoluteTime?
+    private var playbackAudioDuration: TimeInterval?
+    private var playbackSampleRateForTelemetry: Int?
+    private var playbackBackend: String = "sherpa-onnx"
 
     // MARK: - Lifecycle
 
@@ -81,6 +87,14 @@ class LiveAudioIO {
         ) { [weak self] notification in
             self?.handleInterruption(notification)
         }
+        routeChangeObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification,
+            object: session,
+            queue: nil
+        ) { [weak self] notification in
+            self?.handleRouteChange(notification)
+        }
+        Telemetry.recordAudioRoute(reason: "audio_io_start")
 
         // ── Output path ──
         // Connect ONCE with a fixed format. Never reconnect during playback —
@@ -216,6 +230,10 @@ class LiveAudioIO {
             NotificationCenter.default.removeObserver(observer)
             interruptionObserver = nil
         }
+        if let observer = routeChangeObserver {
+            NotificationCenter.default.removeObserver(observer)
+            routeChangeObserver = nil
+        }
         audioInputHandler = nil
         audioInputBufferHandler = nil
         visualisationInputHandler = nil
@@ -225,6 +243,7 @@ class LiveAudioIO {
         onPlaybackStopped = nil
         idleCheckTask?.cancel()
         idleCheckTask = nil
+        finishPlaybackTelemetry(outcome: "engine_stopped")
         playerNode.stop()
         engine.inputNode.removeTap(onBus: 0)
         engine.mainMixerNode.removeTap(onBus: 0)
@@ -248,10 +267,12 @@ class LiveAudioIO {
         switch type {
         case .began:
             print("[AudioIO] ⚠️ Audio session interrupted")
+            Telemetry.recordAudioInterrupted(phase: "began")
         case .ended:
             let shouldResume = (userInfo[AVAudioSessionInterruptionOptionKey] as? UInt)
                 .map { AVAudioSession.InterruptionOptions(rawValue: $0).contains(.shouldResume) }
                 ?? true
+            Telemetry.recordAudioInterrupted(phase: "ended", shouldResume: shouldResume)
             if shouldResume {
                 do {
                     try AVAudioSession.sharedInstance().setActive(true)
@@ -264,6 +285,17 @@ class LiveAudioIO {
         @unknown default:
             break
         }
+    }
+
+    private func handleRouteChange(_ notification: Notification) {
+        let reason: String
+        if let raw = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
+           let routeReason = AVAudioSession.RouteChangeReason(rawValue: raw) {
+            reason = "route_change_\(routeReason.rawValue)"
+        } else {
+            reason = "route_change"
+        }
+        Telemetry.recordAudioRoute(reason: reason)
     }
 
     // MARK: - Output (for TTS)
@@ -286,8 +318,9 @@ class LiveAudioIO {
 
         // Do NOT reconnect playerNode here — connection is fixed in start().
         // Reconnecting disrupts AEC reference signal tracking.
+        finishPlaybackTelemetry(outcome: "replaced")
         playerNode.stop()
-        isPlaying = true
+        preparePlaybackTelemetry(buffer: buffer)
 
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             continuationLock.withLock {
@@ -295,12 +328,13 @@ class LiveAudioIO {
             }
             playerNode.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in
                 guard let self else { return }
-                self.isPlaying = false
+                self.finishPlaybackTelemetry(outcome: "completed")
                 print("[AudioIO] ✅ Playback done")
                 self.onPlaybackStopped?()
                 self.resumeContinuation()
             }
             playerNode.play()
+            recordPlaybackStartedTelemetry()
             // 回调在 play() 之后触发 — 此时音频已开始播放
             onPlaybackStarted?()
         }
@@ -308,9 +342,48 @@ class LiveAudioIO {
 
     func stopPlayback() {
         playerNode.stop()
-        isPlaying = false
+        finishPlaybackTelemetry(outcome: "stopped")
         onPlaybackStopped?()
         resumeContinuation()
+    }
+
+    private func preparePlaybackTelemetry(buffer: AVAudioPCMBuffer) {
+        let sampleRate = buffer.format.sampleRate
+        let duration = sampleRate > 0 ? Double(buffer.frameLength) / sampleRate : nil
+        playbackStartedAt = nil
+        playbackAudioDuration = duration
+        playbackSampleRateForTelemetry = Int(sampleRate)
+        playbackBackend = "sherpa-onnx"
+        isPlaying = true
+    }
+
+    private func recordPlaybackStartedTelemetry() {
+        playbackStartedAt = CFAbsoluteTimeGetCurrent()
+        Telemetry.recordAudioPlayStarted(
+            backend: playbackBackend,
+            audioDuration: playbackAudioDuration,
+            sampleRate: playbackSampleRateForTelemetry
+        )
+    }
+
+    private func finishPlaybackTelemetry(outcome: String) {
+        guard isPlaying || playbackStartedAt != nil || playbackAudioDuration != nil else { return }
+        let playbackDuration: TimeInterval?
+        if let playbackStartedAt {
+            playbackDuration = CFAbsoluteTimeGetCurrent() - playbackStartedAt
+        } else {
+            playbackDuration = nil
+        }
+        Telemetry.recordAudioPlayFinished(
+            backend: playbackBackend,
+            outcome: outcome,
+            playbackDuration: playbackDuration,
+            audioDuration: playbackAudioDuration
+        )
+        isPlaying = false
+        playbackStartedAt = nil
+        playbackAudioDuration = nil
+        playbackSampleRateForTelemetry = nil
     }
 
     // MARK: - Continuation

@@ -220,31 +220,33 @@ pod install
 
 **方案 B — 打包 E2B 进 App**
 
-1. 先在电脑下载模型到 `Models/gemma-4-e2b-it-4bit`（推荐用 Hugging Face CLI）：
+Gemma 4 现在用 LiteRT-LM 推理，模型是单个 `.litertlm` 文件（不再是 MLX 权重目录）。
+
+1. 先在电脑下载模型文件到 `Models/`（推荐用 Hugging Face CLI）：
 
 ```bash
 brew install hf
-mkdir -p ./Models/gemma-4-e2b-it-4bit
-hf download mlx-community/gemma-4-e2b-it-4bit --local-dir ./Models/gemma-4-e2b-it-4bit
+mkdir -p ./Models
+hf download litert-community/gemma-4-E2B-it-litert-lm gemma-4-E2B-it.litertlm --local-dir ./Models
 ```
 
-2. 在 Xcode `Build Phases > Copy Bundle Resources` 里手动把模型目录加进去
-3. 修改 `LLM/MLX/MLXLocalLLMService.swift` 里的 `availableModels`，只保留要分发的模型
+2. 在 Xcode 里把 `Models/gemma-4-E2B-it.litertlm` 拖进工程，确认它出现在 `Build Phases > Copy Bundle Resources`（作为单个文件加入，不是 folder reference）
+3. 修改 `LLM/Models/PredefinedModels.swift` 里的 `allModels`，只保留要分发的模型
 
-> E2B 约 3.58 GB，E4B 约 5.22 GB。`Models/` 已在 `.gitignore` 中忽略，不会提交到仓库。
+> E2B 约 2.4 GB，E4B 约 3.4 GB。国内用户可设 `HF_ENDPOINT=https://hf-mirror.com` 加速，或从 ModelScope 镜像下载同名文件。`Models/` 已在 `.gitignore` 中忽略，不会提交到仓库。
 
 **方案 C — 同时打包 E2B + E4B**
 
-下载两个模型：
+下载两个模型文件：
 
 ```bash
 brew install hf
-mkdir -p ./Models/gemma-4-e2b-it-4bit ./Models/gemma-4-e4b-it-4bit
-hf download mlx-community/gemma-4-e2b-it-4bit --local-dir ./Models/gemma-4-e2b-it-4bit
-hf download mlx-community/gemma-4-e4b-it-4bit --local-dir ./Models/gemma-4-e4b-it-4bit
+mkdir -p ./Models
+hf download litert-community/gemma-4-E2B-it-litert-lm gemma-4-E2B-it.litertlm --local-dir ./Models
+hf download litert-community/gemma-4-E4B-it-litert-lm gemma-4-E4B-it.litertlm --local-dir ./Models
 ```
 
-然后把两个模型 folder reference 都加回 Xcode 的 `Copy Bundle Resources`。
+然后把 `gemma-4-E2B-it.litertlm` 和 `gemma-4-E4B-it.litertlm` 两个文件都加入 Xcode 的 `Copy Bundle Resources`。
 
 **LIVE 模式（语音交互）额外模型**
 
@@ -341,7 +343,7 @@ examples:
 通常是因为对应 Skill 还没有真正执行到系统 API。如果之前已经拒绝过一次，iOS 也不会反复弹框，需要到系统设置里手动开启。
 
 为什么切模型后加载失败？
-先确认：模型目录名和代码里的 `availableModels` 一致；如果你走的是空壳安装，模型已经在手机端下载完成；如果你走的是内置分发，该模型确实被打进了 App 包；设备内存足够。
+先确认：模型文件名和 `LLM/Models/PredefinedModels.swift` 里的 `allModels` 一致；如果你走的是空壳安装，模型已经在手机端下载完成；如果你走的是内置分发，该模型确实被打进了 App 包；设备内存足够。
 
 为什么提醒事项创建失败？
 最新代码会先尝试复用现有提醒列表；如果系统里没有可写列表，会再尝试自动创建一个 PhoneClaw 提醒列表。如果这一步仍失败，通常是系统提醒源本身不可写。
@@ -421,10 +423,10 @@ PhoneClaw 不会假设自己能像桌面系统那样任意操控所有 App，而
 
 - [Hugging Face CLI 文档](https://huggingface.co/docs/huggingface_hub/guides/cli)
 - [Hugging Face 下载文档](https://huggingface.co/docs/huggingface_hub/en/guides/download)
-- [Gemma 4 E2B MLX 模型](https://huggingface.co/mlx-community/gemma-4-e2b-it-4bit)
-- [Gemma 4 E4B MLX 模型](https://huggingface.co/mlx-community/gemma-4-e4b-it-4bit)
-- [Gemma 4 E2B (ModelScope 国内镜像)](https://modelscope.cn/models/mlx-community/gemma-4-e2b-it-4bit)
-- [Gemma 4 E4B (ModelScope 国内镜像)](https://modelscope.cn/models/mlx-community/gemma-4-e4b-it-4bit)
+- [Gemma 4 E2B LiteRT 模型](https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm)
+- [Gemma 4 E4B LiteRT 模型](https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm)
+- [Gemma 4 E2B (ModelScope 国内镜像)](https://modelscope.cn/models/litert-community/gemma-4-E2B-it-litert-lm)
+- [Gemma 4 E4B (ModelScope 国内镜像)](https://modelscope.cn/models/litert-community/gemma-4-E4B-it-litert-lm)
 - [MiniCPM-V 4.6 模型](https://huggingface.co/openbmb/MiniCPM-V-4_6)
 - [OpenBMB MiniCPM-V iOS Demo](https://github.com/OpenBMB/MiniCPM-V-Apps)
 

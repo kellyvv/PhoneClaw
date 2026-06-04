@@ -78,6 +78,11 @@ class TTSService {
 
         // Fallback to system TTS
         print("[TTS] ⚠️ TTS model not found, using system TTS")
+        Telemetry.recordTTSFailed(
+            backend: "sherpa-onnx",
+            phase: "initialize",
+            reason: "model_not_found"
+        )
         backend = "system"
         isAvailable = true
         state = .ready
@@ -197,7 +202,18 @@ class TTSService {
     // MARK: - Synthesize (CPU-heavy, NOT main thread)
 
     func synthesize(_ text: String) -> Data? {
-        guard let tts else { return nil }
+        let textLength = text.trimmingCharacters(in: .whitespacesAndNewlines).count
+        Telemetry.recordTTSStarted(backend: backend, textLength: textLength)
+
+        guard let tts else {
+            Telemetry.recordTTSFailed(
+                backend: backend,
+                phase: "generate",
+                reason: "engine_nil",
+                textLength: textLength
+            )
+            return nil
+        }
         let t0 = CFAbsoluteTimeGetCurrent()
         let audio = tts.generate(text: text, sid: defaultSid, speed: 1.0)
         let synthMs = (CFAbsoluteTimeGetCurrent() - t0) * 1000
@@ -207,13 +223,28 @@ class TTSService {
 
         guard count > 0 else {
             print("[TTS] ❌ Empty audio output")
+            Telemetry.recordTTSFailed(
+                backend: backend,
+                phase: "generate",
+                reason: "empty_audio",
+                textLength: textLength
+            )
             return nil
         }
 
         let duration = Double(count) / Double(sr)
         print("[TTS] Synth: \(String(format: "%.0f", synthMs))ms, \(String(format: "%.1f", duration))s audio, \(sr)Hz")
 
-        return samplesToWAV(samples: audio.samples, count: Int(count), sampleRate: sr)
+        let wav = samplesToWAV(samples: audio.samples, count: Int(count), sampleRate: sr)
+        Telemetry.recordTTSGenerated(
+            backend: backend,
+            synthMs: synthMs,
+            audioDuration: duration,
+            sampleRate: sr,
+            byteCount: wav.count,
+            textLength: textLength
+        )
+        return wav
     }
 
     // MARK: - Playback (through shared AVAudioEngine)
@@ -226,6 +257,11 @@ class TTSService {
             await audioIO.playWAV(data)
         } else {
             print("[TTS] ⚠️ No audioIO, skipping playback")
+            Telemetry.recordTTSFailed(
+                backend: backend,
+                phase: "playback",
+                reason: "audio_io_missing"
+            )
         }
         state = .ready
     }
@@ -233,6 +269,10 @@ class TTSService {
     /// System TTS fallback (uses its own audio path).
     func speakSystem(_ text: String) async {
         state = .speaking
+        Telemetry.recordTTSStarted(
+            backend: "system",
+            textLength: text.trimmingCharacters(in: .whitespacesAndNewlines).count
+        )
         let controller = await getSystemSpeechController()
         await controller.speak(text)
         state = .ready
@@ -249,7 +289,16 @@ class TTSService {
     /// Legacy speak for greeting etc.
     func speak(_ text: String) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, isAvailable else { return }
+        guard !trimmed.isEmpty else { return }
+        guard isAvailable else {
+            Telemetry.recordTTSFailed(
+                backend: backend,
+                phase: "speak",
+                reason: "unavailable",
+                textLength: trimmed.count
+            )
+            return
+        }
 
         state = .speaking
         print("[TTS] 🔊 [\(backend)] \"\(trimmed.prefix(40))\"")
@@ -355,6 +404,32 @@ final class SystemSpeechController: NSObject, @preconcurrency AVSpeechSynthesize
 
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
         print("[TTS] ✅ System TTS done")
+        Telemetry.recordAudioPlayFinished(
+            backend: "system",
+            outcome: "completed",
+            playbackDuration: nil,
+            audioDuration: nil
+        )
+        let c = speechContinuation
+        speechContinuation = nil
+        c?.resume()
+    }
+
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didStart utterance: AVSpeechUtterance) {
+        Telemetry.recordAudioPlayStarted(
+            backend: "system",
+            audioDuration: nil,
+            sampleRate: nil
+        )
+    }
+
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+        Telemetry.recordAudioPlayFinished(
+            backend: "system",
+            outcome: "cancelled",
+            playbackDuration: nil,
+            audioDuration: nil
+        )
         let c = speechContinuation
         speechContinuation = nil
         c?.resume()

@@ -73,6 +73,7 @@ extension AgentEngine {
         var blocks: [String] = []
         for message in messages.reversed() {
             guard message.role == .skillResult,
+                  message.skillResultKind == .toolExecution,
                   let skillName = message.skillName,
                   toolNames.contains(skillName) else {
                 continue
@@ -474,7 +475,7 @@ extension AgentEngine {
 
                     try? await Task.sleep(for: .milliseconds(300))
                     messages[cardIndex].update(role: .system, content: "loaded", skillName: displayName)
-                    messages.append(ChatMessage(role: .skillResult, content: instructions, skillName: step.skill))
+                    messages.append(ChatMessage(role: .skillResult, content: instructions, skillName: step.skill, skillResultKind: .skillInstructions))
                     loadedInstructions[step.skill] = instructions
                 }
 
@@ -517,7 +518,7 @@ extension AgentEngine {
                     let summary = cleanedOutput.isEmpty ? tr("(无输出)", "(no output)") : cleanedOutput
 
                     messages[cardIndex].update(role: .system, content: "done", skillName: displayName)
-                    messages.append(ChatMessage(role: .skillResult, content: summary, skillName: step.skill))
+                    messages.append(ChatMessage(role: .skillResult, content: summary, skillName: step.skill, skillResultKind: .generatedContent))
 
                     completedSteps.append(
                         ExecutedPlanStep(
@@ -610,7 +611,7 @@ extension AgentEngine {
                     }
 
                     messages[cardIndex].update(role: .system, content: "done", skillName: displayName)
-                    messages.append(ChatMessage(role: .skillResult, content: toolResultDetail, skillName: step.tool))
+                    messages.append(ChatMessage(role: .skillResult, content: toolResultDetail, skillName: step.tool, skillResultKind: .toolExecution))
 
                     if !canonicalResult.success {
                         finishPlanning(with: canonicalResult.summary)

@@ -1163,6 +1163,12 @@ class LiveModeEngine {
             }
             guard let wavData else {
                 print("[Live] ⏱ TTS timeout or empty for: \"\(cleaned.prefix(20))\"")
+                Telemetry.recordTTSFailed(
+                    backend: tts.backend,
+                    phase: "enqueue",
+                    reason: "generation_timeout_or_empty",
+                    textLength: cleaned.count
+                )
                 return
             }
 

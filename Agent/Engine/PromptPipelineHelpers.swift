@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 // MARK: - Prompt Pipeline Helpers
@@ -114,6 +115,59 @@ extension AgentEngine {
         )
     }
 
+    func logPromptDiagnostics(label: String, prompt: String) {
+        let markers = [
+            "<|turn>system",
+            "<|turn>user",
+            "<|turn>model",
+            "<turn|>",
+            "<tool_call>",
+            "<|tool_call>",
+            "<tool|>",
+            "<|tool>",
+            "<|think|>",
+            "<|channel|>",
+            "<channel|>"
+        ]
+        let markerSummary = markers
+            .map { "\($0)=\(promptOccurrenceCount($0, in: prompt))" }
+            .joined(separator: " ")
+        let lineCount = prompt.split(separator: "\n", omittingEmptySubsequences: false).count
+        let sectionHashes = promptSectionFingerprints(prompt)
+        let diagnostic = "[PromptDiag] label=\(label) chars=\(prompt.count) lines=\(lineCount) " +
+            "sha=\(promptSHA256(prompt)) \(markerSummary) sections=\(sectionHashes)"
+        lastTurnPromptDiagnostics.append(diagnostic)
+        log(diagnostic)
+    }
+
+    private func promptSHA256(_ text: String) -> String {
+        let digest = SHA256.hash(data: Data(text.utf8))
+        return digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    private func promptOccurrenceCount(_ needle: String, in haystack: String) -> Int {
+        guard !needle.isEmpty else { return 0 }
+        var count = 0
+        var searchRange = haystack.startIndex..<haystack.endIndex
+        while let range = haystack.range(of: needle, range: searchRange) {
+            count += 1
+            searchRange = range.upperBound..<haystack.endIndex
+        }
+        return count
+    }
+
+    private func promptSectionFingerprints(_ prompt: String) -> String {
+        let parts = prompt.components(separatedBy: "<|turn>")
+            .dropFirst()
+            .prefix(8)
+        let sections = parts.enumerated().map { index, rawPart in
+            let role = rawPart.prefix { !$0.isNewline }
+            let body = rawPart.dropFirst(role.count)
+            let digest = promptSHA256(String(body))
+            return "\(index):\(role):\(body.count):\(digest.prefix(10))"
+        }
+        return sections.joined(separator: ",")
+    }
     var activeContextBudgetPlanner: ContextBudgetPlanner {
         if HotfixFeatureFlags.useHotfixPromptPipeline && HotfixFeatureFlags.enablePreflightBudget {
             return hotfixContextBudgetPlanner
@@ -146,12 +200,14 @@ extension AgentEngine {
         canUseDelta: Bool,
         streamingPlanningHistory: [ChatMessage]
     ) {
+        let enableThinkingForTextAnswer =
+            effectiveEnableThinking && !shouldUseFullAgentPrompt && !shouldUsePlanner
         let lightHistory = shouldUsePlanner ? [] : priorHistory
         let lightPrompt = PromptBuilder.buildLightweightTextPrompt(
             userMessage: normalizedText,
             history: lightHistory,
             systemPrompt: config.systemPrompt,
-            enableThinking: effectiveEnableThinking,
+            enableThinking: enableThinkingForTextAnswer,
             historyDepth: lightHistory.count,
             includeImageHistoryMarkers: includeImageHistoryMarkers,
             imageFollowUpBridgeSummary: imageFollowUpBridgeSummary
@@ -165,7 +221,7 @@ extension AgentEngine {
             imageFollowUpBridgeSummary: imageFollowUpBridgeSummary,
             history: priorHistory,
             systemPrompt: config.systemPrompt,
-            enableThinking: effectiveEnableThinking,
+            enableThinking: enableThinkingForTextAnswer,
             historyDepth: priorHistory.count,
             showListSkillsHint: matchedSkillIdsForTurn.isEmpty,
             preloadedSkills: preloadedSkills
@@ -180,7 +236,7 @@ extension AgentEngine {
             streamingPrompt = PromptBuilder.buildDeltaTurnPrompt(
                 userMessage: normalizedText,
                 currentImageCount: 0,
-                enableThinking: effectiveEnableThinking
+                enableThinking: enableThinkingForTextAnswer
             )
         } else {
             streamingPrompt = agentPrompt ?? lightPrompt

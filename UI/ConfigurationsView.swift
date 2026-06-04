@@ -1062,7 +1062,7 @@ struct ConfigurationsView: View {
             HStack(spacing: 8) {
                 Button(modelDownloadButtonTitle(for: model, isResumable: isResumable)) {
                     modelSelectionMessage = nil
-                    installModel(model)
+                    installModelWithTelemetry(model)
                 }
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(SettingsStyle.ink)
@@ -1112,7 +1112,7 @@ struct ConfigurationsView: View {
             HStack(spacing: 8) {
                 Button(tr("重试", "Retry")) {
                     modelSelectionMessage = nil
-                    installModel(model)
+                    installModelWithTelemetry(model)
                 }
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(SettingsStyle.ink)
@@ -1150,20 +1150,28 @@ struct ConfigurationsView: View {
         tr("下载失败，请重试。", "Download failed. Please try again.")
     }
 
-    private func installModel(_ model: ModelDescriptor) {
+    private func installModelWithTelemetry(_ model: ModelDescriptor) {
+        Telemetry.recordModelInstall(modelID: model.id, outcome: .started)
         Task {
             do {
                 try await engine.installer.install(model: model)
+                Telemetry.recordModelInstall(modelID: model.id, outcome: .completed)
                 await MainActor.run {
                     engine.installer.refreshInstallStates()
                     selectModelIfCurrentUnavailable(model)
                 }
             } catch is CancellationError {
+                Telemetry.recordModelInstall(modelID: model.id, outcome: .cancelled)
                 await MainActor.run {
                     engine.installer.refreshInstallStates()
                     modelSelectionMessage = nil
                 }
             } catch {
+                Telemetry.recordModelInstall(
+                    modelID: model.id,
+                    outcome: .failed,
+                    failureReason: Telemetry.failureReason(for: error)
+                )
                 await MainActor.run {
                     engine.installer.refreshInstallStates()
                     modelSelectionMessage = modelInstallFailureMessage(error)

@@ -453,13 +453,23 @@ struct PromptBuilder {
                     prompt += "<|turn>model\n<tool_call>\n{\"name\": \"\(skillName)\", \"arguments\": {}}\n</tool_call><turn|>\n"
                 }
             case .skillResult:
+                guard msg.skillResultKind != .skillInstructions else { continue }
                 let skillLabel = msg.skillName ?? "tool"
                 // History 的 skill result 用当前语言 label. 历史 prompt 里 Chinese
                 // label 会把英文模型 drift 回中文 (E2B 对前文语言特别敏感)。
-                prompt += "<|turn>user\n" + tr(
-                    "工具 \(skillLabel) 的执行结果：\(msg.content)",
-                    "Result of tool \(skillLabel): \(msg.content)"
-                ) + "<turn|>\n"
+                let resultText: String
+                if msg.skillResultKind == .generatedContent {
+                    resultText = tr(
+                        "Skill \(skillLabel) 生成的内容：\(msg.content)",
+                        "Generated content from skill \(skillLabel): \(msg.content)"
+                    )
+                } else {
+                    resultText = tr(
+                        "工具 \(skillLabel) 的执行结果：\(msg.content)",
+                        "Result of tool \(skillLabel): \(msg.content)"
+                    )
+                }
+                prompt += "<|turn>user\n" + resultText + "<turn|>\n"
             }
         }
 
@@ -574,6 +584,59 @@ struct PromptBuilder {
 
         \(questionLabel)
         \(userQuestion)
+        <turn|>
+        <|turn>model
+        """
+    }
+
+    static func buildSkillIntentRoutingPrompt(
+        userQuestion: String,
+        availableNetworkSkillsSummary: String
+    ) -> String {
+        let trimmedQuestion = userQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
+        let clippedQuestion = trimmedQuestion.count > 500
+            ? String(trimmedQuestion.prefix(500))
+            : trimmedQuestion
+
+        let systemBody: String
+        let skillsLabel: String
+        let questionLabel: String
+        if LanguageService.shared.current.isChinese {
+            systemBody = """
+            你只做路由分类, 不回答用户问题。
+            判断用户这个问题是否需要调用下面某个 network skill。
+            network skill 只用于公开互联网或网页相关能力。
+            如果可靠回答必须依赖当前、近期、实时、会随时间变化、会随地点变化、或需要网页查证的公开信息, 输出最合适的 skill id。
+            不要因为用户没有写"搜索"或"联网"就输出 none; 要根据问题本身是否需要外部公开信息来判断。
+            如果不需要外部网页信息, 输出 none。
+            只输出一个 skill id 或 none, 不要解释, 不要输出 JSON, 不要输出 `<tool_call>`。
+            """
+            skillsLabel = "可用 network skills:"
+            questionLabel = "用户问题:"
+        } else {
+            systemBody = """
+            You only classify routing; do not answer the user.
+            Decide whether this user message needs one of the network skills below.
+            A network skill is only for public internet or webpage capabilities.
+            If a reliable answer depends on current, recent, live, time-varying, location-varying, or web-verifiable public information, output the best skill id.
+            Do not output none merely because the user did not explicitly say "search" or "browse"; decide from whether the question itself requires external public information.
+            If no external web information is needed, output none.
+            Output exactly one skill id or none. Do not explain, do not output JSON, and do not emit `<tool_call>`.
+            """
+            skillsLabel = "Available network skills:"
+            questionLabel = "User message:"
+        }
+
+        return """
+        <|turn>system
+        \(systemBody)
+
+        \(skillsLabel)
+        \(availableNetworkSkillsSummary)
+        <turn|>
+        <|turn>user
+        \(questionLabel)
+        \(clippedQuestion)
         <turn|>
         <|turn>model
         """
@@ -873,18 +936,46 @@ struct PromptBuilder {
         userQuestion: String,
         toolName: String,
         toolResultSummary: String,
-        currentImageCount: Int = 0
+        currentImageCount: Int = 0,
+        enableThinking: Bool = false
     ) -> String {
-        let result = compactToolResultSummary(toolResultSummary)
+        let result = compactToolResultSummary(
+            toolResultSummary,
+            maxCharacters: toolName == "web-search" ? 5_200 : 3_200
+        )
         let toolSpecificInstructions = compactToolAnswerInstructions(toolName: toolName)
+        let allowsFollowUpFetch = toolName == "web-search"
         if LanguageService.shared.current.isChinese {
+            let thinkingPrefix = enableThinking ? "<|think|>" : ""
+            let thinkingInstruction = enableThinking ? "\n\n\(thinkingLanguageInstruction)" : ""
+            let answerOnlyRule: String
+            let finalInstruction: String
+            if allowsFollowUpFetch {
+                answerOnlyRule = "你正在根据已经执行完成的 web-search 结果继续完成用户问题。如果结果已经足够，最终回答只输出答案；如果搜索结果明确提示需要读取原文且一个网页可以补全证据，只允许调用一次 web-fetch，不要再次调用 web-search 或其他工具。"
+                finalInstruction = """
+                如果需要读取原文, 只输出:
+                <tool_call>{"name":"web-fetch","arguments":{"url":"https://example.com","max_characters":6000}}</tool_call>
+                其中 url 必须替换为上方最相关的一条真实来源 URL。
+                如果不需要继续读取, 请基于工具返回内容直接回答用户。
+                直接回答时不要输出 JSON、字段名、模板、代码块或中间步骤。不要提到内部工具调用流程。
+                """
+            } else {
+                answerOnlyRule = enableThinking
+                    ? "你正在根据一个已经执行完成的工具结果回答用户。最终回答部分只输出答案，不要再次调用工具。"
+                    : "你正在根据一个已经执行完成的工具结果回答用户。只输出最终答案，不要再次调用工具。"
+                finalInstruction = """
+                请基于工具返回内容直接回答用户。
+                不要输出 JSON、字段名、模板、代码块或中间步骤。不要提到内部工具调用流程。
+                """
+            }
             return """
             <|turn>system
-            \(defaultSystemPrompt)
-            你正在根据一个已经执行完成的工具结果回答用户。只输出最终答案，不要再次调用工具。
+            \(thinkingPrefix)\(defaultSystemPrompt)
+            \(currentTimeAnchorBlock())
+            \(answerOnlyRule)
             回答必须简洁：优先 3-6 条要点；每条 1 句；总长度尽量控制在 500 字以内。
-            如果工具结果包含来源、链接或时间，保留这些可核验信息。不要编造工具结果之外的信息。
-            \(toolSpecificInstructions)
+            如果是联网工具结果，正文只写结论，来源链接统一放到单独的“引用网址”段；不要把 URL/host 混在正文要点里。不要编造工具结果之外的信息。
+            \(toolSpecificInstructions)\(thinkingInstruction)
             <turn|>
             <|turn>user
             用户问题：
@@ -893,20 +984,42 @@ struct PromptBuilder {
             工具 \(toolName) 返回：
             \(result)
 
-            请基于工具返回内容直接回答用户。
-            不要输出 JSON、字段名、模板、代码块或中间步骤。不要提到内部工具调用流程。
+            \(finalInstruction)
             <turn|>
             <|turn>model
 
             """
         } else {
+            let thinkingPrefix = enableThinking ? "<|think|>" : ""
+            let thinkingInstruction = enableThinking ? "\n\n\(thinkingLanguageInstruction)" : ""
+            let answerOnlyRule: String
+            let finalInstruction: String
+            if allowsFollowUpFetch {
+                answerOnlyRule = "You are continuing from a completed web-search result. If the result is sufficient, output only the final answer. If the search result explicitly needs page text and one webpage can complete the evidence, you may call web-fetch once; do not call web-search or any other tool again."
+                finalInstruction = """
+                If you need to read the page, output only:
+                <tool_call>{"name":"web-fetch","arguments":{"url":"https://example.com","max_characters":6000}}</tool_call>
+                Replace url with the most relevant real source URL from the results above.
+                If no further fetch is needed, answer the user directly from the tool result.
+                In direct answers, do not output JSON, field names, templates, code blocks, or intermediate steps. Do not mention internal tool-calling flow.
+                """
+            } else {
+                answerOnlyRule = enableThinking
+                    ? "You are answering from a completed tool result. In the final answer section, output only the answer; do not call tools again."
+                    : "You are answering from a completed tool result. Output only the final answer; do not call tools again."
+                finalInstruction = """
+                Answer the user directly based on the tool result.
+                Do not output JSON, field names, templates, code blocks, or intermediate steps. Do not mention internal tool-calling flow.
+                """
+            }
             return """
             <|turn>system
-            \(defaultSystemPrompt)
-            You are answering from a completed tool result. Output only the final answer; do not call tools again.
+            \(thinkingPrefix)\(defaultSystemPrompt)
+            \(currentTimeAnchorBlock())
+            \(answerOnlyRule)
             Keep the answer concise: prefer 3-6 bullets, one sentence each, and keep it under about 300 words.
-            Preserve verifiable source URLs, dates, or timestamps when present. Do not invent facts beyond the tool result.
-            \(toolSpecificInstructions)
+            For web tool results, keep the body focused on the conclusion and put source links in a separate “Sources” section; do not mix URLs/hosts into the body bullets. Do not invent facts beyond the tool result.
+            \(toolSpecificInstructions)\(thinkingInstruction)
             <turn|>
             <|turn>user
             User question:
@@ -915,8 +1028,7 @@ struct PromptBuilder {
             Tool \(toolName) returned:
             \(result)
 
-            Answer the user directly based on the tool result.
-            Do not output JSON, field names, templates, code blocks, or intermediate steps. Do not mention internal tool-calling flow.
+            \(finalInstruction)
             <turn|>
             <|turn>model
 
@@ -928,13 +1040,13 @@ struct PromptBuilder {
         switch toolName {
         case "web-search":
             return tr(
-                "对 web-search：先判断搜索结果是否能回答用户问题。不要把首页、频道页、站点简介或媒体介绍当作新闻事实；只有结果包含明确标题、日期、事件或官方/可信来源时，才称为最新消息。带[未确认/传闻]的结果必须明确说未确认，不能说成已发布或确定会发布；每条新闻/传闻必须保留来源 URL。带[相关但非精确匹配]的结果不要列为用户所问对象的消息。否则直接说“这次搜索没有返回明确可核验的最新消息”，再列出可查看来源。",
-                "For web-search: first decide whether the results actually answer the user's question. Do not treat homepages, category pages, site descriptions, or media blurbs as news facts; call something latest news only when the result has a concrete title, date, event, or official/credible source. Results labeled [unconfirmed/rumor] must be described as unconfirmed, not as released or certain; every news/rumor item must keep its source URL. Do not list results labeled [related, not exact match] as news about the object the user asked for. Otherwise say that the search did not return clearly verifiable latest information, then list possible sources to check."
+                "对 web-search：优先查看 evidence_pack。若 evidence_pack.sufficiency=sufficient 或 answerability=direct，必须只基于 evidence_pack.chunks / 可直接使用的搜索条目回答。直接回答必须分成两段：先写“总结”，再写“引用网址”。“总结”段只写结论、关键数值和必要的不确定性，不要夹 URL、host、来源括号或搜索时间；“引用网址”段列出 1-5 条支撑结论的 Markdown 链接，优先使用 evidence_pack.chunks 里的真实 URL，同源去重。若用户问具体数值、价格、汇率、比分或“多少”，总结第一句先给证据里的具体数值。若 answerability=needs_fetch 且 evidence_pack 为空或偏薄，才选择最相关 URL 调用一次 web-fetch。无法选择或读取后仍不足时，在总结里说明“这次搜索没有返回足够可用结果”，并在引用网址里列出已查来源。不要把首页、频道页、站点简介或低置信条目当作事实。",
+                "For web-search: inspect evidence_pack first. If evidence_pack.sufficiency=sufficient or answerability=direct, answer only from evidence_pack.chunks / directly usable search entries. Direct answers must use two sections: “Summary” first, then “Sources.” The Summary section should contain only the conclusion, key values, and necessary uncertainty; do not include URLs, hosts, inline source parentheses, or search timestamps there. The Sources section must list 1-5 supporting Markdown links, preferring real URLs from evidence_pack.chunks and deduplicating by source. If the user asks for a concrete value, price, exchange rate, score, or “how much/how many,” the first Summary sentence must give the concrete value from evidence. If answerability=needs_fetch and the evidence_pack is empty or thin, choose the most relevant URL and call web-fetch once. Only if no source can be chosen, or the fetched page is still insufficient, say the search did not return sufficiently usable results and list checked sources under Sources. Do not treat homepages, category pages, site descriptions, or low-confidence entries as facts."
             )
         case "web-fetch":
             return tr(
-                "对 web-fetch：只总结已读取网页正文；如果正文不足以回答，明确说明页面中没有找到对应信息。",
-                "For web-fetch: summarize only the fetched page text; if the page text is insufficient, clearly say the requested information was not found on the page."
+                "对 web-fetch：只使用已读取网页正文回答。若正文包含按时间、排行或列表排列的数据，选最相关/最新的一条直接给结论；不要因为页面没有写“绝对最新”就空泛拒答。直接回答同样分成“总结”和“引用网址”，来源只放在“引用网址”段。只有正文确实没有覆盖用户问题时，才明确说明页面中没有找到对应信息。",
+                "For web-fetch: answer only from the fetched page text. If the text contains dated, ranked, or listed data, choose the most relevant/latest entry and give the conclusion; do not refuse just because the page does not explicitly label it as “absolute latest.” Direct answers should also use “Summary” and “Sources,” with source links only in Sources. Only say the requested information was not found when the page text truly does not cover the user question."
             )
         default:
             return ""

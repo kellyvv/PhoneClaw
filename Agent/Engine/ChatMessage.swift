@@ -8,6 +8,10 @@ struct ChatMessage: Identifiable, Codable {
     var audios: [ChatAudioAttachment]
     let timestamp: Date
     var skillName: String? = nil
+    /// .skillResult 的语义类型: 区分 load_skill 注入的说明书 / 真实工具执行结果 / content skill 生成文本。
+    /// executeToolChain 的「工具已跑过」去重只数 .toolExecution —— 否则 skill-id == tool-name
+    /// (如 web-search) 时, "已加载说明书" 会被误判成 "工具已执行" 而跳过真正的执行。
+    var skillResultKind: SkillResultKind? = nil
 
     init(
         id: UUID = UUID(),
@@ -16,7 +20,8 @@ struct ChatMessage: Identifiable, Codable {
         images: [ChatImageAttachment] = [],
         audios: [ChatAudioAttachment] = [],
         timestamp: Date = Date(),
-        skillName: String? = nil
+        skillName: String? = nil,
+        skillResultKind: SkillResultKind? = nil
     ) {
         self.id = id
         self.role = role
@@ -25,6 +30,7 @@ struct ChatMessage: Identifiable, Codable {
         self.audios = audios
         self.timestamp = timestamp
         self.skillName = skillName
+        self.skillResultKind = skillResultKind
     }
 
     mutating func update(content: String) {
@@ -40,6 +46,13 @@ struct ChatMessage: Identifiable, Codable {
 
     enum Role: String, Codable {
         case user, assistant, system, skillResult
+    }
+
+    /// .skillResult 三种语义 —— 让去重能区分「已加载」和「已执行」。
+    enum SkillResultKind: String, Codable {
+        case skillInstructions   // load_skill 注入的 SKILL.md 说明书 (给模型读, 非工具结果)
+        case toolExecution       // 真实工具 / 协议工具执行返回的结果
+        case generatedContent    // content 型 skill 按 SKILL.md 直接生成的文本
     }
 }
 

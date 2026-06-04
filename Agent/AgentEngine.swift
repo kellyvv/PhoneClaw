@@ -71,6 +71,8 @@ class AgentEngine {
     let plannerRevision = "planner-v3-local-selection"
     var lastTurnMatchedSkillIds: [String] = []
     var lastTurnRawModelOutputs: [String] = []
+    var lastTurnPromptDiagnostics: [String] = []
+    var lastTurnStreamingPrompt: String?
     let legacyContextBudgetPlanner: ContextBudgetPlanner
     let hotfixContextBudgetPlanner: ContextBudgetPlanner
     var promptObservationBuffer = HotfixTurnObservationRingBuffer()

@@ -4,6 +4,12 @@ import Foundation
 import UIKit
 #endif
 
+struct FollowUpSuggestion: Identifiable, Equatable {
+    let id: String
+    let title: String
+    let prompt: String
+}
+
 // MARK: - AI 回复
 
 struct AIResponseView: View {
@@ -13,6 +19,8 @@ struct AIResponseView: View {
     let onToggle: (UUID) -> Void
     let onToggleThinking: () -> Void
     let onRetry: (() -> Void)?
+    let followUpSuggestions: [FollowUpSuggestion]
+    let onFollowUpSuggestion: (FollowUpSuggestion) -> Void
 
     private var hasSkill: Bool { !block.skills.isEmpty }
     private var hasThinkingText: Bool {
@@ -60,6 +68,14 @@ struct AIResponseView: View {
                     )
                 }
 
+                if !followUpSuggestions.isEmpty, !block.isThinking {
+                    FollowUpSuggestionRow(
+                        suggestions: followUpSuggestions,
+                        onTap: onFollowUpSuggestion
+                    )
+                    .padding(.top, 2)
+                }
+
                 if let onRetry, !block.isThinking {
                     Button(action: onRetry) {
                         HStack(spacing: 5) {
@@ -78,6 +94,47 @@ struct AIResponseView: View {
 
             Spacer(minLength: Theme.aiMinSpacer)
         }
+    }
+}
+
+private struct FollowUpSuggestionRow: View {
+    let suggestions: [FollowUpSuggestion]
+    let onTap: (FollowUpSuggestion) -> Void
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 7) {
+                ForEach(suggestions) { suggestion in
+                    Button {
+                        onTap(suggestion)
+                    } label: {
+                        Text(suggestion.title)
+                            .font(.system(size: 12, weight: .regular, design: .rounded))
+                            .foregroundStyle(Theme.textTertiary.opacity(0.9))
+                            .lineLimit(1)
+                            .padding(.horizontal, 10)
+                            .frame(height: 30)
+                            .background(Theme.bgHover.opacity(0.34), in: Capsule())
+                            .overlay(
+                                Capsule()
+                                    .strokeBorder(Theme.border.opacity(0.42), lineWidth: 0.5)
+                                    .allowsHitTesting(false)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .frame(maxWidth: assistantTextMaxWidth, alignment: .leading)
+    }
+
+    private var assistantTextMaxWidth: CGFloat {
+        #if os(macOS)
+        return 620
+        #else
+        let availableWidth = UIScale.screenWidth - Theme.chatPadH * 2
+        return max(280, availableWidth)
+        #endif
     }
 }
 
@@ -222,6 +279,11 @@ private struct SelectableAssistantTextView: UIViewRepresentable {
         textView.isEditable = false
         textView.isSelectable = true
         textView.isScrollEnabled = false
+        textView.dataDetectorTypes = [.link]
+        textView.linkTextAttributes = [
+            .foregroundColor: Self.linkColor,
+            .underlineStyle: NSUnderlineStyle.single.rawValue
+        ]
         textView.textContainerInset = .zero
         textView.textContainer.lineFragmentPadding = 0
         textView.textContainer.widthTracksTextView = true
@@ -339,7 +401,88 @@ private struct SelectableAssistantTextView: UIViewRepresentable {
             }
         }
 
+        applyLinks(in: result)
         return result
+    }
+
+    private static func applyLinks(in attributedText: NSMutableAttributedString) {
+        applyMarkdownLinks(in: attributedText)
+        applyRawURLLinks(in: attributedText)
+        applyRawDomainLinks(in: attributedText)
+    }
+
+    private static func applyMarkdownLinks(in attributedText: NSMutableAttributedString) {
+        let pattern = #"\[([^\]\n]{1,160})\]\((https?://[^\s)]+)\)"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return }
+        let fullText = attributedText.string
+        let matches = regex.matches(
+            in: fullText,
+            range: NSRange(location: 0, length: (fullText as NSString).length)
+        )
+
+        for match in matches.reversed() {
+            guard match.numberOfRanges == 3 else { continue }
+            let nsText = attributedText.string as NSString
+            let label = nsText.substring(with: match.range(at: 1))
+            let rawURL = nsText.substring(with: match.range(at: 2))
+            guard let url = URL(string: rawURL) else { continue }
+
+            var attributes = attributedText.attributes(at: max(0, match.range.location), effectiveRange: nil)
+            attributes[.link] = url
+            attributes[.foregroundColor] = linkColor
+            attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue
+            attributedText.replaceCharacters(
+                in: match.range,
+                with: NSAttributedString(string: label, attributes: attributes)
+            )
+        }
+    }
+
+    private static func applyRawURLLinks(in attributedText: NSMutableAttributedString) {
+        let pattern = #"https?://[^\s\]\)）>，。；;、]+"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return }
+        let fullText = attributedText.string
+        let matches = regex.matches(
+            in: fullText,
+            range: NSRange(location: 0, length: (fullText as NSString).length)
+        )
+
+        for match in matches {
+            let rawURL = (fullText as NSString).substring(with: match.range)
+            guard let url = URL(string: rawURL) else { continue }
+            attributedText.addAttributes([
+                .link: url,
+                .foregroundColor: linkColor,
+                .underlineStyle: NSUnderlineStyle.single.rawValue
+            ], range: match.range)
+        }
+    }
+
+    private static func applyRawDomainLinks(in attributedText: NSMutableAttributedString) {
+        let pattern = #"(?<![@/:])\b(?:www\.)[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?:/[^\s\]\)）>，。；;、]*)?"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return }
+        let fullText = attributedText.string
+        let matches = regex.matches(
+            in: fullText,
+            range: NSRange(location: 0, length: (fullText as NSString).length)
+        )
+
+        for match in matches {
+            if attributedText.attribute(.link, at: match.range.location, effectiveRange: nil) != nil {
+                continue
+            }
+            let rawDomain = (fullText as NSString).substring(with: match.range)
+            guard let url = URL(string: "https://\(rawDomain)") else { continue }
+            attributedText.addAttributes([
+                .link: url,
+                .foregroundColor: linkColor,
+                .underlineStyle: NSUnderlineStyle.single.rawValue
+            ], range: match.range)
+        }
+    }
+
+    private static var linkColor: UIColor {
+        UIColor.systemBlue
     }
 
     private static func attributes(
@@ -572,8 +715,10 @@ struct ThinkingCardView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
-                Image(systemName: "brain.head.profile")
-                    .font(.system(size: 13, weight: .semibold))
+                // T 字标 — 跟顶栏 Think chip 的开启态同一套语言 (accentSubtle 圆角方块 + 品牌色 T),
+                // 取代原来高细节的 brain.head.profile, 和整体图标风格统一。
+                Text("T")
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
                     .foregroundStyle(Theme.accent)
                     .frame(width: 26, height: 26)
                     .background(Theme.accentSubtle, in: RoundedRectangle(cornerRadius: 7))
