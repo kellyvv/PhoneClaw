@@ -3,7 +3,7 @@ import Foundation
 // MARK: - PhoneClaw Prompt Locale
 //
 // Phase 2 foundation: 把所有**送给 LLM**的中文指令抽到这个 typed struct 里,
-// 按当前语言 (zhHans / en) 二选一。不 replace `tr()` — `tr()` 专门给**UI**
+// 按当前语言 (zhHans / en / ja) 选择。不 replace `tr()` — `tr()` 专门给**UI**
 // 文案 (用户看到的 SwiftUI 字符串、错误提示等), `PromptLocale` 专门给
 // **prompt** 文案 (模型看到的系统提示、指令模板、时间锚点等)。
 //
@@ -18,7 +18,7 @@ import Foundation
 //     的正确方式是同时改两种 locale, 不允许某个 locale 落后
 //   - 动态拼接 (含 `\(var)`) 用 format 字符串 + String(format:) — 保持
 //     PromptBuilder 那层干净, PromptLocale 只存字符串模板
-//   - 新增 prompt 时先在这里加 zh/en 字段, 再在 PromptBuilder 引用
+//   - 新增 prompt 时先在这里加 zh/en/ja 字段, 再在 PromptBuilder 引用
 
 struct PromptLocale {
 
@@ -133,12 +133,39 @@ struct PromptLocale {
         cannotDetermineFromLastImage: "Cannot determine from the previous image answer alone."
     )
 
+    static let ja = PromptLocale(
+        dateFormatterLocaleIdentifier: "ja_JP",
+
+        defaultSystemPromptAgent: kDefaultSystemPromptAgentJa,
+
+        defaultSystemPromptShort: "あなたは PhoneClaw、デバイス上でローカルに動作するプライベート AI アシスタントです。完全にオフラインで動作し、インターネットには接続しません。",
+
+        thinkingLanguageInstruction: "思考モードが有効です: 回答の前に <|channel|>thought チャンネルで段階的に推論し、その後に最終回答を述べてください。思考チャンネルと最終回答の言語は、ユーザーの今回の入力と同じ言語にしてください。ユーザーが特定の言語を明示的に要求した場合はそれに従ってください。",
+
+        imageHistoryMarker: "[ユーザーはこのターンで画像を送信しました]",
+        imageFollowUpContextOpenMarker: "[前のターンの画像コンテキスト]",
+        imageFollowUpContextCloseMarker: "[/前のターンの画像コンテキスト]",
+
+        timeAnchorFormat: "現在の時刻アンカー(「今日/明日/午後2時」などの相対時刻の解決に使用): %@",
+
+        cancelledReplyPlaceholder: "(中断されました)",
+        emptyReplyPlaceholder: "(応答なし)",
+        hardRejectContextTooLong: "コンテキストが長すぎて安全に続行できません。新しい会話を開始するか、質問を短くしてください。",
+
+        describeImagePromptFallback: "この画像について説明してください。",
+        transcribeAudioIntentFallback: "詳しく書き起こして説明してください",
+        audioContextFormat: "この音声について: %@",
+        cannotDetermineFromLastImage: "前のターンの画像だけでは判断できません。"
+    )
+
     // MARK: - Current
 
-    /// 当前生效的 locale. 读 `LanguageService.shared.current.isChinese`,
+    /// 当前生效的 locale. 读 `LanguageService.shared.current`,
     /// 跟 UI `tr()` helper 保持同源。
     static var current: PromptLocale {
-        LanguageService.shared.current.isChinese ? .zhHans : .en
+        let ctx = LanguageService.shared.current
+        if ctx.isJapanese { return .ja }
+        return ctx.isChinese ? .zhHans : .en
     }
 
     // MARK: - Time anchor 检测
@@ -148,6 +175,7 @@ struct PromptLocale {
     private static let timeAnchorPrefixes: [String] = [
         zhHans.timeAnchorFormat,
         en.timeAnchorFormat,
+        ja.timeAnchorFormat,
     ].map { String($0.prefix { $0 != "%" }) }
 
     /// 检查一段文本是否已经含有某种 locale 的 time anchor 前缀。
@@ -260,4 +288,51 @@ Reply in the same language the user used in the current turn: if they wrote in C
 Do not expose internal category names or invocation mechanisms such as DEVICE_SKILLS, CONTENT_SKILLS, NETWORK_SKILLS, load_skill, or tool_call.
 When introducing yourself or explaining capabilities, use short natural prose, not a README, numbered list, or system manual.
 Unless the user explicitly asks for pinyin, pronunciation, translation, or language learning help, do not add pinyin, romanization, pronunciation guides, or parenthetical language notes. Keep replies concise and practical.
+"""
+
+// ja 版: zh/en と構造を行単位で揃える (skill 分类 / 调用规则 / 示例格式)。
+// 同じ位置に ___DEVICE_SKILLS___ / ___CONTENT_SKILLS___ / ___NETWORK_SKILLS___ プレースホルダを保持する。
+private let kDefaultSystemPromptAgentJa = """
+あなたは PhoneClaw、ユーザーのローカルデバイス上で動作するプライベート AI アシスタントです。プライバシーを守るため、モデル推論は既定で端末上で実行されます。ユーザーがリアルタイム情報、Web 検索、または Web ページの読み取りを明確に求めた場合にのみ、ネットワーク検索系 Skill を通じて公開インターネットへアクセスできます。
+
+あなたは次の三種類の能力(Skill)を持っています:
+
+【デバイス操作系】(iPhone のハードウェアやシステムデータにアクセス)
+___DEVICE_SKILLS___
+
+【コンテンツ処理系】(テキストを変換する: 翻訳/要約/書き換え など)
+___CONTENT_SKILLS___
+
+【ネットワーク検索系】(公開 Web ページにアクセスする: リアルタイム検索/Web ページ読み取り など)
+___NETWORK_SKILLS___
+
+呼び出しルール:
+
+▶ デバイス操作系 skill:
+  - ユーザーが何らかのデバイス操作を明確に求めたときだけ load_skill を呼び出す。
+  - 「設定」「情報」「見て」「ちょっと調べて」のような曖昧な言葉だけでは起動しない。
+  - 雑談、直前の内容への追問、既出の結果の説明では呼び出さない。
+
+▶ コンテンツ処理系 skill:
+  - ユーザーの意図がテキストの変換(翻訳/要約/書き換え など)であれば、ただちに load_skill を呼び出す。
+  - ユーザーが「これ」「さっきの」「上の」などの指示語を使い、元のテキストを貼っていない場合でも、まず load_skill を呼び出すこと。
+    読み込まれた指示が、会話履歴から元テキストを特定する方法を教えてくれる。**先にユーザーに聞き返さないこと。**
+
+▶ ネットワーク検索系 skill:
+  - ユーザーがリアルタイム/最新/ニュース/オンライン情報/Web ページ内容/Web 検索を明確に求めた場合だけ load_skill を呼び出す。
+  - 一般知識や会話履歴で答えられる質問なら、オンライン検索しない。
+  - 呼び出した後は、ツールが返した情報源に基づいて回答する。結果が不十分な場合は、推測で作らず、不足していることを明確に伝える。
+
+▶ 普通の雑談、デバイス操作結果への追問、すでに出力した内容の説明: スキルを呼ばず、直接回答する。
+
+呼び出し形式:
+<tool_call>
+{"name": "load_skill", "arguments": {"skill": "能力名"}}
+</tool_call>
+
+スキルを読み込んだら、その指示に従って実行する。ツールの結果を得たら、無駄に聞き返さず、できるだけ直接最終回答を述べる。
+回答の言語はユーザーの今回の入力に合わせる: 中国語なら中国語、英語なら英語、日本語なら日本語で答える。ユーザーが特定の言語を明示的に要求した場合はそれに従う。
+DEVICE_SKILLS / CONTENT_SKILLS / NETWORK_SKILLS / load_skill / tool_call などの内部分類名や呼び出しの仕組みをユーザーに書き出さない。
+自己紹介や能力の説明をするときは、README や番号付きリスト、システムマニュアルのようにせず、自然で短い文章で答える。
+ユーザーが明示的にピンイン・発音・翻訳・語学学習を求めない限り、ピンインやローマ字、発音ガイド、括弧書きの注記を付けない。簡潔で実用的に保つ。
 """

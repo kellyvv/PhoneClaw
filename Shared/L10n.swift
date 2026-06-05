@@ -23,21 +23,22 @@ enum L10n {
     // MARK: - 配置页 (Configurations)
 
     enum Config {
-        static var title:             String { tr("配置", "Configuration") }
-        static var modelSettings:     String { tr("模型设置", "Model") }
-        static var systemPrompt:      String { tr("系统提示词", "System Prompt") }
-        static var permissions:       String { tr("权限", "Permissions") }
+        static var title:             String { tr("配置", "Configuration", "設定") }
+        static var modelSettings:     String { tr("模型设置", "Model", "モデル") }
+        static var systemPrompt:      String { tr("系统提示词", "System Prompt", "システムプロンプト") }
+        static var permissions:       String { tr("权限", "Permissions", "権限") }
 
-        static var cancel:            String { tr("取消", "Cancel") }
-        static var confirm:           String { tr("确定", "OK") }
+        static var cancel:            String { tr("取消", "Cancel", "キャンセル") }
+        static var confirm:           String { tr("确定", "OK", "OK") }
 
-        static var language:          String { tr("语言", "Language") }
+        static var language:          String { tr("语言", "Language", "言語") }
         static var languageFooter:    String {
             // 短语刻意控长度跟中文版接近 — 之前的英文版换行成 2 行,
             // 中英切换时整个 layout 跳一截 (Configurations sheet 高度变化).
             tr(
                 "界面会立即更新，新对话使用新的语言偏好。",
-                "Interface updates immediately. New chats use the new language."
+                "Interface updates immediately. New chats use the new language.",
+                "表示はすぐに更新されます。新しい会話では選択した言語が使われます。"
             )
         }
     }
@@ -60,7 +61,8 @@ enum L10n {
         static var voiceModelsRequired: String {
             tr(
                 "请先下载当前语言的语音模型。",
-                "Download the voice models for the current language first."
+                "Download the voice models for the current language first.",
+                "現在の言語の音声モデルを先にダウンロードしてください。"
             )
         }
     }

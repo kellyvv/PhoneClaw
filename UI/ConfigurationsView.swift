@@ -655,18 +655,18 @@ struct ConfigurationsView: View {
 
     // MARK: - Language
 
-    /// Language preference picker — Auto (跟随系统) / 中文 / English。
+    /// Language preference picker — Auto (跟随系统) / 中文 / English / 日本語。
     /// 读写 `LanguageService.shared.selected`, 绑定是直接的 Binding 封装
     /// (比 @Bindable + @Observable 的混搭更显式, 也不需要额外 @State 镜像)。
     /// 切换立即触发 SwiftUI observation, 整个 app 视图重渲染新语言。
     private var languageSection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            sectionLabel(tr("语言", "Language"))
+            sectionLabel(tr("语言", "Language", "言語"))
 
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .center, spacing: 12) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(tr("界面语言", "Interface Language"))
+                        Text(tr("界面语言", "Interface Language", "表示言語"))
                             .font(.system(size: 16, weight: .regular))
                             .foregroundStyle(SettingsStyle.ink)
 
@@ -728,23 +728,28 @@ struct ConfigurationsView: View {
         case .auto:
             return tr(
                 "跟随系统 · 当前为 \(localizedLanguageName(resolved))",
-                "Follows system · Currently \(localizedLanguageName(resolved))"
+                "Follows system · Currently \(localizedLanguageName(resolved))",
+                "システムに従う · 現在は \(localizedLanguageName(resolved))"
             )
         case .zhHans:
-            return tr("已选择中文", "Chinese selected")
+            return tr("已选择中文", "Chinese selected", "中国語を選択中")
         case .en:
-            return tr("已选择英文", "English selected")
+            return tr("已选择英文", "English selected", "英語を選択中")
+        case .ja:
+            return tr("已选择日语", "Japanese selected", "日本語を選択中")
         }
     }
 
     private func localizedLanguageName(_ language: AppLanguage) -> String {
         switch language {
         case .auto:
-            return tr("自动", "Auto")
+            return tr("自动", "Auto", "自動")
         case .zhHans:
-            return tr("中文", "Chinese")
+            return tr("中文", "Chinese", "中国語")
         case .en:
-            return tr("英文", "English")
+            return tr("英文", "English", "英語")
+        case .ja:
+            return tr("日语", "Japanese", "日本語")
         }
     }
 

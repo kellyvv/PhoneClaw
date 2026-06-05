@@ -1,0 +1,5 @@
+module PiperPlus {
+  umbrella header "piper_plus.h"
+  export *
+  module * { export * }
+}

@@ -500,11 +500,16 @@ class LiveModeEngine {
 
         if let wavData = tts.synthesize(spoken) {
             await tts.playWAV(wavData)
-        } else {
+        } else if tts.allowsSystemFallback {
             turnPhase = .speaking
             state = .speaking
             statusMessage = ""
             await tts.speakSystem(spoken)
+        } else {
+            print("[TTS] ❌ Greeting skipped: no non-system TTS available")
+            turnPhase = .speaking
+            state = .speaking
+            statusMessage = ""
         }
 
         // 清理回调
@@ -1150,7 +1155,7 @@ class LiveModeEngine {
         // Generation guard: don't enqueue if this turn has been superseded
         guard turnGeneration == gen else { return }
 
-        if tts.backend == "sherpa-onnx" {
+        if tts.usesSharedAudioEngine {
             let wavData: Data? = await withTaskGroup(of: Data?.self) { group in
                 group.addTask { [tts] in tts.synthesize(cleaned) }
                 group.addTask {
@@ -1175,12 +1180,14 @@ class LiveModeEngine {
             }
 
             await ttsQueue?.enqueueWAV(wavData)
-        } else {
+        } else if tts.allowsSystemFallback {
             guard turnGeneration == gen else { return }
             if currentTurnMetrics != nil && currentTurnMetrics!.ttsFirstChunkAt == 0 {
                 currentTurnMetrics!.ttsFirstChunkAt = CFAbsoluteTimeGetCurrent()
             }
             await ttsQueue?.enqueueSystemSpeak(cleaned)
+        } else {
+            print("[Live] ❌ TTS skipped: no non-system TTS backend available")
         }
     }
 
@@ -1198,6 +1205,15 @@ class LiveModeEngine {
         s = s.replacingOccurrences(of: "：", with: "，")
         s = s.replacingOccurrences(of: ":", with: "，")
         s = s.replacingOccurrences(of: "- ", with: "")
+        var filteredScalars = String.UnicodeScalarView()
+        for scalar in s.unicodeScalars {
+            let value = scalar.value
+            if value == 0x200D || (0xFE00...0xFE0F).contains(value) { continue }
+            if scalar.properties.isEmojiPresentation { continue }
+            if (0x1F000...0x1FAFF).contains(value) { continue }
+            filteredScalars.append(scalar)
+        }
+        s = String(filteredScalars)
         return s.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 

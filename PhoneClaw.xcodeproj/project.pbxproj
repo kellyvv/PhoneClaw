@@ -104,6 +104,7 @@
 		AA1000000000000000000023 /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = AA5000000000000000000009 /* MarkdownUI */; };
 		AA1000000000000000000030 /* PhoneClawEngine in Frameworks */ = {isa = PBXBuildFile; productRef = AA5000000000000000000010 /* PhoneClawEngine */; };
 		AA1000000000000000000031 /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = AA5000000000000000000011 /* WhisperKit */; };
+		AA1000000000000000000032 /* piper_plus.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA2000000000000000000026 /* piper_plus.xcframework */; };
 		AA1000000000000000000100 /* BundledModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2000000000000000000100 /* BundledModel.swift */; };
 		AA1000000000000000000101 /* RuntimeBudgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2000000000000000000101 /* RuntimeBudgets.swift */; };
 		AA1000000000000000000103 /* ModelInstallState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2000000000000000000103 /* ModelInstallState.swift */; };
@@ -262,6 +263,7 @@
 		AA2000000000000000000021 /* Gemma4AudioModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Gemma4AudioModel.swift; sourceTree = "<group>"; };
 		AA2000000000000000000024 /* onnxruntime.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = onnxruntime.xcframework; path = Frameworks/onnxruntime.xcframework; sourceTree = SOURCE_ROOT; };
 		AA2000000000000000000025 /* sherpa-onnx.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = "sherpa-onnx.xcframework"; path = "Frameworks/sherpa-onnx.xcframework"; sourceTree = SOURCE_ROOT; };
+		AA2000000000000000000026 /* piper_plus.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = piper_plus.xcframework; path = Frameworks/piper_plus.xcframework; sourceTree = SOURCE_ROOT; };
 		AA2000000000000000000100 /* BundledModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BundledModel.swift; sourceTree = "<group>"; };
 		AA2000000000000000000101 /* RuntimeBudgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeBudgets.swift; sourceTree = "<group>"; };
 		AA2000000000000000000103 /* ModelInstallState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelInstallState.swift; sourceTree = "<group>"; };
@@ -278,6 +280,7 @@
 		AA2000000000000000000202 /* MLXLocalLLMService+KVReuse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MLXLocalLLMService+KVReuse.swift"; sourceTree = "<group>"; };
 		B1A2C3D4E5F607182930B101 /* Library */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Library; sourceTree = "<group>"; };
 		B1A2C3D4E5F607182930C001 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
+		B1A2C3D4E5F607182930CA01 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = "ja.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		BA48303BA25916A3A431EDE6 /* OrbBackgroundView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OrbBackgroundView.swift; path = Live/UI/LiveOrb/OrbBackgroundView.swift; sourceTree = SOURCE_ROOT; };
 		BB1000000000000000000001 /* LLMTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMTypes.swift; sourceTree = "<group>"; };
 		BB1000000000000000000002 /* InferenceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InferenceService.swift; sourceTree = "<group>"; };
@@ -368,6 +371,7 @@
 				AA1000000000000000000023 /* MarkdownUI in Frameworks */,
 				AA1000000000000000000030 /* PhoneClawEngine in Frameworks */,
 				AA1000000000000000000031 /* WhisperKit in Frameworks */,
+				AA1000000000000000000032 /* piper_plus.xcframework in Frameworks */,
 				BD75E7E5620A8FF0A868E9F0 /* libPods-PhoneClaw.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -689,6 +693,7 @@
 			children = (
 				AA2000000000000000000024 /* onnxruntime.xcframework */,
 				AA2000000000000000000025 /* sherpa-onnx.xcframework */,
+				AA2000000000000000000026 /* piper_plus.xcframework */,
 				4F4ACB3F4531FF61E0AADA07 /* libPods-PhoneClaw.a */,
 			);
 			name = Frameworks;
@@ -766,6 +771,7 @@
 				Base,
 				en,
 				"zh-Hans",
+				ja,
 			);
 			mainGroup = 4A876E909BCB4E1CAF5C50F5;
 			minimizedProjectReferenceProxies = 1;
@@ -1063,6 +1069,7 @@
 			isa = PBXVariantGroup;
 			children = (
 				B1A2C3D4E5F607182930C001 /* zh-Hans */,
+				B1A2C3D4E5F607182930CA01 /* ja */,
 			);
 			name = InfoPlist.strings;
 			sourceTree = "<group>";

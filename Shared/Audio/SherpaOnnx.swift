@@ -70,6 +70,50 @@ final class SherpaOnnxRecognizer {
   func isEndpoint() -> Bool { false }
 }
 
+// Offline ASR (ReazonSpeech 日语) — simulator stubs。真机实现在下面的 #else 设备块。
+struct SherpaOnnxOfflineTransducerModelConfig {}
+struct SherpaOnnxOfflineModelConfig {}
+struct SherpaOnnxOfflineRecognizerConfig {}
+
+func sherpaOnnxOfflineTransducerModelConfig(
+  encoder: String = "",
+  decoder: String = "",
+  joiner: String = ""
+) -> SherpaOnnxOfflineTransducerModelConfig {
+  SherpaOnnxOfflineTransducerModelConfig()
+}
+
+func sherpaOnnxOfflineModelConfig(
+  tokens: String = "",
+  transducer: SherpaOnnxOfflineTransducerModelConfig = sherpaOnnxOfflineTransducerModelConfig(),
+  numThreads: Int = 1,
+  debug: Int = 0
+) -> SherpaOnnxOfflineModelConfig {
+  SherpaOnnxOfflineModelConfig()
+}
+
+func sherpaOnnxOfflineRecognizerConfig(
+  featConfig: SherpaOnnxFeatureConfig,
+  modelConfig: SherpaOnnxOfflineModelConfig,
+  decodingMethod: String = "greedy_search"
+) -> SherpaOnnxOfflineRecognizerConfig {
+  SherpaOnnxOfflineRecognizerConfig()
+}
+
+final class SherpaOnnxOfflineRecongitionResult {
+  let text: String
+  init(text: String = "") { self.text = text }
+}
+
+final class SherpaOnnxOfflineRecognizer {
+  // simulator: sherpa offline 不可用 → init 直接失败 (nil), 让日语 ASR 在模拟器上判定 unavailable,
+  // 而不是「ready 却每次 decode 都空」。真机实现在下面的 #else 设备块。
+  init?(config: UnsafePointer<SherpaOnnxOfflineRecognizerConfig>) { return nil }
+  func decode(samples: [Float], sampleRate: Int = 16_000) -> SherpaOnnxOfflineRecongitionResult {
+    SherpaOnnxOfflineRecongitionResult()
+  }
+}
+
 func sherpaOnnxOfflineTtsVitsModelConfig(
   model: String = "",
   lexicon: String = "",
@@ -374,12 +418,21 @@ class SherpaOnnxRecognizer {
   private var stream: OpaquePointer
   private let lock = NSLock()  // for thread-safe stream replacement
 
-  /// Constructor taking a model config
-  init(
+  /// Constructor taking a model config. Failable: the underlying C API can
+  /// return a null recognizer/stream (bad model files, OOM); propagate that as
+  /// `nil` instead of trapping when the non-optional pointers get assigned.
+  init?(
     config: UnsafePointer<SherpaOnnxOnlineRecognizerConfig>
   ) {
-    self.recognizer = SherpaOnnxCreateOnlineRecognizer(config)
-    self.stream = SherpaOnnxCreateOnlineStream(recognizer)
+    guard let recognizer = SherpaOnnxCreateOnlineRecognizer(config) else {
+      return nil
+    }
+    guard let stream = SherpaOnnxCreateOnlineStream(recognizer) else {
+      SherpaOnnxDestroyOnlineRecognizer(recognizer)
+      return nil
+    }
+    self.recognizer = recognizer
+    self.stream = stream
   }
 
   deinit {
@@ -886,11 +939,13 @@ class SherpaOnnxOfflineRecognizer {
   /// A pointer to the underlying counterpart in C
   private let recognizer: OpaquePointer
 
-  init(
+  /// Failable: 模型文件缺失/损坏时 C API 返回 null, 传回 nil 而不是 fatalError 崩溃
+  /// (跟 online SherpaOnnxRecognizer 的 init? 一致)。
+  init?(
     config: UnsafePointer<SherpaOnnxOfflineRecognizerConfig>
   ) {
     guard let ptr = SherpaOnnxCreateOfflineRecognizer(config) else {
-      fatalError("Failed to create SherpaOnnxOfflineRecognizer")
+      return nil
     }
     self.recognizer = ptr
   }

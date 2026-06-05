@@ -67,20 +67,16 @@ extension PromptBuilder {
         cameraOff: Bool = false
     ) -> String {
         let cfg = locale.config
-        // camera-off marker 跟 locale 走: 中文用中文标记, 其他 locale 用英文
         let cameraOffNote: String = {
             guard cameraOff else { return "" }
-            return cfg.userPromptPrefix.isEmpty ? "(camera off) " : "(摄像头未开启) "
+            return cfg.cameraOffMarker
         }()
 
         if hasVision {
             // 视觉轮: 不 wrap persona, 只给一个轻量 task hint, 避免被 marker parser
             // 误判成 ◐/○ 后吞掉回答。hasVision=true 时模型直接看图, 不需要也不该带
             // cameraOffNote (本来就有画面)。
-            let visionNote = cfg.userPromptPrefix.isEmpty
-                ? "(camera frame attached; start with ✓; answer as what I can see or describe the scene directly, not as what the user sees) "
-                : "(本轮已附带摄像头画面；请以✓开头，用“我看到”或直接描述画面，不要说“你看到”；简短回答，必要时补充细节) "
-            return visionNote + userTranscript
+            return cfg.visionTaskHint + userTranscript
         }
         guard !cfg.userPromptPrefix.isEmpty else {
             // locale 选择不带 per-turn persona 提醒 (e.g. 英文)

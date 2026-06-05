@@ -22,6 +22,12 @@ struct LiveModelAsset: Sendable {
     let requiredFiles: [String]
     /// 从 repo 中排除的文件模式 (不下载). 路径是 repository 相对.
     let excludePatterns: [String]
+    /// 完整文件清单 (local 相对路径, 即 prefix 已剥掉)。非 nil 时 planner **跳过 HF tree API**,
+    /// 直接按此清单拼 `/resolve/main/{file}` 直连下载 —— 跟 LLM 模型下载 (`ModelDownloader`) 一致。
+    /// 动机: hf-mirror.com 只镜像文件下载 `/resolve/`, 不镜像列目录 `/api/.../tree`
+    /// (该接口会 308 重定向到 huggingface.co, 国内被墙) → tree-listing 是 LIVE 下载卡顿的根因。
+    /// nil = 走 tree API 动态发现 (多变体仓 / 清单易变的 asset 用这条)。
+    let downloadManifest: [String]?
 
     init(
         id: String,
@@ -30,7 +36,8 @@ struct LiveModelAsset: Sendable {
         repositoryID: String,
         repositoryPathPrefix: String? = nil,
         requiredFiles: [String],
-        excludePatterns: [String]
+        excludePatterns: [String],
+        downloadManifest: [String]? = nil
     ) {
         self.id = id
         self.displayName = displayName
@@ -39,6 +46,7 @@ struct LiveModelAsset: Sendable {
         self.repositoryPathPrefix = repositoryPathPrefix
         self.requiredFiles = requiredFiles
         self.excludePatterns = excludePatterns
+        self.downloadManifest = downloadManifest
     }
 }
 
@@ -62,6 +70,36 @@ enum LiveModelDefinition {
             ".gitattributes",
             "README.md",
             "test_wavs/"
+        ]
+    )
+
+    /// 日语离线 ASR — ReazonSpeech zipformer (35k 小时日语训练的 offline transducer)。
+    /// 替代旧的 WhisperKit fallback: 日语专精, 留在 sherpa 体系, 清单固定, 没有 WhisperKit
+    /// 启动时再从 openai/whisper-base 拉 tokenizer 的第二链路。
+    /// 交互仍是「VAD 端点后整句识别」(非真流式 partial — sherpa 暂无日语 online streaming
+    /// 模型, 见 ASRBackend)。manifest 只拉 int8 encoder + fp32 decoder + int8 joiner + tokens
+    /// (~162MB), 排除 565MB 的 fp32 encoder / fp32 joiner / test_wavs。
+    static let asrJA = LiveModelAsset(
+        id: "live-asr-ja",
+        displayName: "音声認識 (ASR)",
+        directoryName: "sherpa-asr-ja-reazonspeech",
+        repositoryID: "reazon-research/reazonspeech-k2-v2",
+        requiredFiles: [
+            "encoder-epoch-99-avg-1.int8.onnx",
+            "decoder-epoch-99-avg-1.onnx",
+            "joiner-epoch-99-avg-1.int8.onnx",
+            "tokens.txt"
+        ],
+        excludePatterns: [
+            ".gitattributes",
+            "README.md",
+            "test_wavs/"
+        ],
+        downloadManifest: [
+            "encoder-epoch-99-avg-1.int8.onnx",
+            "decoder-epoch-99-avg-1.onnx",
+            "joiner-epoch-99-avg-1.int8.onnx",
+            "tokens.txt"
         ]
     )
 
@@ -102,6 +140,13 @@ enum LiveModelDefinition {
             "silero_vad.mlmodelc/",
             "silero_vad_se_trained.mlpackage/",
             "silero_vad_se_trained_4bit.mlmodelc/"
+        ],
+        downloadManifest: [
+            "silero-vad-unified-256ms-v6.0.0.mlmodelc/analytics/coremldata.bin",
+            "silero-vad-unified-256ms-v6.0.0.mlmodelc/coremldata.bin",
+            "silero-vad-unified-256ms-v6.0.0.mlmodelc/metadata.json",
+            "silero-vad-unified-256ms-v6.0.0.mlmodelc/model.mil",
+            "silero-vad-unified-256ms-v6.0.0.mlmodelc/weights/weight.bin"
         ]
     )
 
@@ -184,6 +229,120 @@ enum LiveModelDefinition {
         ]
     )
 
+    // MARK: - 日语 TTS (ja)
+
+    static let openJTalkDictionaryDirectoryName = "open_jtalk_dic_utf_8-1.11"
+
+    #if canImport(PiperPlus)
+    static let piperPlusJARuntimeLinked = true
+    #else
+    static let piperPlusJARuntimeLinked = false
+    #endif
+
+    static var openJTalkDictionaryDirectory: URL? {
+        let fm = FileManager.default
+        let candidates: [URL] = [
+            Bundle.main.resourceURL?.appendingPathComponent(openJTalkDictionaryDirectoryName, isDirectory: true),
+            Bundle.main.resourceURL?
+                .appendingPathComponent("Models", isDirectory: true)
+                .appendingPathComponent(openJTalkDictionaryDirectoryName, isDirectory: true),
+            ModelPaths.documentsRoot().appendingPathComponent(openJTalkDictionaryDirectoryName, isDirectory: true)
+        ].compactMap { $0 }
+
+        return candidates.first { dir in
+            var isDirectory: ObjCBool = false
+            return fm.fileExists(atPath: dir.path, isDirectory: &isDirectory)
+                && isDirectory.boolValue
+                && fm.fileExists(atPath: dir.appendingPathComponent("sys.dic").path)
+                && fm.fileExists(atPath: dir.appendingPathComponent("matrix.bin").path)
+        }
+    }
+
+    static var openJTalkDictionaryBundled: Bool {
+        openJTalkDictionaryDirectory != nil
+    }
+
+    /// Piper Plus 日语 TTS 是否可启用。
+    /// 必须同时满足 runtime 已链接 + OpenJTalk 词典已发布到 Bundle 或 Documents/models。
+    /// 只下载模型不够; 缺词典会导致日语 G2P 不可用。
+    static var piperPlusJAReady: Bool {
+        piperPlusJARuntimeLinked && openJTalkDictionaryBundled
+    }
+
+    /// Piper Plus 日语模型 — tsukuyomi-chan 6-language fp16 ONNX。
+    /// 运行时依赖 Piper Plus xcframework + OpenJTalk 词典, 不走 sherpa-onnx。
+    /// 该仓清单固定, 只需要 model + config; samples/README 不下载。
+    static let ttsPiperPlusJA = LiveModelAsset(
+        id: "live-tts-ja-piper-plus",
+        displayName: "音声合成 (TTS)",
+        directoryName: "piper-plus-ja-tsukuyomi",
+        repositoryID: "ayousanz/piper-plus-tsukuyomi-chan",
+        requiredFiles: [
+            "tsukuyomi-chan-6lang-fp16.onnx",
+            "config.json"
+        ],
+        excludePatterns: [
+            ".gitattributes",
+            "README.md",
+            "samples/"
+        ],
+        downloadManifest: [
+            "tsukuyomi-chan-6lang-fp16.onnx",
+            "config.json"
+        ]
+    )
+
+    /// Supertonic-3 (日语 TTS) 是否可用 —— **当前 false (被 ORT 版本卡住)**。
+    /// 仓库内置 `Frameworks/onnxruntime.xcframework` 是 **1.17.1** (ai.onnx.ml 仅到 opset 4),
+    /// 而 Supertonic-3 (2026-05-11) 的 vocoder.int8.onnx 用了 **ai.onnx.ml opset 5** →
+    /// `SherpaOnnxCreateOfflineTts` 加载时抛 C++ 异常 (Swift try 抓不住) → 直接 crash。
+    /// 打开条件: 把 onnxruntime + sherpa-onnx xcframework 升级到支持 opset 5 的版本
+    /// (ORT ≥ ~1.20; .tts_venv 里已是 1.23.2)。在那之前, 日语 TTS 不启用
+    /// Supertonic, 也不走系统 TTS fallback。
+    /// 升级 binary 后只需把这里改 true。
+    static let supertonicJAReady = false
+
+    /// 日语 TTS — Supertonic-3 (sherpa-onnx Supertonic 后端, int8, ~145MB)。
+    /// 神经合成, 音色追平中英文的 keqing/Piper, 且和它们一样走共享 AVAudioEngine →
+    /// iOS AEC 能消掉回声。
+    ///
+    /// Supertonic-3 是 char/unicode-based **多语**模型 (tts.json: n_langs=0, lang_emb_dim=0):
+    /// 语言完全由输入文本字符 + unicode_indexer.bin 决定 — 喂日语文本即读日语,
+    /// 不需要 lang 参数, 也不依赖 espeak/OpenJTalk g2p。单一内置音色 (voice.bin)。
+    /// 7 个核心文件全部直连下载 (downloadManifest 跳过 HF tree API, 跟 asrJA 一致)。
+    ///
+    /// 注意: 当前被内置 ORT opset 边界禁用。默认日语 TTS 主线改为 Piper Plus
+    /// (OpenJTalk 前端); Supertonic 只作为升级 sherpa/ORT 后的实验线。
+    static let ttsJA = LiveModelAsset(
+        id: "live-tts-ja",
+        displayName: "音声合成 (TTS)",
+        directoryName: "sherpa-tts-ja-supertonic",
+        repositoryID: "csukuangfj2/sherpa-onnx-supertonic-3-tts-int8-2026-05-11",
+        requiredFiles: [
+            "duration_predictor.int8.onnx",
+            "text_encoder.int8.onnx",
+            "vector_estimator.int8.onnx",
+            "vocoder.int8.onnx",
+            "tts.json",
+            "unicode_indexer.bin",
+            "voice.bin"
+        ],
+        excludePatterns: [
+            ".gitattributes",
+            "LICENSE",
+            "README.md"
+        ],
+        downloadManifest: [
+            "duration_predictor.int8.onnx",
+            "text_encoder.int8.onnx",
+            "vector_estimator.int8.onnx",
+            "vocoder.int8.onnx",
+            "tts.json",
+            "unicode_indexer.bin",
+            "voice.bin"
+        ]
+    )
+
     /// WhisperKit base — 多语言 ASR 模型 (~140 MB Core ML 编译版, 74M 参数).
     /// 比 tiny (39M 参数) 在中文/混合语种上识别率明显更高, 代价是下载/内存约 1.8x.
     /// argmaxinc/whisperkit-coreml repo 里同时有 tiny / base / small / large-v3 等多个变体,
@@ -208,16 +367,38 @@ enum LiveModelDefinition {
         excludePatterns: [
             ".gitattributes",
             "README.md"
+        ],
+        // 直连清单 (跳过 tree API)。3 个 .mlmodelc 各 5 个标准 coremlc 文件 + config.json = 16。
+        // 这是 WhisperKit base ASR 的功能完整集 (generation_config.json 等额外文件非必需:
+        // logModelVariant 读不到只警告、不阻塞加载)。路径是 local 相对 (prefix openai_whisper-base 已剥)。
+        downloadManifest: [
+            "AudioEncoder.mlmodelc/analytics/coremldata.bin",
+            "AudioEncoder.mlmodelc/coremldata.bin",
+            "AudioEncoder.mlmodelc/metadata.json",
+            "AudioEncoder.mlmodelc/model.mil",
+            "AudioEncoder.mlmodelc/weights/weight.bin",
+            "MelSpectrogram.mlmodelc/analytics/coremldata.bin",
+            "MelSpectrogram.mlmodelc/coremldata.bin",
+            "MelSpectrogram.mlmodelc/metadata.json",
+            "MelSpectrogram.mlmodelc/model.mil",
+            "MelSpectrogram.mlmodelc/weights/weight.bin",
+            "TextDecoder.mlmodelc/analytics/coremldata.bin",
+            "TextDecoder.mlmodelc/coremldata.bin",
+            "TextDecoder.mlmodelc/metadata.json",
+            "TextDecoder.mlmodelc/model.mil",
+            "TextDecoder.mlmodelc/weights/weight.bin",
+            "config.json"
         ]
     )
 
     static var all: [LiveModelAsset] {
-        switch ASRBackend.current {
-        case .whisperKitBase:
-            return [whisperBase, activeTTS, vad]
-        case .sherpaOnnx:
-            return [activeASR, activeTTS, vad]
-        }
+        // ASR 资产随 backend/语言变 (日语 → asrJA ReazonSpeech, 中/英 → sherpa zh/en, 见 activeASR);
+        // TTS 同理 (中 keqing / 英 Piper / 日 Supertonic-3, 见 activeTTS)。
+        // activeTTS 仍是 optional, 用 if-let 防御 (将来某 locale 可能无资产)。
+        var assets: [LiveModelAsset] = [activeASR]
+        if let tts = activeTTS { assets.append(tts) }
+        assets.append(vad)
+        return assets
     }
 
     /// 当前激活的 ASR 资产 — 根据 backend 和系统语言决定。
@@ -225,17 +406,24 @@ enum LiveModelDefinition {
     /// whisperKitBase 后端不区分语言 (Whisper 自己支持 99 语)。
     static var activeASR: LiveModelAsset {
         switch ASRBackend.current {
-        case .whisperKitBase: return whisperBase
+        case .sherpaOfflineJA: return asrJA           // 日语: ReazonSpeech 离线
+        case .whisperKitBase: return whisperBase      // legacy 多语言 fallback (默认不再用)
         case .sherpaOnnx:
             return LanguageService.shared.current.isChinese ? asr : asrEN
         }
     }
 
-    /// 当前激活的 TTS 资产 — 根据系统语言决定。
-    /// 中文用 vits-zh-keqing (lexicon-based), 英文用 vits-piper-amy (espeak-based)。
-    /// 两套配置完全不同, 不能共用同一个模型 — 中文模型读不出英文 / 英文模型不识别汉字。
-    static var activeTTS: LiveModelAsset {
-        LanguageService.shared.current.isChinese ? tts : ttsEN
+    /// 当前激活的 sherpa TTS 资产 — 中文 vits-zh-keqing (lexicon-based) / 英文 vits-piper (espeak-based)
+    /// / 日语 Supertonic-3 (char/unicode-based)。三套配置完全不同, 不能共用。
+    /// 仍是 optional: 若以后某 locale 没有 sherpa 资产则返回 nil, 调用方要处理。
+    static var activeTTS: LiveModelAsset? {
+        switch LanguageService.shared.current.resolved {
+        case .zhHans: return tts
+        case .ja:
+            if piperPlusJARuntimeLinked { return ttsPiperPlusJA }
+            return supertonicJAReady ? ttsJA : nil   // nil → 日语神经 TTS 未接入, 不走系统 TTS
+        default:      return ttsEN
+        }
     }
 
     /// 合并 ID，用于 UI 展示和状态管理
@@ -243,7 +431,14 @@ enum LiveModelDefinition {
 
     /// 总大小估算 (用于 UI 提示). 根据当前语言返回对应的语言包总大小。
     static var estimatedSizeMB: Int {
+        if LanguageService.shared.current.isJapanese {
+            // ReazonSpeech ASR ≈ 162MB + VAD ~5MB; Piper Plus model ≈ 40MB; Supertonic-3 ≈ 145MB。
+            if piperPlusJARuntimeLinked { return 207 }
+            return supertonicJAReady ? 312 : 167
+        }
         switch ASRBackend.current {
+        case .sherpaOfflineJA:
+            return 167  // 不会走到 (日语已在上面 early-return), 保留以满足 switch 穷尽。
         case .whisperKitBase:
             return 285  // Whisper base ~140MB + TTS ~136MB + VAD ~5MB (TTS 仍按中文 keqing 算)
         case .sherpaOnnx:

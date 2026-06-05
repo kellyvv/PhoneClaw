@@ -91,10 +91,12 @@ enum SkillLoader {
 
     /// 从 Bundle.main/Library/<id>/SKILL.md 读取并解析为 SkillDefinition
     ///
-    /// 语言选择:
-    ///   - 英文 locale 先找 `SKILL.en.md`, 找不到 fallback 回 `SKILL.md`
-    ///   - 中文 locale 直接 `SKILL.md`
-    ///   - 这样增量: skill 作者可以先只维护 zh, 后续陆续加 en 版
+    /// 语言选择 (按生效语言挑文件, 命中第一个存在的):
+    ///   - 日语 locale: `SKILL.ja.md` → `SKILL.en.md` → `SKILL.md`
+    ///     (ja 版还没作者维护时回退英文, 避免给日语用户注入中文 skill 文案)
+    ///   - 英文 locale: `SKILL.en.md` → `SKILL.md`
+    ///   - 中文 locale: `SKILL.md`
+    ///   - 这样增量: skill 作者可以先只维护 zh, 后续陆续加 en / ja 版
     ///
     /// 注: 不用 `Bundle.main.url(forResource:withExtension:subdirectory:)` —
     /// 该 API 在多点文件名 ("SKILL.en.md") 上行为不稳 (会把 `.en` 当 extension,
@@ -104,10 +106,19 @@ enum SkillLoader {
         let libraryURL = Bundle.main.bundleURL.appendingPathComponent("Library/\(id)", isDirectory: true)
 
         let candidateFile: URL = {
-            if LanguageService.shared.current.isEnglish {
-                let enURL = libraryURL.appendingPathComponent("SKILL.en.md")
-                if FileManager.default.fileExists(atPath: enURL.path) {
-                    return enURL
+            let candidates: [String]
+            switch LanguageService.shared.current.resolved {
+            case .ja:
+                candidates = ["SKILL.ja.md", "SKILL.en.md", "SKILL.md"]
+            case .en:
+                candidates = ["SKILL.en.md", "SKILL.md"]
+            default:
+                candidates = ["SKILL.md"]
+            }
+            for name in candidates {
+                let url = libraryURL.appendingPathComponent(name)
+                if FileManager.default.fileExists(atPath: url.path) {
+                    return url
                 }
             }
             return libraryURL.appendingPathComponent("SKILL.md")

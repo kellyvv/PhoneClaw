@@ -64,10 +64,6 @@ class LiveAudioIO {
 
     /// 中断恢复观察者
     private var interruptionObserver: Any?
-    private var routeChangeObserver: Any?
-
-    private var playbackStartedAt: CFAbsoluteTime?
-    private var playbackAudioDuration: TimeInterval?
 
     // MARK: - Lifecycle
 
@@ -85,13 +81,7 @@ class LiveAudioIO {
         ) { [weak self] notification in
             self?.handleInterruption(notification)
         }
-        routeChangeObserver = NotificationCenter.default.addObserver(
-            forName: AVAudioSession.routeChangeNotification,
-            object: session,
-            queue: nil
-        ) { [weak self] notification in
-            self?.handleRouteChange(notification)
-        }
+
         // ── Output path ──
         // Connect ONCE with a fixed format. Never reconnect during playback —
         // reconnecting disrupts AEC's reference signal tracking.
@@ -226,10 +216,6 @@ class LiveAudioIO {
             NotificationCenter.default.removeObserver(observer)
             interruptionObserver = nil
         }
-        if let observer = routeChangeObserver {
-            NotificationCenter.default.removeObserver(observer)
-            routeChangeObserver = nil
-        }
         audioInputHandler = nil
         audioInputBufferHandler = nil
         visualisationInputHandler = nil
@@ -280,9 +266,6 @@ class LiveAudioIO {
         }
     }
 
-    private func handleRouteChange(_ notification: Notification) {
-    }
-
     // MARK: - Output (for TTS)
 
     func playWAV(_ wavData: Data) async {
@@ -303,9 +286,8 @@ class LiveAudioIO {
 
         // Do NOT reconnect playerNode here — connection is fixed in start().
         // Reconnecting disrupts AEC reference signal tracking.
-        finishPlayback()
         playerNode.stop()
-        preparePlayback(buffer: buffer)
+        isPlaying = true
 
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             continuationLock.withLock {
@@ -313,13 +295,12 @@ class LiveAudioIO {
             }
             playerNode.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in
                 guard let self else { return }
-                self.finishPlayback()
+                self.isPlaying = false
                 print("[AudioIO] ✅ Playback done")
                 self.onPlaybackStopped?()
                 self.resumeContinuation()
             }
             playerNode.play()
-            recordPlaybackStarted()
             // 回调在 play() 之后触发 — 此时音频已开始播放
             onPlaybackStarted?()
         }
@@ -327,28 +308,9 @@ class LiveAudioIO {
 
     func stopPlayback() {
         playerNode.stop()
-        finishPlayback()
+        isPlaying = false
         onPlaybackStopped?()
         resumeContinuation()
-    }
-
-    private func preparePlayback(buffer: AVAudioPCMBuffer) {
-        let sampleRate = buffer.format.sampleRate
-        let duration = sampleRate > 0 ? Double(buffer.frameLength) / sampleRate : nil
-        playbackStartedAt = nil
-        playbackAudioDuration = duration
-        isPlaying = true
-    }
-
-    private func recordPlaybackStarted() {
-        playbackStartedAt = CFAbsoluteTimeGetCurrent()
-    }
-
-    private func finishPlayback() {
-        guard isPlaying || playbackStartedAt != nil || playbackAudioDuration != nil else { return }
-        isPlaying = false
-        playbackStartedAt = nil
-        playbackAudioDuration = nil
     }
 
     // MARK: - Continuation
@@ -391,6 +353,49 @@ class LiveAudioIO {
             }
         }
 
-        return buffer
+        // playerNode→mixer 连接在 start() 里固定成 playbackSampleRate, 且**不能重连**
+        // (会破坏 AEC 参考信号)。所以非该采样率的 TTS 输出必须先重采样, 否则
+        // scheduleBuffer 会断言崩溃 (_outputFormat.sampleRate == buffer.format.sampleRate)。
+        // keqing/Piper 本来就是 22050, 是 no-op; Supertonic-3 (日语) 输出 44100Hz, 走真转换。
+        return resampleToPlaybackRate(buffer)
+    }
+
+    /// 把 TTS 缓冲重采样到固定的 playbackSampleRate (用 AVAudioConverter, 带抗混叠滤波,
+    /// 比朴素抽取质量好)。已是目标采样率则原样返回。
+    private func resampleToPlaybackRate(_ input: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
+        if abs(input.format.sampleRate - playbackSampleRate) < 1 {
+            return input
+        }
+        guard let outFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32,
+                                            sampleRate: playbackSampleRate,
+                                            channels: 1, interleaved: false),
+              let converter = AVAudioConverter(from: input.format, to: outFormat) else {
+            print("[AudioIO] ⚠️ Resample setup failed (\(Int(input.format.sampleRate))→\(Int(playbackSampleRate))Hz)")
+            return nil
+        }
+
+        let ratio = playbackSampleRate / input.format.sampleRate
+        let outCapacity = AVAudioFrameCount(Double(input.frameLength) * ratio) + 16
+        guard let output = AVAudioPCMBuffer(pcmFormat: outFormat, frameCapacity: outCapacity) else {
+            return nil
+        }
+
+        var fed = false
+        var convError: NSError?
+        let status = converter.convert(to: output, error: &convError) { _, outStatus in
+            if fed {
+                outStatus.pointee = .endOfStream
+                return nil
+            }
+            fed = true
+            outStatus.pointee = .haveData
+            return input
+        }
+
+        guard status != .error, output.frameLength > 0 else {
+            print("[AudioIO] ⚠️ Resample \(Int(input.format.sampleRate))→\(Int(playbackSampleRate))Hz failed: \(convError?.localizedDescription ?? "status \(status.rawValue)")")
+            return nil
+        }
+        return output
     }
 }

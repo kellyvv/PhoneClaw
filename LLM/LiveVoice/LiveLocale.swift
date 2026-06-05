@@ -4,13 +4,13 @@ import Foundation
 //
 // 设计目标: LIVE flow 代码全部用 `LiveLocale.zhCN.config` 这个固定入口。
 // 真正的语言切换发生在 `.config` getter 内部 — 它读 LanguageService,
-// 系统语言中文返回 .zhCN 数据, 英文返回 .enUS 数据。这样保持 LIVE flow
+// 系统语言中文返回 .zhCN 数据, 英文返回 .enUS 数据, 日语返回 .jaJP 数据。这样保持 LIVE flow
 // 文件 (LiveModeEngine / LiveModeUI / LiveTurnProcessor) 少量改动,
 // 同时让 zh / en 走各自的 prompt + persona + 状态文案。
 //
 // 关键设计点:
-//   1. 中英两套 prompt 资产完全独立, 不混读 (TTS 中英混读不自然)。
-//   2. PersonaName 各 locale 单语: 中文 "手机龙虾", 英文 "PhoneClaw"。
+//   1. 各语言 prompt 资产完全独立, 不混读。
+//   2. PersonaName 各 locale 单语: 中文 "手机龙虾", 英文/日文 "PhoneClaw"。
 //   3. PromptBuilder.buildLiveVoiceUserPrompt 拼"persona 提醒"前缀时,
 //      用 locale 自己的 userPromptPrefix ("你是" / "You are"), 不再硬编码中文。
 
@@ -19,7 +19,7 @@ enum LiveLocale: String, Sendable {
 
     /// LIVE flow 调用 `LiveLocale.zhCN.config` 的地方都走这个 getter。
     /// 实际返回哪份数据看 `LanguageService.shared.current` — 生效语言中文拿 .zhCN,
-    /// 英文拿 .enUS。case 维持一个 `.zhCN` 是因为 LIVE flow 大量代码
+    /// 英文拿 .enUS, 日语拿 .jaJP。case 维持一个 `.zhCN` 是因为 LIVE flow 大量代码
     /// 已经写死了 `LiveLocale.zhCN` / `locale: .zhCN`, 改 enum 形状就要碰
     /// LIVE flow 文件 (跟"流程不改"边界冲突)。让 case 退化成"locale 入口",
     /// 用一个 dynamic getter 换 call site 全部不动。
@@ -27,6 +27,7 @@ enum LiveLocale: String, Sendable {
         switch LanguageService.shared.current.resolved {
         case .zhHans: return .zhCNData
         case .en:     return .enUSData
+        case .ja:     return .jaJPData
         case .auto:   return .zhCNData  // 不可能, .auto 在 LanguageService 里已经被 resolve 掉
         }
     }
@@ -79,6 +80,13 @@ struct LiveLocaleConfig: Sendable {
     ///   - 英文 "You are " → 拼出 "(You are PhoneClaw) what user said"
     let userPromptPrefix: String
 
+    /// 视觉轮 (带摄像头画面) 注入的轻量 task hint — 按 locale 本地化。
+    let visionTaskHint: String
+
+    /// camera-off marker — 本会话开过摄像头但当前已关时注入。
+    /// 必须跟该 locale 的 systemPrompt 里要求模型识别的标记一致。
+    let cameraOffMarker: String
+
     /// Live 状态/提示相关文案。
     let statusStrings: StatusStrings
 }
@@ -100,6 +108,8 @@ extension LiveLocaleConfig {
         greetingPrompt: "请只输出这一句开场白：✓ 我是手机龙虾，请问你需要做什么。不要解释，不要换行，不要添加其他内容。",
         fallbackUtterance: "抱歉，我刚才没听清，麻烦再说一次。",
         userPromptPrefix: "你是",
+        visionTaskHint: "(本轮已附带摄像头画面；请以✓开头，用“我看到”或直接描述画面，不要说“你看到”；简短回答，必要时补充细节) ",
+        cameraOffMarker: "(摄像头未开启) ",
         statusStrings: StatusStrings(
             preparingPrefix: "正在准备",
             preparingLive: "正在准备语音对话",
@@ -151,6 +161,8 @@ extension LiveLocaleConfig {
         // 在 Gemma E2B 英文模式下被当成 stage direction, 强化了"以 PhoneClaw 开头答复"的鹦鹉模式。
         // 系统 prompt 已经在 conversation 开场注入并保留在 KV cache 里, 不需要每轮再提醒。
         userPromptPrefix: "",
+        visionTaskHint: "(camera frame attached; start with ✓; answer as what I can see or describe the scene directly, not as what the user sees) ",
+        cameraOffMarker: "(camera off) ",
         statusStrings: StatusStrings(
             preparingPrefix: "Preparing",
             preparingLive: "Preparing voice mode",
@@ -171,6 +183,53 @@ extension LiveLocaleConfig {
             processingHeadline: "Thinking",
             speakingHeadline: "Replying",
             interruptHint: "You can interrupt me"
+        )
+    )
+
+    // MARK: - 日本語 (ja-JP) 数据
+
+    static let jaJPData = LiveLocaleConfig(
+        personaName: "PhoneClaw",
+        systemPrompt: """
+        あなたは「PhoneClaw」、ユーザーのスマホ上で動くローカル音声アシスタントです。
+        ユーザーとリアルタイムの音声会話をしています。
+
+        ユーザーの発話が言い終わっているか判断してください: 言い終わっていれば、先頭に「✓」と半角スペースを出力してから返答します; 途中で切れたようなら「○」だけを出力します; まだ考えている様子なら「◐」だけを出力します。「○」や「◐」の後には一切何も出力しないでください。
+
+        返答は自然な話し言葉の日本語で。長さは文脈で決めます: 簡単な質問は一文で; 説明・自己紹介・画面の描写が必要なときは二、三文で。完結に見せるための水増しはせず、ユーザーが明示的に求めない限りリストは使いません。
+
+        明るくフレンドリーな口調で、ただし簡潔に保ちます。
+
+        「何ができるの?」のような紹介的な質問には、具体例を挙げつつ、音声で聞いて心地よい長さに収めます。
+
+        カメラ機能がありますが、既定ではオフです。今回のユーザー発話に画像が付いていれば、カメラは今オンです; その視覚ターンは、言い回しが明らかに未完でない限り完結とみなし、「✓」で始め、画面の内容から簡潔に答え、必要なら一、二点の詳細を添えます。画面を描写するときは一人称で「〜が見えます」と言うか、内容を直接述べます;「あなたには〜が見えます」とは言いません。ユーザーのテキストに明示的に「(カメラオフ)」と書かれている場合のみ、今は画面がないものとして扱い、見えていると主張しないでください。
+        """,
+        greetingPrompt: "次の一行をそのまま出力してください: ✓ PhoneClaw です。何をお手伝いしましょうか? 説明や改行、他の内容は加えないでください。",
+        fallbackUtterance: "ごめんなさい、うまく聞き取れませんでした。もう一度言ってもらえますか?",
+        // 日本語も英文と同様に per-turn の "(あなたは…)" 前置きを付けない。
+        userPromptPrefix: "",
+        visionTaskHint: "(カメラ画像が添付されています; ✓で始め、「〜が見えます」と一人称で、または画面を直接描写してください;「あなたには〜が見えます」とは言わない; 簡潔に、必要なら詳細を補足) ",
+        cameraOffMarker: "(カメラオフ) ",
+        statusStrings: StatusStrings(
+            preparingPrefix: "準備中",
+            preparingLive: "音声会話を準備中",
+            preparing: "準備中",
+            liveModelMissing: "先に設定で音声モデルをダウンロードしてください",
+            audioEngineFailed: "オーディオエンジンの起動に失敗しました",
+            vadUnavailable: "音声検出を利用できません",
+            recording: "聞いています",
+            processing: "理解しています",
+            listeningPrompt: "聞いています、どうぞ話してください",
+            loadModelFirst: "先にモデルを読み込んでください",
+            initializationFailed: "音声モードの初期化に失敗しました",
+            ended: "音声会話を終了しました",
+            speaking: "応答中",
+            loadingHeadline: "読み込み中",
+            listeningHeadline: "聞いています",
+            recordingHeadline: "聞いています",
+            processingHeadline: "理解しています",
+            speakingHeadline: "応答中",
+            interruptHint: "いつでも話しかけてOK"
         )
     )
 }

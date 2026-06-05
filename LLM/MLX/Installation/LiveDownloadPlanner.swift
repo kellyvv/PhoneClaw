@@ -44,6 +44,24 @@ enum LiveDownloadPlanner {
     }
 
     static func makePlan(for asset: LiveModelAsset) async throws -> LiveAssetDownloadPlan {
+        // Baked manifest → 直连下载, 跳过 HF tree API (跟 LLM ModelDownloader 一致)。
+        // hf-mirror.com 不镜像列目录 /api/.../tree (会 308 → huggingface.co 国内被墙),
+        // 但文件 /resolve/main 走 mirror 正常 → 列目录是 LIVE 下载卡顿的根因。有清单的 asset 直接绕开。
+        if let manifest = asset.downloadManifest, !manifest.isEmpty {
+            let downloadFiles = manifest.map { local in
+                DownloadFile(
+                    relativePath: local,
+                    expectedSize: nil,
+                    sources: downloadSources(
+                        for: asset,
+                        remoteFile: LiveModelDefinition.remotePath(for: local, in: asset)
+                    )
+                )
+            }
+            PCLog.debug("[LiveDL] \(asset.id) baked manifest: \(downloadFiles.count) files (no tree API)")
+            return LiveAssetDownloadPlan(liveAsset: asset, files: downloadFiles, listingHost: "manifest")
+        }
+
         var lastError: Error?
 
         for host in hosts {
