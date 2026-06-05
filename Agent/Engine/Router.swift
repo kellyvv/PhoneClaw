@@ -1,5 +1,46 @@
 import Foundation
 
+enum DialogueAct: String {
+    case newTask = "new_task"
+    case continueTask = "continue_task"
+    case correctParameters = "correct_parameters"
+    case refreshResult = "refresh_result"
+    case verifyLastResult = "verify_last_result"
+    case explainLastResult = "explain_last_result"
+    case clarifyLastResult = "clarify_last_result"
+    case cancelOrReject = "cancel_or_reject"
+    case chitchat = "chitchat"
+
+    var allowsToolExecution: Bool {
+        switch self {
+        case .newTask, .continueTask, .correctParameters, .refreshResult:
+            return true
+        case .verifyLastResult, .explainLastResult, .clarifyLastResult, .cancelOrReject, .chitchat:
+            return false
+        }
+    }
+}
+
+struct DialogueActDecision {
+    let act: DialogueAct
+    let shouldExecuteTool: Bool
+    let targetPreviousResult: Bool
+    let confidence: Double?
+
+    var blocksToolExecution: Bool {
+        if !act.allowsToolExecution { return true }
+        return !shouldExecuteTool && targetPreviousResult
+    }
+}
+
+struct RecentToolObservation {
+    let toolName: String
+    let skillId: String?
+    let skillDisplayName: String
+    let summary: String
+    let detail: String
+}
+
 extension AgentEngine {
 
     // MARK: - 通用工具
@@ -51,7 +92,7 @@ extension AgentEngine {
     /// 认为用户在对同一个 skill 的多轮对话中做 follow-up, 继续路由到那个 skill。
     /// 这样 "明天下午14点的" 这种纯补全消息也能命中上一轮的 calendar skill,
     /// 避免落到 light 路径丢失 skill 能力。
-    func matchedSkillIds(for userQuestion: String) -> [String] {
+    func matchedSkillIds(for userQuestion: String, allowSticky: Bool = true) -> [String] {
         let normalizedQuestion = userQuestion.lowercased()
         guard !normalizedQuestion.isEmpty else { return [] }
 
@@ -85,7 +126,7 @@ extension AgentEngine {
         // 框架对 E2B / E4B 完全一视同仁, 不做任何模型分支。如果小模型在某
         // 些多轮场景下表现不稳, 那是模型能力问题, 框架不偷偷修。默认前提
         // 是用户只装了一个模型, 装的是哪个就用哪个。
-        if matched.isEmpty, let stickySkillId = recentActiveSkillId() {
+        if allowSticky, matched.isEmpty, let stickySkillId = recentActiveSkillId() {
             matched.append(stickySkillId)
         }
 
@@ -112,7 +153,7 @@ extension AgentEngine {
     /// 纯变换后的闲聊被污染回 translate。
     ///
     /// 这是纯框架层判定 — 不感知任何具体 skill 名, 不硬编任何业务字符串。
-    private func recentActiveSkillId() -> String? {
+    func recentActiveSkillId() -> String? {
         var sawCurrentUser = false
         for msg in messages.reversed() {
             if msg.role == .user {
@@ -143,6 +184,178 @@ extension AgentEngine {
             }
         }
         return nil
+    }
+
+    func latestPriorToolObservation() -> RecentToolObservation? {
+        var skippedCurrentUser = false
+        var priorUserTurnsSeen = 0
+        for message in messages.reversed() {
+            if message.role == .user {
+                if !skippedCurrentUser {
+                    skippedCurrentUser = true
+                    continue
+                }
+                priorUserTurnsSeen += 1
+                if priorUserTurnsSeen > 3 {
+                    return nil
+                }
+                continue
+            }
+            guard skippedCurrentUser else { continue }
+            guard message.role == .skillResult,
+                  message.skillResultKind == .toolExecution,
+                  let toolName = message.skillName,
+                  !toolName.isEmpty else {
+                continue
+            }
+
+            let skillId = skillRegistry.findSkillId(forTool: toolName)
+                ?? skillRegistry.canonicalSkillId(for: toolName)
+            let resolvedSkillId = skillRegistry.getDefinition(skillId) == nil ? nil : skillId
+            let displayName = resolvedSkillId
+                .flatMap { skillRegistry.getDefinition($0)?.metadata.displayName }
+                ?? findDisplayName(for: toolName)
+            let canonical = canonicalToolResult(toolName: toolName, toolResult: message.content)
+            let normalizedSummary = canonical.summary.trimmingCharacters(in: .whitespacesAndNewlines)
+            let normalizedDetail = message.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            let summary = normalizedSummary.isEmpty ? normalizedDetail : normalizedSummary
+            guard !summary.isEmpty else { continue }
+
+            return RecentToolObservation(
+                toolName: toolName,
+                skillId: resolvedSkillId,
+                skillDisplayName: displayName,
+                summary: summary,
+                detail: normalizedDetail
+            )
+        }
+        return nil
+    }
+
+    func classifyDialogueActForToolFollowUp(
+        userQuestion: String,
+        observation: RecentToolObservation
+    ) async -> DialogueActDecision? {
+        let prompt = PromptBuilder.buildDialogueActPrompt(
+            userQuestion: userQuestion,
+            previousSkillName: observation.skillDisplayName,
+            previousToolName: observation.toolName,
+            previousResultSummary: observation.summary
+        )
+
+        let rawDecision = await runIsolatedInferenceProbe(
+            prompt: prompt,
+            maxOutputTokens: 96,
+            label: "DialogueAct"
+        )
+
+        guard let rawDecision,
+              let decision = parseDialogueActDecision(rawDecision) else {
+            log("[DialogueAct] selected=unknown")
+            return nil
+        }
+
+        log("[DialogueAct] act=\(decision.act.rawValue) execute=\(decision.shouldExecuteTool) previous=\(decision.targetPreviousResult)")
+        return decision
+    }
+
+    private func parseDialogueActDecision(_ rawValue: String) -> DialogueActDecision? {
+        let cleaned = cleanOutput(rawValue)
+        guard let object = parseJSONObject(rawValue) ?? parseJSONObject(cleaned) else {
+            return nil
+        }
+
+        let rawAct = ((object["act"] as? String) ?? (object["dialogue_act"] as? String) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "-", with: "_")
+        guard let act = DialogueAct(rawValue: rawAct) else {
+            return nil
+        }
+
+        let target = ((object["target"] as? String) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "-", with: "_")
+        let targetPrevious = target == "previous_result"
+            || target == "previous"
+            || target == "last_result"
+            || target == "last"
+        let shouldExecute = (object["should_execute_tool"] as? Bool) ?? act.allowsToolExecution
+        let confidence: Double?
+        if let value = object["confidence"] as? Double {
+            confidence = value
+        } else if let value = object["confidence"] as? NSNumber {
+            confidence = value.doubleValue
+        } else {
+            confidence = nil
+        }
+
+        return DialogueActDecision(
+            act: act,
+            shouldExecuteTool: shouldExecute,
+            targetPreviousResult: targetPrevious,
+            confidence: confidence
+        )
+    }
+
+    func answerFromPriorToolObservation(
+        userQuestion: String,
+        observation: RecentToolObservation,
+        decision: DialogueActDecision
+    ) async {
+        let prompt = PromptBuilder.buildPreviousToolObservationReplyPrompt(
+            userQuestion: userQuestion,
+            dialogueAct: decision.act.rawValue,
+            previousSkillName: observation.skillDisplayName,
+            previousToolName: observation.toolName,
+            previousResultSummary: observation.summary,
+            previousResultDetail: observation.detail
+        )
+        let plan = makePromptPlan(
+            prompt: prompt,
+            shape: .lightFull,
+            history: messages,
+            historyDepth: 0
+        )
+        await prepareSessionGroupTransitionIfNeeded(for: plan)
+
+        messages.append(ChatMessage(role: .assistant, content: "▍"))
+        let msgIndex = messages.count - 1
+
+        markStreamingStarted()
+        guard let rawReply = await streamLLM(prompt: prompt, msgIndex: msgIndex, images: []) else {
+            if messages.indices.contains(msgIndex) {
+                messages[msgIndex].update(content: fallbackReplyForPriorToolObservation(observation))
+            }
+            recordCompletedObservation(plan: plan)
+            finishTurn()
+            return
+        }
+
+        let cleaned = cleanOutput(rawReply)
+        let finalReply: String
+        if parseToolCall(rawReply) != nil
+            || cleaned.isEmpty
+            || looksLikeStructuredIntermediateOutput(cleaned)
+            || looksLikePromptEcho(cleaned) {
+            finalReply = fallbackReplyForPriorToolObservation(observation)
+        } else {
+            finalReply = cleaned
+        }
+        if messages.indices.contains(msgIndex) {
+            messages[msgIndex].update(content: finalReply)
+        }
+        recordCompletedObservation(plan: plan)
+        finishTurn()
+    }
+
+    private func fallbackReplyForPriorToolObservation(_ observation: RecentToolObservation) -> String {
+        let summary = observation.summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        return tr(
+            "我没有重新读取数据。基于上一轮 \(observation.skillDisplayName) 返回的结果：\(summary)",
+            "I did not run the tool again. Based on the previous \(observation.skillDisplayName) result: \(summary)"
+        )
     }
 
     func canonicalSkillSelectionEntry(_ rawValue: String) -> String? {
@@ -184,39 +397,11 @@ extension AgentEngine {
             availableNetworkSkillsSummary: candidates.summary
         )
 
-        let savedTopK = inference.samplingTopK
-        let savedTopP = inference.samplingTopP
-        let savedTemperature = inference.samplingTemperature
-        let savedMaxOutputTokens = inference.maxOutputTokens
-
-        inference.samplingTopK = 1
-        inference.samplingTopP = 1.0
-        inference.samplingTemperature = 0
-        inference.maxOutputTokens = min(savedMaxOutputTokens, 12)
-        defer {
-            inference.samplingTopK = savedTopK
-            inference.samplingTopP = savedTopP
-            inference.samplingTemperature = savedTemperature
-            inference.maxOutputTokens = savedMaxOutputTokens
-        }
-
-        let rawDecision = await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
-            inference.generate(
-                prompt: prompt,
-                onToken: { _ in },
-                onComplete: { result in
-                    switch result {
-                    case .success(let text):
-                        continuation.resume(returning: text)
-                    case .failure(let error):
-                        log("[IntentRouter] classification failed: \(error.localizedDescription)")
-                        continuation.resume(returning: nil)
-                    }
-                }
-            )
-        }
-
-        await inference.resetKVSession()
+        let rawDecision = await runIsolatedInferenceProbe(
+            prompt: prompt,
+            maxOutputTokens: 12,
+            label: "IntentRouter"
+        )
 
         guard let rawDecision,
               let selected = parseNetworkIntentRoute(rawDecision, candidateIds: candidates.ids) else {

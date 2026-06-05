@@ -597,7 +597,7 @@ extension AgentEngine {
 
                 do {
                     let canonicalResult: CanonicalToolResult
-                    let toolResultDetail: String
+                    var toolResultDetail: String
                     if HotfixFeatureFlags.useHotfixPromptPipeline && HotfixFeatureFlags.enableCanonicalToolResult {
                         canonicalResult = try await handleToolExecutionCanonical(
                             toolName: step.tool,
@@ -611,6 +611,7 @@ extension AgentEngine {
                     }
 
                     messages[cardIndex].update(role: .system, content: "done", skillName: displayName)
+                    toolResultDetail = normalizePhoneGroundPayloadIfNeeded(toolName: step.tool, detail: toolResultDetail)
                     messages.append(ChatMessage(role: .skillResult, content: toolResultDetail, skillName: step.tool, skillResultKind: .toolExecution))
 
                     if !canonicalResult.success {

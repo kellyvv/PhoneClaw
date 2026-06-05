@@ -1199,18 +1199,17 @@ struct ConfigurationsView: View {
     ) -> some View {
         let safeTotal = max(totalFiles, 1)
         let metrics = engine.installer.downloadProgress[modelID]
-        let activeFileFraction = metrics?.fractionCompleted.map { min(1, max(0, $0)) } ?? 0
-        let value = min(Double(safeTotal), Double(min(completedFiles, safeTotal)) + activeFileFraction)
+        let fileFraction = Double(min(completedFiles, safeTotal)) / Double(safeTotal)
+        let overallFraction = metrics?.fractionCompleted.map { min(1, max(0, $0)) } ?? fileFraction
 
         return VStack(alignment: .leading, spacing: 5) {
             GeometryReader { proxy in
-                let fraction = min(1, max(0, value / Double(safeTotal)))
                 ZStack(alignment: .leading) {
                     Capsule()
                         .fill(SettingsStyle.hairline)
                     Capsule()
                         .fill(Theme.accentMuted.opacity(0.92))
-                        .frame(width: max(3, proxy.size.width * fraction))
+                        .frame(width: max(3, proxy.size.width * overallFraction))
                 }
             }
             .frame(height: 3)

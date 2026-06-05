@@ -1,6 +1,13 @@
 import CryptoKit
 import Foundation
 
+private struct InferenceSamplingSnapshot {
+    let topK: Int
+    let topP: Float
+    let temperature: Float
+    let maxOutputTokens: Int
+}
+
 // MARK: - Prompt Pipeline Helpers
 //
 // 从 AgentEngine 提取的 prompt 构建辅助方法:
@@ -257,6 +264,56 @@ extension AgentEngine {
     }
 
     // MARK: - Observation / Diagnostics
+
+    /// Runs a short internal LLM probe without letting its temporary sampling
+    /// settings leak into the persistent chat session.
+    ///
+    /// LiteRT opens a KV session with the current `maxOutputTokens`. Any probe
+    /// that temporarily lowers that value must restore the normal settings
+    /// before resetting/reopening KV, otherwise the next real assistant answer
+    /// inherits the probe's tiny output cap.
+    func runIsolatedInferenceProbe(
+        prompt: String,
+        maxOutputTokens: Int,
+        label: String,
+        onToken: @escaping @MainActor @Sendable (String) -> Void = { _ in }
+    ) async -> String? {
+        let snapshot = InferenceSamplingSnapshot(
+            topK: inference.samplingTopK,
+            topP: inference.samplingTopP,
+            temperature: inference.samplingTemperature,
+            maxOutputTokens: inference.maxOutputTokens
+        )
+
+        inference.samplingTopK = 1
+        inference.samplingTopP = 1.0
+        inference.samplingTemperature = 0
+        inference.maxOutputTokens = min(snapshot.maxOutputTokens, maxOutputTokens)
+
+        let raw = await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
+            inference.generate(
+                prompt: prompt,
+                onToken: onToken,
+                onComplete: { result in
+                    switch result {
+                    case .success(let text):
+                        continuation.resume(returning: text)
+                    case .failure(let error):
+                        log("[\(label)] probe failed: \(error.localizedDescription)")
+                        continuation.resume(returning: nil)
+                    }
+                }
+            )
+        }
+
+        inference.samplingTopK = snapshot.topK
+        inference.samplingTopP = snapshot.topP
+        inference.samplingTemperature = snapshot.temperature
+        inference.maxOutputTokens = snapshot.maxOutputTokens
+        await inference.resetKVSession()
+
+        return raw
+    }
 
     func kvPrefillTokensForCurrentTurn() -> Int {
         // 协议默认实现返回 0 (无 KV 能力的后端); LiteRTBackend 覆写成真实值。

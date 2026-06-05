@@ -9,6 +9,7 @@ struct RegisteredTool {
     let name: String
     let description: String
     let parameters: String
+    let phoneGroundContract: PhoneGroundToolContract?
 
     /// 必填参数名列表，用于泛化参数校验（替代 per-tool switch）。
     /// 空数组表示无参数或无需强制校验。
@@ -34,6 +35,7 @@ struct RegisteredTool {
         name: String,
         description: String,
         parameters: String,
+        phoneGroundContract: PhoneGroundToolContract? = nil,
         requiredParameters: [String] = [],
         requiredAnyOfParameters: [String] = [],
         aliases: [String] = [],
@@ -45,6 +47,7 @@ struct RegisteredTool {
         self.name = name
         self.description = description
         self.parameters = parameters
+        self.phoneGroundContract = phoneGroundContract
         self.requiredParameters = requiredParameters
         self.requiredAnyOfParameters = requiredAnyOfParameters
         self.aliases = aliases
@@ -86,6 +89,88 @@ struct RegisteredTool {
         default:
             return true
         }
+    }
+}
+
+// MARK: - PhoneGround Contracts
+
+/// PhoneGround 是工具层暴露给 Agent 编排层的最小契约。
+/// 它不替代具体工具 schema，而是声明工具结果该如何被证据化、回答化、校验和恢复。
+struct PhoneGroundToolContract: Sendable, Equatable {
+    let evidenceTypes: [PhoneGroundEvidenceType]
+    let answerContract: PhoneGroundAnswerContract
+    let freshness: PhoneGroundFreshnessRequirement
+    let supportsRecovery: Bool
+
+    init(
+        evidenceTypes: [PhoneGroundEvidenceType],
+        answerContract: PhoneGroundAnswerContract,
+        freshness: PhoneGroundFreshnessRequirement = .unspecified,
+        supportsRecovery: Bool = false
+    ) {
+        self.evidenceTypes = evidenceTypes
+        self.answerContract = answerContract
+        self.freshness = freshness
+        self.supportsRecovery = supportsRecovery
+    }
+}
+
+enum PhoneGroundEvidenceType: String, Codable, Sendable, Equatable {
+    case web
+    case health
+    case calendar
+    case contacts
+    case reminders
+    case clipboard
+    case file
+    case system
+}
+
+enum PhoneGroundAnswerContract: String, Codable, Sendable, Equatable {
+    /// 普通工具结果，由现有 follow-up prompt 处理。
+    case none
+    /// 输出必须基于 evidence，并把可点击来源集中到独立 sources 区。
+    case groundedSources
+    /// 输出必须基于用户私有数据 evidence，并明确数据范围/缺失/权限状态。
+    case groundedDataSummary
+}
+
+enum PhoneGroundFreshnessRequirement: String, Codable, Sendable, Equatable {
+    case realtime
+    case recent
+    case staticKnowledge
+    case userScopedData
+    case unspecified
+}
+
+struct PhoneGroundEvidenceItem: Codable, Sendable, Equatable {
+    let id: String
+    let type: PhoneGroundEvidenceType
+    let title: String
+    let content: String
+    let url: String?
+    let timestamp: String?
+    let confidence: String?
+    let metadata: [String: String]
+
+    init(
+        id: String,
+        type: PhoneGroundEvidenceType,
+        title: String,
+        content: String,
+        url: String? = nil,
+        timestamp: String? = nil,
+        confidence: String? = nil,
+        metadata: [String: String] = [:]
+    ) {
+        self.id = id
+        self.type = type
+        self.title = title
+        self.content = content
+        self.url = url
+        self.timestamp = timestamp
+        self.confidence = confidence
+        self.metadata = metadata
     }
 }
 
@@ -191,6 +276,18 @@ class ToolRegistry {
     /// 某个工具是否声明了跳过 LLM follow-up。
     func shouldSkipFollowUp(for toolName: String) -> Bool {
         find(name: toolName)?.skipFollowUp ?? false
+    }
+
+    func phoneGroundContract(for toolName: String) -> PhoneGroundToolContract? {
+        find(name: toolName)?.phoneGroundContract
+    }
+
+    func answerContract(for toolName: String) -> PhoneGroundAnswerContract {
+        phoneGroundContract(for: toolName)?.answerContract ?? .none
+    }
+
+    func supportsPhoneGroundRecovery(for toolName: String) -> Bool {
+        phoneGroundContract(for: toolName)?.supportsRecovery ?? false
     }
 
     // MARK: - 内置工具注册

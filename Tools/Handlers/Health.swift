@@ -25,6 +25,13 @@ enum HealthTools {
         UserDefaults.standard.bool(forKey: readAuthorizationRequestedDefaultsKey)
     }
 
+    private static let healthDataContract = PhoneGroundToolContract(
+        evidenceTypes: [.health],
+        answerContract: .groundedDataSummary,
+        freshness: .userScopedData,
+        supportsRecovery: false
+    )
+
     private static var defaultReadTypes: Set<HKObjectType> {
         var types = Set<HKObjectType>()
 
@@ -78,6 +85,7 @@ enum HealthTools {
             name: "health-steps-today",
             description: tr("读取用户今日步数 (从本地 0 点到当前时间的累计步数)。仅读取,不修改。", "Read the user's step count for today (cumulative steps from local midnight to now). Read-only, no modifications."),
             parameters: tr("无", "None"),
+            phoneGroundContract: healthDataContract,
             isParameterless: true,
             skipFollowUp: true,
             execute: { args in
@@ -95,6 +103,7 @@ enum HealthTools {
             name: "health-steps-yesterday",
             description: tr("读取用户昨日步数 (昨天本地 0 点到 23:59:59 的累计步数)。仅读取,不修改。", "Read the user's step count for yesterday (cumulative steps from yesterday local midnight to 23:59:59). Read-only, no modifications."),
             parameters: tr("无", "None"),
+            phoneGroundContract: healthDataContract,
             isParameterless: true,
             skipFollowUp: true,
             execute: { args in
@@ -112,6 +121,7 @@ enum HealthTools {
             name: "health-sleep-last-night",
             description: tr("读取用户昨晚的睡眠数据 (最近 24 小时内的睡眠记录)。返回总时长和分阶段明细。", "Read the user's sleep data for last night (sleep records within the past 24 hours). Returns total duration and per-stage breakdown."),
             parameters: tr("无", "None"),
+            phoneGroundContract: healthDataContract,
             isParameterless: true,
             skipFollowUp: true,
             execute: { args in
@@ -129,6 +139,7 @@ enum HealthTools {
             name: "health-sleep-week",
             description: tr("读取用户最近 7 天的睡眠汇总 (每晚总时长 + 7 天平均)。", "Read a sleep summary for the user's past 7 days (total duration per night + 7-day average)."),
             parameters: tr("无", "None"),
+            phoneGroundContract: healthDataContract,
             isParameterless: true,
             skipFollowUp: true,
             execute: { args in
@@ -146,6 +157,7 @@ enum HealthTools {
             name: "health-workout-recent",
             description: tr("读取用户最近 7 天的运动记录 (类型、时长、消耗)。", "Read the user's workout records for the past 7 days (type, duration, calories burned)."),
             parameters: tr("无", "None"),
+            phoneGroundContract: healthDataContract,
             isParameterless: true,
             skipFollowUp: true,
             execute: { args in
@@ -166,6 +178,7 @@ enum HealthTools {
                 "Read the user's past 7 days of Health data and generate a local weekly report: steps, distance, active energy, sleep, workouts, heart rate, HRV, and weight. Read-only."
             ),
             parameters: tr("无", "None"),
+            phoneGroundContract: healthDataContract,
             isParameterless: true,
             skipFollowUp: true,
             execute: { args in
@@ -189,6 +202,7 @@ enum HealthTools {
                 "{\"days\":{\"type\":\"integer\",\"description\":\"查询最近几天的健康数据，1 到 90 天。例如一周=7，两周=14，一个月=30。\",\"required\":true}}",
                 "{\"days\":{\"type\":\"integer\",\"description\":\"Number of recent days to query, 1 to 90. For example: one week=7, two weeks=14, one month=30.\",\"required\":true}}"
             ),
+            phoneGroundContract: healthDataContract,
             requiredParameters: ["days"],
             isParameterless: false,
             skipFollowUp: true,
@@ -207,6 +221,7 @@ enum HealthTools {
             name: "health-distance-today",
             description: tr("读取用户今日步行+跑步距离 (从本地 0 点到当前时间, 单位 km)。仅读取。", "Read the user's walking+running distance for today (from local midnight to now, in km). Read-only."),
             parameters: tr("无", "None"),
+            phoneGroundContract: healthDataContract,
             isParameterless: true,
             skipFollowUp: true,
             execute: { args in
@@ -224,6 +239,7 @@ enum HealthTools {
             name: "health-active-energy-today",
             description: tr("读取用户今日活动消耗的卡路里 (从本地 0 点到当前时间)。仅读取。", "Read the user's active calories burned today (from local midnight to now). Read-only."),
             parameters: tr("无", "None"),
+            phoneGroundContract: healthDataContract,
             isParameterless: true,
             skipFollowUp: true,
             execute: { args in
@@ -241,6 +257,7 @@ enum HealthTools {
             name: "health-heart-rate-resting",
             description: tr("读取用户最近的静息心率 (最近 24 小时平均, 单位 BPM)。仅读取。", "Read the user's recent resting heart rate (average over the past 24 hours, in BPM). Read-only."),
             parameters: tr("无", "None"),
+            phoneGroundContract: healthDataContract,
             isParameterless: true,
             skipFollowUp: true,
             execute: { args in
@@ -258,6 +275,7 @@ enum HealthTools {
             name: "health-heart-rate-recent",
             description: tr("读取用户最近一条心率记录 (单位 BPM)。仅读取。", "Read the user's most recent heart rate sample (in BPM). Read-only."),
             parameters: tr("无", "None"),
+            phoneGroundContract: healthDataContract,
             isParameterless: true,
             skipFollowUp: true,
             execute: { args in
@@ -275,6 +293,7 @@ enum HealthTools {
             name: "health-heart-rate-variability",
             description: tr("读取用户最近一条心率变异性 HRV SDNN 记录 (单位 ms)。仅读取。", "Read the user's most recent heart rate variability (HRV SDNN) sample (in ms). Read-only."),
             parameters: tr("无", "None"),
+            phoneGroundContract: healthDataContract,
             isParameterless: true,
             skipFollowUp: true,
             execute: { args in
@@ -292,6 +311,7 @@ enum HealthTools {
             name: "health-weight-latest",
             description: tr("读取用户最近一条体重记录 (单位 kg)。仅读取。", "Read the user's most recent body weight sample (in kg). Read-only."),
             parameters: tr("无", "None"),
+            phoneGroundContract: healthDataContract,
             isParameterless: true,
             skipFollowUp: true,
             execute: { args in
@@ -309,6 +329,7 @@ enum HealthTools {
             name: "health-steps-range",
             description: tr("读取最近 N 天的每日步数。返回每日列表 + 总数 + 日均。", "Read daily step counts for the past N days. Returns a daily list + total + daily average."),
             parameters: tr("{\"days\":{\"type\":\"integer\",\"description\":\"查询天数 (1-30)\",\"required\":true}}", "{\"days\":{\"type\":\"integer\",\"description\":\"Number of days to query (1-30)\",\"required\":true}}"),
+            phoneGroundContract: healthDataContract,
             requiredParameters: ["days"],
             isParameterless: false,
             skipFollowUp: true,
@@ -1335,10 +1356,17 @@ enum HealthTools {
         summary: String,
         extras: [String: Any] = [:]
     ) -> CanonicalToolResult {
-        CanonicalToolResult(
+        var payloadExtras = extras
+        payloadExtras["phone_ground"] = healthPhoneGroundMetadata(status: "succeeded")
+        payloadExtras["evidence_pack"] = healthEvidencePack(
+            summary: summary,
+            extras: extras,
+            status: (extras["type"] as? String) == "empty" ? "empty" : "sufficient"
+        )
+        return CanonicalToolResult(
             success: true,
             summary: summary,
-            detail: successPayload(result: summary, extras: extras)
+            detail: successPayload(result: summary, extras: payloadExtras)
         )
     }
 
@@ -1356,12 +1384,61 @@ enum HealthTools {
         detail: String,
         errorCode: String
     ) -> CanonicalToolResult {
-        CanonicalToolResult(
+        let extras: [String: Any] = [
+            "error_code": errorCode,
+            "phone_ground": healthPhoneGroundMetadata(status: "failed"),
+            "evidence_pack": healthEvidencePack(
+                summary: summary,
+                extras: ["error_code": errorCode],
+                status: "failed"
+            )
+        ]
+        return CanonicalToolResult(
             success: false,
             summary: summary,
-            detail: failurePayload(error: detail, extras: ["error_code": errorCode]),
+            detail: failurePayload(error: detail, extras: extras),
             errorCode: errorCode
         )
+    }
+
+    private static func healthPhoneGroundMetadata(status: String) -> [String: Any] {
+        [
+            "version": "phoneground_v0",
+            "evidence_type": PhoneGroundEvidenceType.health.rawValue,
+            "answer_contract": PhoneGroundAnswerContract.groundedDataSummary.rawValue,
+            "freshness": PhoneGroundFreshnessRequirement.userScopedData.rawValue,
+            "privacy": "device_local",
+            "status": status
+        ]
+    }
+
+    private static func healthEvidencePack(
+        summary: String,
+        extras: [String: Any],
+        status: String
+    ) -> [String: Any] {
+        let metricKeys = extras.keys
+            .filter { key in
+                !["phone_ground", "evidence_pack", "success", "status", "result"].contains(key)
+            }
+            .sorted()
+        return [
+            "version": "phoneground_health_v0",
+            "source_type": PhoneGroundEvidenceType.health.rawValue,
+            "sufficiency": status,
+            "generated_at": iso8601String(from: Date()),
+            "metric_keys": metricKeys,
+            "item_count": summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0 : 1,
+            "items": [
+                [
+                    "id": "health_summary",
+                    "type": PhoneGroundEvidenceType.health.rawValue,
+                    "title": tr("健康数据摘要", "Health data summary"),
+                    "content": summary,
+                    "confidence": "device_data"
+                ] as [String: Any]
+            ]
+        ]
     }
 
     private static func stepsNoDataResult(

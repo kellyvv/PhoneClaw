@@ -912,17 +912,17 @@ public class MLXLocalLLMService: LLMEngine, InferenceService {
                     // If we hit the token cap mid-sentence, append a visible notice.
                     // This makes truncation explicit rather than silently dropping content.
                     if hitTokenCap || hitMemoryFloor {
-                        let isChinese = Locale.preferredLanguages.contains { $0.hasPrefix("zh") }
+                        let isChinese = LanguageService.shared.current.isChinese
                         if hitMemoryFloor {
                             let msg = isChinese
                                 ? "\n\n> ⚠️ 内存不足，已在 \(tokenCount) tokens 处停止生成。请关闭后台应用释放内存后重试。"
                                 : "\n\n> ⚠️ Low memory, stopped at \(tokenCount) tokens. Close background apps and retry."
                             continuation.yield(msg)
                         } else {
-                            let modeLabel = isChinese
-                                ? (thinkingEnabled ? "思考" : "输出")
-                                : (thinkingEnabled ? "Thinking" : "Output")
-                            continuation.yield("\n\n> ⚠️ \(modeLabel)已达单次输出上限（\(resolvedMaxOutputTokens) tokens），内容可能不完整。")
+                            let msg = isChinese
+                                ? "\n\n> ⚠️ \(thinkingEnabled ? "思考" : "输出")已达单次输出上限（\(resolvedMaxOutputTokens) tokens），内容可能不完整。"
+                                : "\n\n> ⚠️ \(thinkingEnabled ? "Thinking" : "Output") reached the single-response limit (\(resolvedMaxOutputTokens) tokens), so the content may be incomplete."
+                            continuation.yield(msg)
                         }
                     }
                     continuation.finish()

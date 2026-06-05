@@ -9,6 +9,29 @@ enum SingleToolExtractionOutcome {
     case failed
 }
 
+private struct PhoneGroundAnswerValidation {
+    let issues: [String]
+    let shouldTryAlternativeFetch: Bool
+
+    var shouldRepair: Bool {
+        !issues.isEmpty
+    }
+}
+
+private struct PhoneGroundPayloadValidation {
+    let issues: [String]
+
+    var isValid: Bool {
+        issues.isEmpty
+    }
+}
+
+private struct PhoneGroundPayloadNormalization {
+    let detail: String
+    let recoveredIssues: [String]
+    let remainingIssues: [String]
+}
+
 protocol ToolResultCanonicalizer {
     func canonicalize(toolName: String, toolResult: String) -> CanonicalToolResult
 }
@@ -35,6 +58,213 @@ extension AgentEngine {
         }
 
         return []
+    }
+
+    private func modelPlannedWebQueries(
+        userQuestion: String,
+        initialQuery: String,
+        images: [CIImage]
+    ) async -> [String] {
+        let trimmedQuestion = userQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedQuery = initialQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQuestion.isEmpty || !trimmedQuery.isEmpty else {
+            return []
+        }
+
+        let prompt = PromptBuilder.buildWebQueryPlanPrompt(
+            userQuestion: trimmedQuestion.isEmpty ? trimmedQuery : trimmedQuestion,
+            initialQuery: trimmedQuery.isEmpty ? trimmedQuestion : trimmedQuery,
+            currentImageCount: images.count
+        )
+        guard let raw = await streamLLM(prompt: prompt, images: images),
+              let payload = parseJSONObject(raw) ?? parseJSONObject(cleanOutput(raw)) else {
+            return []
+        }
+
+        let rawQueries = (payload["queries"] as? [Any])?.compactMap { $0 as? String } ?? []
+        let cleanedQueries = sanitizedWebQueryPlan(
+            rawQueries,
+            userQuestion: trimmedQuestion,
+            initialQuery: trimmedQuery
+        )
+        if !cleanedQueries.isEmpty {
+            log("[Agent] web-search model query plan: \(cleanedQueries.joined(separator: " | "))")
+        }
+        return cleanedQueries
+    }
+
+    private func sanitizedWebQueryPlan(
+        _ queries: [String],
+        userQuestion: String,
+        initialQuery: String
+    ) -> [String] {
+        var seen = Set<String>()
+        var output: [String] = []
+        for query in queries {
+            let normalized = query
+                .replacingOccurrences(of: "\r", with: " ")
+                .replacingOccurrences(of: "\n", with: " ")
+                .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard normalized.count >= 2, normalized.count <= 120 else {
+                continue
+            }
+            guard !normalized.contains("<tool_call>"),
+                  !normalized.contains("{"),
+                  !normalized.contains("}") else {
+                continue
+            }
+            let key = normalized.lowercased()
+            guard !seen.contains(key) else { continue }
+            seen.insert(key)
+            output.append(normalized)
+            if output.count >= 4 { break }
+        }
+
+        let fallback = initialQuery.isEmpty ? userQuestion : initialQuery
+        if output.isEmpty, !fallback.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return [fallback.trimmingCharacters(in: .whitespacesAndNewlines)]
+        }
+        return output
+    }
+
+    private func modelReplannedWebQueries(
+        userQuestion: String,
+        previousSearchDetail: String,
+        images: [CIImage]
+    ) async -> [String] {
+        guard webSearchResultNeedsReplan(previousSearchDetail) else {
+            return []
+        }
+
+        let prompt = PromptBuilder.buildWebQueryReplanPrompt(
+            userQuestion: userQuestion,
+            previousSearchSummary: compactWebSearchDetailForReplan(previousSearchDetail),
+            currentImageCount: images.count
+        )
+        guard let raw = await streamLLM(prompt: prompt, images: images),
+              let payload = parseJSONObject(raw) ?? parseJSONObject(cleanOutput(raw)) else {
+            return []
+        }
+
+        let previousQueries = Set(webSearchQueries(fromDetail: previousSearchDetail).map { $0.lowercased() })
+        let rawQueries = (payload["queries"] as? [Any])?.compactMap { $0 as? String } ?? []
+        let cleanedQueries = sanitizedWebQueryPlan(
+            rawQueries,
+            userQuestion: userQuestion,
+            initialQuery: userQuestion
+        )
+        .filter { !previousQueries.contains($0.lowercased()) }
+
+        if !cleanedQueries.isEmpty {
+            log("[Agent] web-search replan queries: \(cleanedQueries.joined(separator: " | "))")
+        }
+        return Array(cleanedQueries.prefix(4))
+    }
+
+    private func retryWebSearchWithReplannedQueriesIfNeeded(
+        searchDetail: String,
+        userQuestion: String,
+        images: [CIImage]
+    ) async -> CanonicalToolResult? {
+        let queries = await modelReplannedWebQueries(
+            userQuestion: userQuestion,
+            previousSearchDetail: searchDetail,
+            images: images
+        )
+        guard !queries.isEmpty else { return nil }
+
+        do {
+            let result = try await handleToolExecutionCanonical(
+                toolName: "web-search",
+                args: [
+                    "query": queries.first ?? userQuestion,
+                    "question": userQuestion,
+                    "planned_queries": queries,
+                    "max_results": 6
+                ]
+            )
+            log("[Agent] web-search second-pass completed queries=\(queries.count)")
+            return result
+        } catch {
+            log("[Agent] web-search second-pass failed: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    private func webSearchResultNeedsReplan(_ detail: String) -> Bool {
+        guard let data = detail.data(using: .utf8),
+              let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              (payload["success"] as? Bool) == true else {
+            return false
+        }
+
+        if payload["answerability"] as? String == "direct" {
+            return false
+        }
+        if payload["direct_evidence_sufficient"] as? Bool == true {
+            return false
+        }
+        if let evidencePack = payload["evidence_pack"] as? [String: Any] {
+            if evidencePack["sufficiency"] as? String == "sufficient" {
+                return false
+            }
+            let chunkCount = (evidencePack["chunk_count"] as? Int)
+                ?? ((evidencePack["chunks"] as? [[String: Any]])?.count ?? 0)
+            let fetchedCount = evidencePack["fetched_document_count"] as? Int ?? 0
+            if chunkCount >= 2 && fetchedCount > 0 {
+                return false
+            }
+        }
+
+        let directCount = payload["direct_answer_result_count"] as? Int ?? 0
+        return directCount == 0 || (payload["answerability"] as? String) == "needs_fetch"
+    }
+
+    private func webSearchQueries(fromDetail detail: String) -> [String] {
+        guard let data = detail.data(using: .utf8),
+              let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let queryPlan = payload["query_plan"] as? [String: Any] else {
+            return []
+        }
+        return (queryPlan["queries"] as? [Any])?.compactMap { $0 as? String } ?? []
+    }
+
+    private func compactWebSearchDetailForReplan(_ detail: String) -> String {
+        guard let data = detail.data(using: .utf8),
+              let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return detail
+        }
+        var lines: [String] = []
+        if let queryPlan = payload["query_plan"] as? [String: Any] {
+            let queries = (queryPlan["queries"] as? [Any])?.compactMap { $0 as? String } ?? []
+            if !queries.isEmpty {
+                lines.append("queries: \(queries.joined(separator: " | "))")
+            }
+            if let planner = queryPlan["planner"] as? String {
+                lines.append("planner: \(planner)")
+            }
+        }
+        if let answerability = payload["answerability"] as? String {
+            lines.append("answerability: \(answerability)")
+        }
+        if let evidencePack = payload["evidence_pack"] as? [String: Any] {
+            let sufficiency = evidencePack["sufficiency"] as? String ?? "unknown"
+            let chunkCount = (evidencePack["chunk_count"] as? Int)
+                ?? ((evidencePack["chunks"] as? [[String: Any]])?.count ?? 0)
+            lines.append("evidence_pack: sufficiency=\(sufficiency), chunks=\(chunkCount)")
+        }
+        if let results = payload["results"] as? [[String: Any]] {
+            let resultLines = results.prefix(6).enumerated().map { index, result in
+                let title = (result["title"] as? String) ?? ""
+                let host = (result["host"] as? String) ?? ""
+                let confidence = (result["confidence"] as? String) ?? ""
+                let needsFetch = (result["needs_fetch"] as? Bool) == true
+                return "\(index + 1). \(title) host=\(host) confidence=\(confidence) needs_fetch=\(needsFetch)"
+            }
+            lines.append("results:\n\(resultLines.joined(separator: "\n"))")
+        }
+        return lines.isEmpty ? detail : lines.joined(separator: "\n")
     }
 
     // MARK: - 单 Skill 自动 / 引导式工具调用
@@ -327,6 +557,13 @@ extension AgentEngine {
     ) -> String {
         let trimmed = toolResultDetail.trimmingCharacters(in: .whitespacesAndNewlines)
         let summary = toolResultSummary.trimmingCharacters(in: .whitespacesAndNewlines)
+        if usesGroundedSourcesContract(toolName) {
+            return groundedFallbackReplyForEmptyToolFollowUp(
+                toolName: toolName,
+                toolResultSummary: summary,
+                toolResultDetail: trimmed
+            )
+        }
         if !summary.isEmpty, summary != trimmed {
             return summary
         }
@@ -351,6 +588,65 @@ extension AgentEngine {
             \(trimmed)
             """
         }
+    }
+
+    private func groundedFallbackReplyForEmptyToolFollowUp(
+        toolName: String,
+        toolResultSummary: String,
+        toolResultDetail: String
+    ) -> String {
+        let summaryText = bestEvidenceSnippet(fromToolResultDetail: toolResultDetail)
+            ?? removeInlineWebLinks(removeExistingSourceSection(toolResultSummary))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        let clippedSummary = clippedPlainText(summaryText, maxCharacters: 420)
+        let body: String
+        if clippedSummary.isEmpty {
+            body = tr(
+                "总结\n这次工具返回了可检查的来源，但没有稳定生成自然语言结论。请优先打开下方来源核对最新信息。",
+                "Summary\nThe tool returned checkable sources, but a natural-language conclusion was not generated reliably. Please verify the latest information from the sources below."
+            )
+        } else if LanguageService.shared.current.isChinese {
+            body = "总结\n我找到了可用的搜索证据。最相关证据显示：\(clippedSummary)"
+        } else {
+            body = "Summary\nI found usable search evidence. The most relevant evidence says: \(clippedSummary)"
+        }
+
+        return appendSourceCitationIfNeeded(
+            to: body,
+            toolName: toolName,
+            toolResultDetail: toolResultDetail
+        )
+    }
+
+    private func bestEvidenceSnippet(fromToolResultDetail detail: String) -> String? {
+        guard let data = detail.data(using: .utf8),
+              let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let evidencePack = payload["evidence_pack"] as? [String: Any],
+              let chunks = evidencePack["chunks"] as? [[String: Any]] else {
+            return nil
+        }
+
+        let sortedChunks = chunks.sorted { lhs, rhs in
+            let lhsScore = lhs["score"] as? Double ?? 0
+            let rhsScore = rhs["score"] as? Double ?? 0
+            if lhsScore != rhsScore { return lhsScore > rhsScore }
+            return ((lhs["source_rank"] as? Int) ?? Int.max) < ((rhs["source_rank"] as? Int) ?? Int.max)
+        }
+        return sortedChunks
+            .compactMap { $0["text"] as? String }
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
+    }
+
+    private func clippedPlainText(_ text: String, maxCharacters: Int) -> String {
+        let normalized = text
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalized.count > maxCharacters else { return normalized }
+        let end = normalized.index(normalized.startIndex, offsetBy: maxCharacters)
+        return String(normalized[..<end]).trimmingCharacters(in: .whitespacesAndNewlines) + "..."
     }
 
     func shouldUseCompactToolFollowUp(
@@ -409,7 +705,7 @@ extension AgentEngine {
         toolName: String,
         toolResultDetail: String
     ) -> String {
-        guard toolName == "web-search" || toolName == "web-fetch" else {
+        guard usesGroundedSourcesContract(toolName) else {
             return answer
         }
         let urls = sourceURLs(fromToolResultDetail: toolResultDetail) + sourceURLs(fromAnswerText: answer)
@@ -417,9 +713,72 @@ extension AgentEngine {
 
         let uniqueURLs = uniqueSourceURLs(urls)
         let cleanedAnswer = removeInlineSourceParentheticals(answer)
-        let bodyAnswer = removeExistingSourceSection(cleanedAnswer)
+        let bodyAnswer = removeInlineWebLinks(removeExistingSourceSection(cleanedAnswer))
         let sources = sourceSection(for: uniqueURLs)
+        guard !sources.isEmpty else { return bodyAnswer }
         return bodyAnswer.isEmpty ? sources : bodyAnswer + "\n\n" + sources
+    }
+
+    private func finalizeWebAnswer(
+        _ answer: String,
+        toolName: String,
+        toolResultSummary: String,
+        toolResultDetail: String,
+        userQuestion: String,
+        images: [CIImage],
+        msgIndex: Int
+    ) async -> String {
+        guard usesGroundedSourcesContract(toolName) else {
+            return answer
+        }
+
+        let normalized = appendSourceCitationIfNeeded(
+            to: answer,
+            toolName: toolName,
+            toolResultDetail: toolResultDetail
+        )
+        let validation = validateGroundedWebAnswer(
+            normalized,
+            toolName: toolName,
+            toolResultDetail: toolResultDetail
+        )
+        guard validation.shouldRepair else {
+            return normalized
+        }
+
+        log("[Agent] web answer repair needed: \(validation.issues.joined(separator: "; "))")
+        let repairPrompt = PromptBuilder.buildWebAnswerRepairPrompt(
+            userQuestion: userQuestion,
+            toolName: toolName,
+            toolResultSummary: toolResultSummary,
+            draftAnswer: normalized,
+            validationIssues: validation.issues,
+            currentImageCount: images.count
+        )
+        guard let repairedText = await streamLLM(prompt: repairPrompt, msgIndex: msgIndex, images: images) else {
+            return normalized
+        }
+
+        let repaired = cleanOutput(repairedText)
+        guard !repaired.isEmpty,
+              !looksLikeStructuredIntermediateOutput(repaired),
+              !looksLikePromptEcho(repaired) else {
+            return normalized
+        }
+
+        let repairedNormalized = appendSourceCitationIfNeeded(
+            to: repaired,
+            toolName: toolName,
+            toolResultDetail: toolResultDetail
+        )
+        let repairedValidation = validateGroundedWebAnswer(
+            repairedNormalized,
+            toolName: toolName,
+            toolResultDetail: toolResultDetail
+        )
+        return repairedValidation.issues.count <= validation.issues.count
+            ? repairedNormalized
+            : normalized
     }
 
     private func sourceURLs(fromToolResultDetail detail: String) -> [String] {
@@ -538,8 +897,30 @@ extension AgentEngine {
         return output.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    private func splitWebAnswerSections(_ answer: String) -> (body: String, sources: String?) {
+        var body: [String] = []
+        var sources: [String] = []
+        var inSources = false
+        for line in answer.components(separatedBy: "\n") {
+            if isSourceSectionHeading(line.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                inSources = true
+            }
+            if inSources {
+                sources.append(line)
+            } else {
+                body.append(line)
+            }
+        }
+        let sourceText = sources.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        return (
+            body.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines),
+            sourceText.isEmpty ? nil : sourceText
+        )
+    }
+
     private func sourceSection(for urls: [String]) -> String {
         let filteredURLs = urls.filter { !isLowValueSourceURL($0) }
+        guard !filteredURLs.isEmpty else { return "" }
         let lines = filteredURLs.prefix(5).enumerated().map { index, url in
             "\(index + 1). [\(sourceLabel(for: url))](\(url))"
         }.joined(separator: "\n")
@@ -586,6 +967,29 @@ extension AgentEngine {
         return result.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    private func removeInlineWebLinks(_ answer: String) -> String {
+        var result = answer
+        result = result.replacingOccurrences(
+            of: #"\[([^\]\n]{1,120})\]\(https?://[^\s)]+\)"#,
+            with: "$1",
+            options: .regularExpression
+        )
+        result = result.replacingOccurrences(
+            of: #"https?://[^\s\]\)）>，。；;、]+"#,
+            with: "",
+            options: .regularExpression
+        )
+        result = result.replacingOccurrences(
+            of: #"(?<![@/:])\bwww\.[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?:/[^\s\]\)）>，。；;、]*)?"#,
+            with: "",
+            options: .regularExpression
+        )
+        result = result.replacingOccurrences(of: #"[ \t]{2,}"#, with: " ", options: .regularExpression)
+        result = result.replacingOccurrences(of: #" +([，。；：,.!?])"#, with: "$1", options: .regularExpression)
+        result = result.replacingOccurrences(of: #"\n{3,}"#, with: "\n\n", options: .regularExpression)
+        return result.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     private func isSourceSectionHeading(_ text: String) -> Bool {
         var normalized = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         while normalized.hasPrefix("#") {
@@ -600,6 +1004,379 @@ extension AgentEngine {
             || normalized.hasPrefix("引用链接：")
             || normalized.hasPrefix("sources:")
             || normalized.hasPrefix("references:")
+    }
+
+    private func validateGroundedWebAnswer(
+        _ answer: String,
+        toolName: String,
+        toolResultDetail: String
+    ) -> PhoneGroundAnswerValidation {
+        guard usesGroundedSourcesContract(toolName) else {
+            return PhoneGroundAnswerValidation(issues: [], shouldTryAlternativeFetch: false)
+        }
+
+        let sections = splitWebAnswerSections(answer)
+        let body = sections.body
+        let sources = sections.sources ?? ""
+        let expectedURLs = sourceURLs(fromToolResultDetail: toolResultDetail)
+            .filter { !isLowValueSourceURL($0) }
+        var issues: [String] = []
+
+        if body.trimmingCharacters(in: .whitespacesAndNewlines).count < 12 {
+            issues.append(tr("总结正文为空或过短。", "Summary body is empty or too short."))
+        }
+        if webAnswerContainsPlaceholder(answer) {
+            issues.append(tr("回答包含占位符或模板文本。", "Answer contains placeholder or template text."))
+        }
+        if groundedAnswerLanguageMismatch(body) {
+            issues.append(tr(
+                "回答语言与当前会话语言不一致。",
+                "Answer language does not match the current conversation language."
+            ))
+        }
+        if !expectedURLs.isEmpty {
+            if sections.sources == nil {
+                issues.append(tr("缺少独立的“引用网址”段。", "Missing separate Sources section."))
+            } else if markdownLinkCount(in: sources) == 0 {
+                issues.append(tr("引用网址段没有 Markdown 可点击链接。", "Sources section has no clickable Markdown links."))
+            }
+        }
+        if !sourceURLs(fromAnswerText: body).isEmpty {
+            issues.append(tr("总结正文仍混入 URL 或来源链接。", "Summary body still contains URLs or source links."))
+        }
+        if bodyContainsInlineSourceMarker(body) {
+            issues.append(tr("总结正文仍混入来源括号或来源标记。", "Summary body still contains inline source markers."))
+        }
+
+        let hasUsableEvidence = webToolDetailHasUsableEvidence(toolResultDetail)
+        let insufficientAnswer = webAnswerLooksInsufficient(body)
+        if hasUsableEvidence && insufficientAnswer {
+            issues.append(tr("工具结果已有可用证据，但回答仍说证据不足。", "Tool result has usable evidence, but the answer still claims insufficient evidence."))
+        }
+
+        return PhoneGroundAnswerValidation(
+            issues: issues,
+            shouldTryAlternativeFetch: toolName == "web-fetch" && insufficientAnswer
+        )
+    }
+
+    private func groundedAnswerLanguageMismatch(_ body: String) -> Bool {
+        let cleaned = body
+            .replacingOccurrences(of: #"https?://\S+"#, with: " ", options: .regularExpression)
+            .replacingOccurrences(of: #"`[^`]+`"#, with: " ", options: .regularExpression)
+        let cjkCount = cleaned.unicodeScalars.filter { scalar in
+            (0x4E00...0x9FFF).contains(Int(scalar.value))
+        }.count
+
+        if LanguageService.shared.current.isChinese {
+            return cjkCount < 6
+        }
+
+        let latinWords = regexMatchCount(pattern: #"\b[A-Za-z][A-Za-z'-]{2,}\b"#, in: cleaned)
+        let cjkLimit = max(12, cleaned.count / 20)
+        return latinWords < 5 || cjkCount > cjkLimit
+    }
+
+    private func usesGroundedSourcesContract(_ toolName: String) -> Bool {
+        toolRegistry.answerContract(for: toolName) == .groundedSources
+    }
+
+    func normalizePhoneGroundPayloadIfNeeded(toolName: String, detail: String) -> String {
+        normalizePhoneGroundPayload(toolName: toolName, detail: detail).detail
+    }
+
+    @discardableResult
+    private func validatePhoneGroundPayloadIfNeeded(toolName: String, detail: String) -> PhoneGroundPayloadValidation {
+        let normalized = normalizePhoneGroundPayload(toolName: toolName, detail: detail)
+        return PhoneGroundPayloadValidation(issues: normalized.remainingIssues)
+    }
+
+    private func normalizePhoneGroundPayload(
+        toolName: String,
+        detail: String
+    ) -> PhoneGroundPayloadNormalization {
+        guard let contract = toolRegistry.phoneGroundContract(for: toolName),
+              contract.answerContract != .none else {
+            return PhoneGroundPayloadNormalization(detail: detail, recoveredIssues: [], remainingIssues: [])
+        }
+
+        guard let payload = phoneGroundPayloadDictionary(from: detail) else {
+            let issues = ["payload is not JSON"]
+            log("[PhoneGround] contract issues tool=\(toolName) issues=\(issues.joined(separator: "; "))")
+            return PhoneGroundPayloadNormalization(detail: detail, recoveredIssues: [], remainingIssues: issues)
+        }
+
+        let originalValidation = validatePhoneGroundPayload(toolName: toolName, contract: contract, payload: payload)
+        var normalizedPayload = payload
+        var recoveredIssues: [String] = []
+
+        if normalizedPayload["phone_ground"] as? [String: Any] == nil {
+            normalizedPayload["phone_ground"] = synthesizedPhoneGroundMetadata(for: contract, payload: payload)
+            recoveredIssues.append("missing phone_ground metadata")
+        }
+
+        if var evidencePack = normalizedPayload["evidence_pack"] as? [String: Any],
+           evidencePack["phone_ground"] as? [String: Any] == nil {
+            evidencePack["phone_ground"] = synthesizedPhoneGroundMetadata(for: contract, payload: payload)
+            normalizedPayload["evidence_pack"] = evidencePack
+        }
+
+        if contract.answerContract == .groundedDataSummary,
+           (normalizedPayload["success"] as? Bool) == true,
+           normalizedPayload["evidence_pack"] as? [String: Any] == nil,
+           let evidencePack = synthesizedDataEvidencePack(for: contract, payload: normalizedPayload) {
+            normalizedPayload["evidence_pack"] = evidencePack
+            recoveredIssues.append("groundedDataSummary missing evidence_pack")
+        }
+
+        let normalizedDetail = jsonString(normalizedPayload)
+        let normalizedValidation = validatePhoneGroundPayload(
+            toolName: toolName,
+            contract: contract,
+            detail: normalizedDetail
+        )
+
+        if !recoveredIssues.isEmpty, normalizedValidation.isValid {
+            log("[PhoneGround] recovered tool=\(toolName) issues=\(recoveredIssues.joined(separator: "; "))")
+            return PhoneGroundPayloadNormalization(
+                detail: normalizedDetail,
+                recoveredIssues: recoveredIssues,
+                remainingIssues: []
+            )
+        }
+
+        guard normalizedValidation.isValid else {
+            let issues = normalizedValidation.issues
+            log("[PhoneGround] contract issues tool=\(toolName) issues=\(issues.joined(separator: "; "))")
+            normalizedPayload["phone_ground_validation"] = [
+                "status": "invalid",
+                "issues": issues,
+                "recovered_issues": recoveredIssues
+            ]
+            return PhoneGroundPayloadNormalization(
+                detail: jsonString(normalizedPayload),
+                recoveredIssues: recoveredIssues,
+                remainingIssues: issues
+            )
+        }
+
+        return PhoneGroundPayloadNormalization(
+            detail: originalValidation.isValid ? detail : normalizedDetail,
+            recoveredIssues: recoveredIssues,
+            remainingIssues: []
+        )
+    }
+
+    private func validatePhoneGroundPayload(
+        toolName: String,
+        contract: PhoneGroundToolContract,
+        detail: String
+    ) -> PhoneGroundPayloadValidation {
+        guard let payload = phoneGroundPayloadDictionary(from: detail) else {
+            return PhoneGroundPayloadValidation(issues: ["payload is not JSON"])
+        }
+
+        return validatePhoneGroundPayload(toolName: toolName, contract: contract, payload: payload)
+    }
+
+    private func validatePhoneGroundPayload(
+        toolName: String,
+        contract: PhoneGroundToolContract,
+        payload: [String: Any]
+    ) -> PhoneGroundPayloadValidation {
+        var issues: [String] = []
+        let topMetadata = payload["phone_ground"] as? [String: Any]
+        let evidencePack = payload["evidence_pack"] as? [String: Any]
+        let evidenceMetadata = evidencePack?["phone_ground"] as? [String: Any]
+        let metadata = topMetadata ?? evidenceMetadata
+
+        guard let metadata else {
+            return PhoneGroundPayloadValidation(issues: ["missing phone_ground metadata"])
+        }
+
+        let allowedEvidenceTypes = Set(contract.evidenceTypes.map(\.rawValue))
+        let evidenceType = metadata["evidence_type"] as? String
+        if evidenceType.map({ allowedEvidenceTypes.contains($0) }) != true {
+            issues.append("evidence_type expected \(allowedEvidenceTypes.sorted()), got \(evidenceType ?? "nil")")
+        }
+
+        let answerContract = metadata["answer_contract"] as? String
+        if answerContract != contract.answerContract.rawValue {
+            issues.append("answer_contract expected \(contract.answerContract.rawValue), got \(answerContract ?? "nil")")
+        }
+
+        if contract.freshness != .unspecified,
+           let freshness = metadata["freshness"] as? String,
+           freshness != contract.freshness.rawValue {
+            issues.append("freshness expected \(contract.freshness.rawValue), got \(freshness)")
+        }
+
+        if let success = payload["success"] as? Bool, success {
+            switch contract.answerContract {
+            case .groundedSources:
+                if sourceURLs(fromToolResultDetail: jsonString(payload)).isEmpty {
+                    issues.append("groundedSources payload has no source URL")
+                }
+            case .groundedDataSummary:
+                guard let evidencePack else {
+                    issues.append("groundedDataSummary missing evidence_pack")
+                    break
+                }
+                let sourceType = evidencePack["source_type"] as? String
+                if sourceType.map({ allowedEvidenceTypes.contains($0) }) != true {
+                    issues.append("evidence_pack source_type expected \(allowedEvidenceTypes.sorted()), got \(sourceType ?? "nil")")
+                }
+                let sufficiency = evidencePack["sufficiency"] as? String
+                if sufficiency == nil {
+                    issues.append("evidence_pack missing sufficiency")
+                }
+                let items = evidencePack["items"] as? [[String: Any]] ?? []
+                let itemCount = evidencePack["item_count"] as? Int ?? items.count
+                if itemCount > 0 && items.isEmpty {
+                    issues.append("evidence_pack item_count > 0 but items empty")
+                }
+            case .none:
+                break
+            }
+        }
+
+        return PhoneGroundPayloadValidation(issues: issues)
+    }
+
+    private func phoneGroundPayloadDictionary(from detail: String) -> [String: Any]? {
+        guard let data = detail.data(using: .utf8),
+              let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+        return payload
+    }
+
+    private func synthesizedPhoneGroundMetadata(
+        for contract: PhoneGroundToolContract,
+        payload: [String: Any]
+    ) -> [String: Any] {
+        let evidenceType = contract.evidenceTypes.first?.rawValue ?? PhoneGroundEvidenceType.system.rawValue
+        let status = payload["status"] as? String
+            ?? ((payload["success"] as? Bool) == false ? "failed" : "succeeded")
+        return [
+            "version": "phoneground_v0",
+            "evidence_type": evidenceType,
+            "answer_contract": contract.answerContract.rawValue,
+            "freshness": contract.freshness.rawValue,
+            "privacy": phoneGroundPrivacy(for: contract),
+            "status": status,
+            "generated_by": "phoneground_normalizer"
+        ]
+    }
+
+    private func phoneGroundPrivacy(for contract: PhoneGroundToolContract) -> String {
+        if contract.evidenceTypes.contains(.web) {
+            return "public_web"
+        }
+        if contract.evidenceTypes.contains(.health) {
+            return "device_local"
+        }
+        return "local_or_user_scoped"
+    }
+
+    private func synthesizedDataEvidencePack(
+        for contract: PhoneGroundToolContract,
+        payload: [String: Any]
+    ) -> [String: Any]? {
+        let content = [
+            payload["result"] as? String,
+            payload["summary"] as? String,
+            payload["message"] as? String,
+            payload["error"] as? String
+        ]
+        .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .first { !$0.isEmpty } ?? ""
+
+        guard !content.isEmpty else { return nil }
+
+        let evidenceType = contract.evidenceTypes.first ?? .system
+        let status = payload["status"] as? String
+            ?? ((payload["success"] as? Bool) == false ? "failed" : "succeeded")
+        return [
+            "version": "phoneground_data_v0",
+            "source_type": evidenceType.rawValue,
+            "sufficiency": status,
+            "generated_at": ISO8601DateFormatter().string(from: Date()),
+            "item_count": 1,
+            "items": [
+                [
+                    "id": "normalized_summary",
+                    "type": evidenceType.rawValue,
+                    "title": tr("工具结果摘要", "Tool result summary"),
+                    "content": content,
+                    "confidence": "normalized_tool_result"
+                ] as [String: Any]
+            ],
+            "phone_ground": synthesizedPhoneGroundMetadata(for: contract, payload: payload)
+        ]
+    }
+
+    private func webAnswerContainsPlaceholder(_ answer: String) -> Bool {
+        let lower = answer.lowercased()
+        let fragments = [
+            "[此处",
+            "应根据工具返回",
+            "待补充",
+            "占位",
+            "placeholder",
+            "todo",
+            "to be filled"
+        ]
+        return fragments.contains { lower.contains($0.lowercased()) }
+    }
+
+    private func bodyContainsInlineSourceMarker(_ body: String) -> Bool {
+        body.range(of: #"(来源|Source)\s*[:：]"#, options: [.regularExpression, .caseInsensitive]) != nil
+    }
+
+    private func markdownLinkCount(in text: String) -> Int {
+        regexMatchCount(pattern: #"\[[^\]\n]{1,160}\]\(https?://[^\s)]+\)"#, in: text)
+    }
+
+    private func regexMatchCount(pattern: String, in text: String) -> Int {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+            return 0
+        }
+        return regex.numberOfMatches(
+            in: text,
+            range: NSRange(location: 0, length: (text as NSString).length)
+        )
+    }
+
+    private func webToolDetailHasUsableEvidence(_ detail: String) -> Bool {
+        guard let data = detail.data(using: .utf8),
+              let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return false
+        }
+        if payload["answerability"] as? String == "direct" {
+            return true
+        }
+        if payload["direct_evidence_sufficient"] as? Bool == true {
+            return true
+        }
+        if let evidencePack = payload["evidence_pack"] as? [String: Any] {
+            if evidencePack["sufficiency"] as? String == "sufficient" {
+                return true
+            }
+            if let count = evidencePack["chunk_count"] as? Int, count >= 2 {
+                return true
+            }
+            if let chunks = evidencePack["chunks"] as? [[String: Any]], chunks.count >= 2 {
+                return true
+            }
+        }
+        if payload["success"] as? Bool == true,
+           payload["has_concrete_data"] as? Bool == true {
+            let content = ((payload["content"] as? String) ?? (payload["result"] as? String) ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return content.count >= 80
+        }
+        return false
     }
 
 
@@ -777,9 +1554,14 @@ extension AgentEngine {
         userQuestion: String,
         images: [CIImage],
         msgIndex: Int
-    ) async -> (answer: String, toolName: String, toolResultDetail: String)? {
+    ) async -> (answer: String, toolName: String, toolResultSummary: String, toolResultDetail: String)? {
+        let validation = validateGroundedWebAnswer(
+            appendSourceCitationIfNeeded(to: answer, toolName: followUpToolName, toolResultDetail: toolResultDetail),
+            toolName: followUpToolName,
+            toolResultDetail: toolResultDetail
+        )
         guard followUpToolName == "web-fetch",
-              webAnswerLooksInsufficient(answer),
+              (webAnswerLooksInsufficient(answer) || validation.shouldTryAlternativeFetch),
               let attemptedURL = sourceURLs(fromToolResultDetail: toolResultDetail).first,
               let fallbackResult = await fallbackWebFetchFromRecentSearch(
                 excluding: attemptedURL,
@@ -788,9 +1570,13 @@ extension AgentEngine {
             return nil
         }
 
+        let fallbackResultDetail = normalizePhoneGroundPayloadIfNeeded(
+            toolName: "web-fetch",
+            detail: fallbackResult.detail
+        )
         messages.append(ChatMessage(
             role: .skillResult,
-            content: fallbackResult.detail,
+            content: fallbackResultDetail,
             skillName: "web-fetch",
             skillResultKind: .toolExecution
         ))
@@ -815,7 +1601,7 @@ extension AgentEngine {
         }
 
         log("[Agent] web-fetch answer insufficient; retried with fallback source")
-        return (cleaned, "web-fetch", fallbackResult.detail)
+        return (cleaned, "web-fetch", fallbackResult.summary, fallbackResultDetail)
     }
 
     private func normalizedSourceKey(_ rawURL: String) -> String {
@@ -1286,6 +2072,18 @@ extension AgentEngine {
                (executionArguments["question"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
                 executionArguments["question"] = userQuestion
             }
+            if canonicalToolName(call.name, arguments: call.arguments) == "web-search",
+               executionArguments["planned_queries"] == nil {
+                let initialQuery = (executionArguments["query"] as? String) ?? userQuestion
+                let plannedQueries = await modelPlannedWebQueries(
+                    userQuestion: userQuestion,
+                    initialQuery: initialQuery,
+                    images: images
+                )
+                if !plannedQueries.isEmpty {
+                    executionArguments["planned_queries"] = plannedQueries
+                }
+            }
 
             var canonicalResult: CanonicalToolResult
             var toolResultDetail: String
@@ -1306,6 +2104,7 @@ extension AgentEngine {
             }
 
             messages[cardIndex].update(role: .system, content: "done", skillName: displayName)
+            toolResultDetail = normalizePhoneGroundPayloadIfNeeded(toolName: call.name, detail: toolResultDetail)
             messages.append(ChatMessage(role: .skillResult, content: toolResultDetail, skillName: call.name, skillResultKind: .toolExecution))
             log("[Agent] Tool \(call.name) round \(round) done")
 
@@ -1316,13 +2115,33 @@ extension AgentEngine {
             }
 
             var followUpToolName = call.name
-            if call.name == "web-search",
-               webSearchResultNeedsFetch(toolResultDetail),
-               let fetchedResult = await automaticWebFetchFromSearchResult(toolResultDetail, userQuestion: userQuestion) {
-                canonicalResult = fetchedResult
-                toolResultDetail = fetchedResult.detail
-                followUpToolName = "web-fetch"
-                messages.append(ChatMessage(role: .skillResult, content: toolResultDetail, skillName: followUpToolName, skillResultKind: .toolExecution))
+            if call.name == "web-search", webSearchResultNeedsFetch(toolResultDetail) {
+                if let fetchedResult = await automaticWebFetchFromSearchResult(toolResultDetail, userQuestion: userQuestion) {
+                    canonicalResult = fetchedResult
+                    toolResultDetail = fetchedResult.detail
+                    followUpToolName = "web-fetch"
+                    toolResultDetail = normalizePhoneGroundPayloadIfNeeded(toolName: followUpToolName, detail: toolResultDetail)
+                    messages.append(ChatMessage(role: .skillResult, content: toolResultDetail, skillName: followUpToolName, skillResultKind: .toolExecution))
+                } else if let replannedSearchResult = await retryWebSearchWithReplannedQueriesIfNeeded(
+                    searchDetail: toolResultDetail,
+                    userQuestion: userQuestion,
+                    images: images
+                ) {
+                    canonicalResult = replannedSearchResult
+                    toolResultDetail = replannedSearchResult.detail
+                    followUpToolName = "web-search"
+                    toolResultDetail = normalizePhoneGroundPayloadIfNeeded(toolName: followUpToolName, detail: toolResultDetail)
+                    messages.append(ChatMessage(role: .skillResult, content: toolResultDetail, skillName: followUpToolName, skillResultKind: .toolExecution))
+
+                    if webSearchResultNeedsFetch(toolResultDetail),
+                       let fetchedResult = await automaticWebFetchFromSearchResult(toolResultDetail, userQuestion: userQuestion) {
+                        canonicalResult = fetchedResult
+                        toolResultDetail = fetchedResult.detail
+                        followUpToolName = "web-fetch"
+                        toolResultDetail = normalizePhoneGroundPayloadIfNeeded(toolName: followUpToolName, detail: toolResultDetail)
+                        messages.append(ChatMessage(role: .skillResult, content: toolResultDetail, skillName: followUpToolName, skillResultKind: .toolExecution))
+                    }
+                }
             }
 
             if toolRegistry.shouldSkipFollowUp(for: followUpToolName) {
@@ -1386,6 +2205,7 @@ extension AgentEngine {
                 } else {
                     let finalAnswer: String
                     let finalToolName: String
+                    let finalToolResultSummary: String
                     let finalToolResultDetail: String
                     if let retry = await retryWebAnswerWithFallbackSourceIfNeeded(
                         answer: cleaned,
@@ -1397,17 +2217,24 @@ extension AgentEngine {
                     ) {
                         finalAnswer = retry.answer
                         finalToolName = retry.toolName
+                        finalToolResultSummary = retry.toolResultSummary
                         finalToolResultDetail = retry.toolResultDetail
                     } else {
                         finalAnswer = cleaned
                         finalToolName = followUpToolName
+                        finalToolResultSummary = canonicalResult.summary
                         finalToolResultDetail = toolResultDetail
                     }
-                    messages[followUpIndex].update(content: appendSourceCitationIfNeeded(
-                        to: finalAnswer,
+                    let finalizedAnswer = await finalizeWebAnswer(
+                        finalAnswer,
                         toolName: finalToolName,
-                        toolResultDetail: finalToolResultDetail
-                    ))
+                        toolResultSummary: finalToolResultSummary,
+                        toolResultDetail: finalToolResultDetail,
+                        userQuestion: userQuestion,
+                        images: images,
+                        msgIndex: followUpIndex
+                    )
+                    messages[followUpIndex].update(content: finalizedAnswer)
                 }
                 finishTurn()
             }
