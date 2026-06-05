@@ -1263,8 +1263,11 @@ struct ContentView: View {
             // 右侧 mic + LIVE 视觉分级:
             //   mic = 内嵌图标 (无 chip 底), 辅助输入开关, "藏在文字旁"
             //   LIVE = 圆 chip, 主操作入口, "落在胶囊右端"
-            modeToggleButton
-            trailingDynamicButton
+            // 两者收成一簇(更紧的间距), 跟左侧 textfield 仍隔 chipTextSpacing.
+            HStack(spacing: UIScale.trailingClusterSpacing) {
+                modeToggleButton
+                trailingDynamicButton
+            }
         }
         .padding(.horizontal, UIScale.chipInnerMargin)
         .padding(.vertical, (UIScale.pillHeight - UIScale.chipDiameter) / 2)
