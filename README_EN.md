@@ -31,6 +31,7 @@ PhoneClaw is a private local Agent running on iPhone. It ships with multiple on-
 
 **2026-06-05**
 
+- PhoneClaw is live on TestFlight — [Join TestFlight](https://testflight.apple.com/join/YuUSwq78)
 - Rebuilt the overall Agent framework: improved Skill result semantics, Skill routing, tool-call chains, contextual follow-ups, and multi-step task handling, so the model can more reliably choose whether to answer directly, call tools, or continue from the previous result while reducing accidental tool triggers, repeated calls, and off-track follow-ups
 - Added Health range reports: summarize steps, distance, active energy, heart rate, sleep, workouts, weight, and HRV across a selected time range, then generate a local health summary, trends, and key metric explanations
 
