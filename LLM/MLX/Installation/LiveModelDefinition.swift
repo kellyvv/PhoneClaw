@@ -516,7 +516,14 @@ enum LiveModelDefinition {
 
     /// 所有 LIVE 模型是否都已就绪 (Bundle 或 Documents)
     static var isAvailable: Bool {
-        all.allSatisfy { resolve(for: $0) != nil }
+        all.allSatisfy { resolve(for: $0) != nil } && requiredAuxiliaryResourcesAvailable
+    }
+
+    /// 模型目录之外的运行时资源是否就绪。
+    /// 日语 Piper Plus 需要 OpenJTalk 词典; 只下载 TTS model/config 仍无法发声。
+    static var requiredAuxiliaryResourcesAvailable: Bool {
+        guard LanguageService.shared.current.isJapanese, piperPlusJARuntimeLinked else { return true }
+        return openJTalkDictionaryBundled
     }
 
     // MARK: - File Filter

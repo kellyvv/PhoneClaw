@@ -105,6 +105,7 @@
 		AA1000000000000000000030 /* PhoneClawEngine in Frameworks */ = {isa = PBXBuildFile; productRef = AA5000000000000000000010 /* PhoneClawEngine */; };
 		AA1000000000000000000031 /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = AA5000000000000000000011 /* WhisperKit */; };
 		AA1000000000000000000032 /* piper_plus.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA2000000000000000000026 /* piper_plus.xcframework */; };
+		AA1000000000000000000033 /* open_jtalk_dic_utf_8-1.11 in Resources */ = {isa = PBXBuildFile; fileRef = AA2000000000000000000027 /* open_jtalk_dic_utf_8-1.11 */; };
 		AA1000000000000000000100 /* BundledModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2000000000000000000100 /* BundledModel.swift */; };
 		AA1000000000000000000101 /* RuntimeBudgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2000000000000000000101 /* RuntimeBudgets.swift */; };
 		AA1000000000000000000103 /* ModelInstallState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2000000000000000000103 /* ModelInstallState.swift */; };
@@ -264,6 +265,7 @@
 		AA2000000000000000000024 /* onnxruntime.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = onnxruntime.xcframework; path = Frameworks/onnxruntime.xcframework; sourceTree = SOURCE_ROOT; };
 		AA2000000000000000000025 /* sherpa-onnx.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = "sherpa-onnx.xcframework"; path = "Frameworks/sherpa-onnx.xcframework"; sourceTree = SOURCE_ROOT; };
 		AA2000000000000000000026 /* piper_plus.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = piper_plus.xcframework; path = Frameworks/piper_plus.xcframework; sourceTree = SOURCE_ROOT; };
+		AA2000000000000000000027 /* open_jtalk_dic_utf_8-1.11 */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "open_jtalk_dic_utf_8-1.11"; path = "Models/open_jtalk_dic_utf_8-1.11"; sourceTree = SOURCE_ROOT; };
 		AA2000000000000000000100 /* BundledModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BundledModel.swift; sourceTree = "<group>"; };
 		AA2000000000000000000101 /* RuntimeBudgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeBudgets.swift; sourceTree = "<group>"; };
 		AA2000000000000000000103 /* ModelInstallState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelInstallState.swift; sourceTree = "<group>"; };
@@ -446,6 +448,7 @@
 		A34ECDFC2F9C76C1007D0FB8 /* Bundled Models */ = {
 			isa = PBXGroup;
 			children = (
+				AA2000000000000000000027 /* open_jtalk_dic_utf_8-1.11 */,
 			);
 			name = "Bundled Models";
 			sourceTree = "<group>";
@@ -806,6 +809,7 @@
 				B1A2C3D4E5F607182930B107 /* piz_compressed.exr in Resources */,
 				B1A2C3D4E5F607182930B108 /* studio_env.hdr in Resources */,
 				B1A2C3D4E5F607182930C002 /* InfoPlist.strings in Resources */,
+				AA1000000000000000000033 /* open_jtalk_dic_utf_8-1.11 in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
