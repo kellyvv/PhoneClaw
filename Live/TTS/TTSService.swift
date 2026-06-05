@@ -381,16 +381,19 @@ class TTSService {
     // MARK: - Synthesize (CPU-heavy, NOT main thread)
 
     func synthesize(_ text: String) -> Data? {
+        let speakText = preparedTextForSynthesis(text)
+        guard !speakText.isEmpty else { return nil }
+
         #if canImport(PiperPlus)
         if backend == "piper-plus" {
-            guard let wav = piperPlusJA?.synthesize(text) else { return nil }
+            guard let wav = piperPlusJA?.synthesize(speakText) else { return nil }
             return wav
         }
         #endif
 
         guard let tts else { return nil }
         let t0 = CFAbsoluteTimeGetCurrent()
-        let audio = tts.generate(text: text, sid: defaultSid, speed: 1.0)
+        let audio = tts.generate(text: speakText, sid: defaultSid, speed: 1.0)
         let synthMs = (CFAbsoluteTimeGetCurrent() - t0) * 1000
 
         let count = audio.n
@@ -443,7 +446,7 @@ class TTSService {
 
     /// Legacy speak for greeting etc.
     func speak(_ text: String) async {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = preparedTextForSynthesis(text)
         guard !trimmed.isEmpty, isAvailable else { return }
 
         state = .speaking
@@ -466,6 +469,32 @@ class TTSService {
         #endif
         isAvailable = false
         state = .idle
+    }
+
+    private func preparedTextForSynthesis(_ text: String) -> String {
+        var trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if LanguageService.shared.current.isJapanese {
+            trimmed = Self.normalizeJapaneseTTSInput(trimmed)
+        }
+        return trimmed.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func normalizeJapaneseTTSInput(_ text: String) -> String {
+        var s = text
+        let brandPatterns = [
+            #"(?i)\bPhone\s*Claw\b"#,
+            #"(?i)\bPhoneClaw\b"#,
+        ]
+        for pattern in brandPatterns {
+            s = s.replacingOccurrences(
+                of: pattern,
+                with: "フォーンクロー",
+                options: .regularExpression
+            )
+        }
+        s = s.replacingOccurrences(of: "フォーンクロー です", with: "フォーンクローです")
+        s = s.replacingOccurrences(of: "フォーンクロー　です", with: "フォーンクローです")
+        return s
     }
 
     // MARK: - WAV encoding
