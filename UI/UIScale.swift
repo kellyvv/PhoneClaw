@@ -88,6 +88,11 @@ enum UIScale {
     /// chip 跟中间 textfield 的间距.
     static var chipTextSpacing: CGFloat { isLargeScreen ? 18 : 16 }
 
+    /// 右端 mic + LIVE 这一簇内部的间距 — 比 chipTextSpacing 紧.
+    /// 两个按钮各自有 chipDiameter 触控框, glyph 两侧已自带 ~10pt 空气,
+    /// 再叠 chipTextSpacing 会让 mic↔LIVE 看着比其它间隙宽一截. 收紧成"一簇".
+    static var trailingClusterSpacing: CGFloat { isLargeScreen ? 6 : 4 }
+
     /// 输入文字字号.
     static var pillTextSize: CGFloat { 16 }
 
