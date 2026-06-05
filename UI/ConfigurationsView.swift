@@ -883,8 +883,7 @@ struct ConfigurationsView: View {
         } else {
             byteFraction = nil
         }
-        let combinedFraction = byteFraction ?? fileFraction
-        let value = min(Double(safeTotal), max(0, combinedFraction) * Double(safeTotal))
+        let overallFraction = byteFraction ?? fileFraction
 
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
@@ -918,8 +917,16 @@ struct ConfigurationsView: View {
                 .fixedSize(horizontal: true, vertical: true)
             }
 
-            ProgressView(value: value, total: Double(safeTotal))
-                .progressViewStyle(.linear)
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(SettingsStyle.hairline)
+                    Capsule()
+                        .fill(Theme.accentMuted.opacity(0.92))
+                        .frame(width: max(3, proxy.size.width * overallFraction))
+                }
+            }
+            .frame(height: 3)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
