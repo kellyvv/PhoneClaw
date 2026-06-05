@@ -115,9 +115,11 @@ struct ContentView: View {
     #if canImport(UIKit)
     @State private var holdHaptic = UIImpactFeedbackGenerator(style: .medium)
     #endif
+    @State private var cachedDisplayItems: [DisplayItem] = []
+    @State private var cachedDisplayMessageIDs: [UUID] = []
 
     private var displayItems: [DisplayItem] {
-        buildDisplayItems(from: engine.messages, isProcessing: engine.isProcessing)
+        cachedDisplayItems
     }
 
     private var scrollSignal: ScrollSignal {
@@ -258,6 +260,7 @@ struct ContentView: View {
         .task {
             guard !ProcessInfo.processInfo.isRunningXCTest else { return }
             engine.setup()
+            refreshDisplayItems()
             Telemetry.recordAppOpen()
             // 不在这里 initialize hold-to-talk ASR. 改为用户第一次按住说话时
             // 通过 ASRService.ensureInitialized 懒加载, 避免 cold start 就占用 ASR 内存 (zh ~160MB / en ~180MB).
@@ -288,6 +291,12 @@ struct ContentView: View {
                 holdASRWarmupTask = nil
                 holdToTalkASR.unload()
             }
+        }
+        .onChange(of: engine.messagesRevision) { _, _ in
+            refreshDisplayItems()
+        }
+        .onChange(of: engine.isProcessing) { _, _ in
+            refreshDisplayItems()
         }
         .onChange(of: isInputFocused) { _, focused in
             if focused {
@@ -322,6 +331,35 @@ struct ContentView: View {
         .fullScreenCover(isPresented: $showConfigurations) {
             ConfigurationsView(engine: engine)
         }
+    }
+
+    private func refreshDisplayItems() {
+        let messages = engine.messages
+        let messageIDs = messages.map(\.id)
+
+        defer {
+            cachedDisplayMessageIDs = messageIDs
+        }
+
+        if let lastUserIndex = messages.lastIndex(where: { $0.role == .user }),
+           let cachedUserIndex = cachedDisplayMessageIDs.lastIndex(of: messages[lastUserIndex].id),
+           cachedUserIndex == lastUserIndex,
+           cachedDisplayMessageIDs.prefix(cachedUserIndex + 1).elementsEqual(messageIDs.prefix(lastUserIndex + 1)),
+           let displayCutIndex = cachedDisplayItems.lastIndex(where: { $0.id == messages[lastUserIndex].id }) {
+            let tailStart = messages.index(after: lastUserIndex)
+            let tailMessages = tailStart < messages.endIndex ? Array(messages[tailStart...]) : []
+            let tailItems = buildDisplayItems(
+                from: tailMessages,
+                isProcessing: engine.isProcessing
+            )
+            cachedDisplayItems = Array(cachedDisplayItems.prefix(displayCutIndex + 1)) + tailItems
+            return
+        }
+
+        cachedDisplayItems = buildDisplayItems(
+            from: engine.messages,
+            isProcessing: engine.isProcessing
+        )
     }
 
     @ViewBuilder
@@ -429,19 +467,24 @@ struct ContentView: View {
                                 images: msg.images.compactMap(\.uiImage),
                                 audios: msg.audios
                             )
+                            .equatable()
                         case .response(let block):
+                            let isLastItem = item.id == displayItems.last?.id
+                            let isStreamingResponseText = engine.isProcessing && isLastItem
                             AIResponseView(
                                 block: block,
-                                expandedSkills: expandedSkills,
+                                expandedSkillIDs: expandedSkillIDs(for: block),
                                 isThinkingExpanded: expandedThoughts.contains(block.id),
+                                isStreamingResponseText: isStreamingResponseText,
                                 onToggle: { toggleExpand($0) },
                                 onToggleThinking: { toggleThinking(block.id) },
-                                onRetry: canRetry(item: item, block: block)
+                                onRetry: isLastItem && canRetry(item: item, block: block)
                                     ? { Task { await engine.retryLastResponse() } }
                                     : nil,
-                                followUpSuggestions: followUpSuggestions(for: item, block: block),
+                                followUpSuggestions: isLastItem ? followUpSuggestions(for: item, block: block) : [],
                                 onFollowUpSuggestion: applyFollowUpSuggestion
                             )
+                            .equatable()
                         }
                     }
                 }
@@ -461,7 +504,9 @@ struct ContentView: View {
             )
             .simultaneousGesture(
                 DragGesture(minimumDistance: 8).onChanged { _ in
-                    shouldAutoFollowChat = false
+                    if shouldAutoFollowChat {
+                        shouldAutoFollowChat = false
+                    }
                 }
             )
             .task(id: scrollSignal) {
@@ -540,6 +585,11 @@ struct ContentView: View {
                 expandedThoughts.insert(id)
             }
         }
+    }
+
+    private func expandedSkillIDs(for block: ResponseBlock) -> Set<UUID> {
+        let ids = block.skills.map(\.id)
+        return Set(ids.filter { expandedSkills.contains($0) })
     }
 
     private func followUpSuggestions(for item: DisplayItem, block: ResponseBlock) -> [FollowUpSuggestion] {
@@ -2167,10 +2217,17 @@ private struct SessionHistorySheet: View {
 
 // MARK: - 用户气泡
 
-struct UserBubble: View {
+struct UserBubble: View, Equatable {
     let text: String
     let images: [UIImage]
     let audios: [ChatAudioAttachment]
+
+    static func == (lhs: UserBubble, rhs: UserBubble) -> Bool {
+        lhs.text == rhs.text
+            && lhs.images.count == rhs.images.count
+            && lhs.audios.map(\.id) == rhs.audios.map(\.id)
+    }
+
     var body: some View {
         HStack {
             Spacer(minLength: Theme.bubbleMinSpacer)
