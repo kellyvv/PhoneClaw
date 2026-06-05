@@ -1,10 +1,10 @@
 #!/bin/bash
-# PhoneClaw Skill bilingual sync check.
+# PhoneClaw Skill translation sync check.
 #
 # 拦住的失败模式:
-#   1. SKILL.md 存在但 SKILL.en.md 缺失
-#   2. SKILL.en.md 缺 translation-source-sha256 / translation-source-commit 字段
-#   3. 当前 SKILL.md 的 SHA256 跟 en.md 记录的不一致 (zh 改了, en 没重翻)
+#   1. SKILL.md 存在但 SKILL.<locale>.md 缺失
+#   2. SKILL.<locale>.md 缺 translation-source-sha256 / translation-source-commit 字段
+#   3. 当前 SKILL.md 的 SHA256 跟本地化文件记录的不一致 (zh 改了, 翻译没重翻)
 #   4. 可选: translation-source-commit 在 git 历史里不存在 (squash/rebase 过)
 #
 # 用法:
@@ -40,16 +40,17 @@ done
 
 # 收集要检查的 SKILL.md 列表 (bash 3 compatible, 不用 mapfile)
 #
-# --staged-only 时**同时**看 staged SKILL.md 和 staged SKILL.en.md:
-# 只改 en.md (删 anchor / 换文件) 也要触发检查, 不能放行。
+# --staged-only 时**同时**看 staged SKILL.md 和 staged 本地化 SKILL.<locale>.md:
+# 只改本地化文件 (删 anchor / 换文件) 也要触发检查, 不能放行。
 # 两路变更归一到各自 skill 目录, 去重。
+translation_locales=(en ja)
 zh_files=()
 if [[ "$STAGED_ONLY" == "1" ]]; then
     skill_ids_seen=""
     while IFS= read -r f; do
         [[ -n "$f" ]] || continue
-        # 解析出 skill id (Skills/Library/<id>/SKILL.md 或 SKILL.en.md)
-        skill_id=$(echo "$f" | sed -E 's|^Skills/Library/([^/]+)/SKILL(\.en)?\.md$|\1|')
+        # 解析出 skill id (Skills/Library/<id>/SKILL.md 或 SKILL.<locale>.md)
+        skill_id=$(echo "$f" | sed -E 's|^Skills/Library/([^/]+)/SKILL(\.(en|ja))?\.md$|\1|')
         [[ "$skill_id" == "$f" ]] && continue  # 没匹配上, 跳过
         # 去重 (zh 和 en 都改时只检查一次)
         case " $skill_ids_seen " in
@@ -58,7 +59,7 @@ if [[ "$STAGED_ONLY" == "1" ]]; then
         skill_ids_seen="$skill_ids_seen $skill_id"
         zh_files+=( "Skills/Library/$skill_id/SKILL.md" )
     done < <(git diff --cached --name-only --diff-filter=ACMRD \
-             | grep -E '^Skills/Library/[^/]+/SKILL(\.en)?\.md$')
+             | grep -E '^Skills/Library/[^/]+/SKILL(\.(en|ja))?\.md$')
 else
     for f in Skills/Library/*/SKILL.md; do
         [[ -f "$f" ]] && zh_files+=("$f")
@@ -80,27 +81,8 @@ for zh_file in "${zh_files[@]}"; do
     [[ -f "$zh_file" ]] || continue
     skill_dir="$(dirname "$zh_file")"
     skill_id="$(basename "$skill_dir")"
-    en_file="$skill_dir/SKILL.en.md"
 
-    # 1. SKILL.en.md 存在吗?
-    if [[ ! -f "$en_file" ]]; then
-        echo "❌ $skill_id: $en_file 缺失 (新 skill 加 zh 后, 用 scripts/translate-skill.sh 产出 en)"
-        ERRORS=$((ERRORS+1))
-        continue
-    fi
-
-    # 2. 读 frontmatter 里的 anchor
-    src_commit=$(awk -F': ' '/^translation-source-commit:/ {print $2; exit}' "$en_file" | tr -d ' ')
-    src_sha256=$(awk -F': ' '/^translation-source-sha256:/ {print $2; exit}' "$en_file" | tr -d ' ')
-
-    if [[ -z "$src_commit" || -z "$src_sha256" ]]; then
-        echo "❌ $skill_id: $en_file 缺 translation-source-commit / translation-source-sha256"
-        echo "   每个 en.md frontmatter 需要两个字段 (sha256 是稳定锚点, commit 只作参考)"
-        ERRORS=$((ERRORS+1))
-        continue
-    fi
-
-    # 3. 当前 zh 的 SHA256 匹配吗?
+    # 当前 zh 的 SHA256 匹配吗?
     # --staged-only 时读 git index (即将 commit 的内容), 不读工作区 —
     # 防止 "staged 是改后 zh, 工作区被 revert 回旧内容" 这类漏网.
     # 非 staged-only 时读工作区 (开发中手工检查).
@@ -116,22 +98,45 @@ for zh_file in "${zh_files[@]}"; do
         current_sha256=$(shasum -a 256 "$zh_file" | awk '{print $1}')
     fi
 
-    if [[ "$current_sha256" != "$src_sha256" ]]; then
-        echo "⚠️  $skill_id: $zh_file 内容已变化, $en_file 可能过期"
-        echo "   anchored sha256:  $src_sha256"
-        echo "   current  sha256:  $current_sha256"
-        echo "   重翻后更新 en.md 的 translation-source-sha256 字段"
+    for locale in "${translation_locales[@]}"; do
+        localized_file="$skill_dir/SKILL.$locale.md"
 
-        # 如果能看到 git 历史, 额外提示 diff 基线
-        if git cat-file -e "$src_commit" 2>/dev/null; then
-            echo "   diff 基线 (从翻译时至今):"
-            git --no-pager diff --stat "$src_commit" -- "$zh_file" 2>&1 | sed 's/^/     /' | tail -3
-        else
-            echo "   注: commit $src_commit 在 git 历史里找不到 (可能被 squash/rebase 过), 只能靠 sha256 对比"
+        # 1. SKILL.<locale>.md 存在吗?
+        if [[ ! -f "$localized_file" ]]; then
+            echo "❌ $skill_id: $localized_file 缺失 (新 skill 加 zh 后, 需要补齐本地化文件)"
+            ERRORS=$((ERRORS+1))
+            continue
         fi
 
-        ERRORS=$((ERRORS+1))
-    fi
+        # 2. 读 frontmatter 里的 anchor
+        src_commit=$(awk -F': ' '/^translation-source-commit:/ {print $2; exit}' "$localized_file" | tr -d ' ')
+        src_sha256=$(awk -F': ' '/^translation-source-sha256:/ {print $2; exit}' "$localized_file" | tr -d ' ')
+
+        if [[ -z "$src_commit" || -z "$src_sha256" ]]; then
+            echo "❌ $skill_id: $localized_file 缺 translation-source-commit / translation-source-sha256"
+            echo "   每个本地化 frontmatter 需要两个字段 (sha256 是稳定锚点, commit 只作参考)"
+            ERRORS=$((ERRORS+1))
+            continue
+        fi
+
+        # 3. 当前 zh 的 SHA256 匹配吗?
+        if [[ "$current_sha256" != "$src_sha256" ]]; then
+            echo "⚠️  $skill_id: $zh_file 内容已变化, $localized_file 可能过期"
+            echo "   anchored sha256:  $src_sha256"
+            echo "   current  sha256:  $current_sha256"
+            echo "   重翻后更新 $localized_file 的 translation-source-sha256 字段"
+
+            # 如果能看到 git 历史, 额外提示 diff 基线
+            if git cat-file -e "$src_commit" 2>/dev/null; then
+                echo "   diff 基线 (从翻译时至今):"
+                git --no-pager diff --stat "$src_commit" -- "$zh_file" 2>&1 | sed 's/^/     /' | tail -3
+            else
+                echo "   注: commit $src_commit 在 git 历史里找不到 (可能被 squash/rebase 过), 只能靠 sha256 对比"
+            fi
+
+            ERRORS=$((ERRORS+1))
+        fi
+    done
 done
 
 if [[ $ERRORS -gt 0 ]]; then
@@ -142,6 +147,6 @@ if [[ $ERRORS -gt 0 ]]; then
 fi
 
 if [[ "$STAGED_ONLY" == "0" ]]; then
-    echo "[check-skill-sync] ✅ 所有 skill zh/en 同步"
+    echo "[check-skill-sync] ✅ 所有 skill zh/en/ja 同步"
 fi
 exit 0

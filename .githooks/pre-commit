@@ -19,8 +19,8 @@ REPO_ROOT=$(git rev-parse --show-toplevel)
 # ── 1. Skill bilingual sync 检查 ──────────────────────────────────
 # 总是跑 — 独立于 harness skip. 只看 staged 里的 SKILL.md 改动,
 # 拒绝 zh 改了 en 没改 / en 缺失 / en 缺 anchor / en anchor 过期 这类情况。
-if [[ -x "$REPO_ROOT/scripts/check-skill-sync.sh" ]]; then
-    if ! "$REPO_ROOT/scripts/check-skill-sync.sh" --staged-only; then
+if [[ -f "$REPO_ROOT/scripts/check-skill-sync.sh" ]]; then
+    if ! bash "$REPO_ROOT/scripts/check-skill-sync.sh" --staged-only; then
         echo ""
         echo "[pre-commit] ❌ Skill bilingual sync 检查失败 — 见上面的输出"
         exit 1
