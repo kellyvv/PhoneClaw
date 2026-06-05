@@ -29,14 +29,19 @@ PhoneClaw is a private local Agent running on iPhone. It ships with multiple on-
 
 ## Latest Updates
 
-**2026-06-01**
+**2026-06-05**
+
+- Rebuilt the overall Agent framework: improved Skill result semantics, Skill routing, tool-call chains, contextual follow-ups, and multi-step task handling, so the model can more reliably choose whether to answer directly, call tools, or continue from the previous result while reducing accidental tool triggers, repeated calls, and off-track follow-ups
+- Added Health range reports: summarize steps, distance, active energy, heart rate, sleep, workouts, weight, and HRV across a selected time range, then generate a local health summary, trends, and key metric explanations
+
+<details>
+<summary>Update history</summary>
+
+### 2026-06-01
 
 - PhoneClaw is live on TestFlight — [Join TestFlight](https://testflight.apple.com/join/YuUSwq78)
 - Added Calendar read support: query today's, tomorrow's, this week's, and next 7 days' schedule, with busyness and free-time analysis
 - Improved Web Search and long-answer browsing: realtime information can be summarized, and history remains scrollable while the model is responding
-
-<details>
-<summary>Update history</summary>
 
 ### 2026-05-17
 
