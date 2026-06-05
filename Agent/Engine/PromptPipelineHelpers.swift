@@ -1,4 +1,12 @@
+import CryptoKit
 import Foundation
+
+private struct InferenceSamplingSnapshot {
+    let topK: Int
+    let topP: Float
+    let temperature: Float
+    let maxOutputTokens: Int
+}
 
 // MARK: - Prompt Pipeline Helpers
 //
@@ -15,6 +23,10 @@ extension AgentEngine {
         catalog.selectedModel.capabilities
     }
 
+    var effectiveEnableThinking: Bool {
+        config.enableThinking && selectedModelCapabilities.supportsThinking
+    }
+
     func promptShape(
         requiresMultimodal: Bool,
         shouldUseFullAgentPrompt: Bool,
@@ -23,7 +35,7 @@ extension AgentEngine {
         if requiresMultimodal {
             return .multimodal
         }
-        if config.enableThinking {
+        if effectiveEnableThinking {
             return .thinking
         }
         if shouldUseFullAgentPrompt {
@@ -110,6 +122,59 @@ extension AgentEngine {
         )
     }
 
+    func logPromptDiagnostics(label: String, prompt: String) {
+        let markers = [
+            "<|turn>system",
+            "<|turn>user",
+            "<|turn>model",
+            "<turn|>",
+            "<tool_call>",
+            "<|tool_call>",
+            "<tool|>",
+            "<|tool>",
+            "<|think|>",
+            "<|channel|>",
+            "<channel|>"
+        ]
+        let markerSummary = markers
+            .map { "\($0)=\(promptOccurrenceCount($0, in: prompt))" }
+            .joined(separator: " ")
+        let lineCount = prompt.split(separator: "\n", omittingEmptySubsequences: false).count
+        let sectionHashes = promptSectionFingerprints(prompt)
+        let diagnostic = "[PromptDiag] label=\(label) chars=\(prompt.count) lines=\(lineCount) " +
+            "sha=\(promptSHA256(prompt)) \(markerSummary) sections=\(sectionHashes)"
+        lastTurnPromptDiagnostics.append(diagnostic)
+        log(diagnostic)
+    }
+
+    private func promptSHA256(_ text: String) -> String {
+        let digest = SHA256.hash(data: Data(text.utf8))
+        return digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    private func promptOccurrenceCount(_ needle: String, in haystack: String) -> Int {
+        guard !needle.isEmpty else { return 0 }
+        var count = 0
+        var searchRange = haystack.startIndex..<haystack.endIndex
+        while let range = haystack.range(of: needle, range: searchRange) {
+            count += 1
+            searchRange = range.upperBound..<haystack.endIndex
+        }
+        return count
+    }
+
+    private func promptSectionFingerprints(_ prompt: String) -> String {
+        let parts = prompt.components(separatedBy: "<|turn>")
+            .dropFirst()
+            .prefix(8)
+        let sections = parts.enumerated().map { index, rawPart in
+            let role = rawPart.prefix { !$0.isNewline }
+            let body = rawPart.dropFirst(role.count)
+            let digest = promptSHA256(String(body))
+            return "\(index):\(role):\(body.count):\(digest.prefix(10))"
+        }
+        return sections.joined(separator: ",")
+    }
     var activeContextBudgetPlanner: ContextBudgetPlanner {
         if HotfixFeatureFlags.useHotfixPromptPipeline && HotfixFeatureFlags.enablePreflightBudget {
             return hotfixContextBudgetPlanner
@@ -142,12 +207,14 @@ extension AgentEngine {
         canUseDelta: Bool,
         streamingPlanningHistory: [ChatMessage]
     ) {
+        let enableThinkingForTextAnswer =
+            effectiveEnableThinking && !shouldUseFullAgentPrompt && !shouldUsePlanner
         let lightHistory = shouldUsePlanner ? [] : priorHistory
         let lightPrompt = PromptBuilder.buildLightweightTextPrompt(
             userMessage: normalizedText,
             history: lightHistory,
             systemPrompt: config.systemPrompt,
-            enableThinking: config.enableThinking,
+            enableThinking: enableThinkingForTextAnswer,
             historyDepth: lightHistory.count,
             includeImageHistoryMarkers: includeImageHistoryMarkers,
             imageFollowUpBridgeSummary: imageFollowUpBridgeSummary
@@ -161,7 +228,7 @@ extension AgentEngine {
             imageFollowUpBridgeSummary: imageFollowUpBridgeSummary,
             history: priorHistory,
             systemPrompt: config.systemPrompt,
-            enableThinking: config.enableThinking,
+            enableThinking: enableThinkingForTextAnswer,
             historyDepth: priorHistory.count,
             showListSkillsHint: matchedSkillIdsForTurn.isEmpty,
             preloadedSkills: preloadedSkills
@@ -176,7 +243,7 @@ extension AgentEngine {
             streamingPrompt = PromptBuilder.buildDeltaTurnPrompt(
                 userMessage: normalizedText,
                 currentImageCount: 0,
-                enableThinking: config.enableThinking
+                enableThinking: enableThinkingForTextAnswer
             )
         } else {
             streamingPrompt = agentPrompt ?? lightPrompt
@@ -197,6 +264,56 @@ extension AgentEngine {
     }
 
     // MARK: - Observation / Diagnostics
+
+    /// Runs a short internal LLM probe without letting its temporary sampling
+    /// settings leak into the persistent chat session.
+    ///
+    /// LiteRT opens a KV session with the current `maxOutputTokens`. Any probe
+    /// that temporarily lowers that value must restore the normal settings
+    /// before resetting/reopening KV, otherwise the next real assistant answer
+    /// inherits the probe's tiny output cap.
+    func runIsolatedInferenceProbe(
+        prompt: String,
+        maxOutputTokens: Int,
+        label: String,
+        onToken: @escaping @MainActor @Sendable (String) -> Void = { _ in }
+    ) async -> String? {
+        let snapshot = InferenceSamplingSnapshot(
+            topK: inference.samplingTopK,
+            topP: inference.samplingTopP,
+            temperature: inference.samplingTemperature,
+            maxOutputTokens: inference.maxOutputTokens
+        )
+
+        inference.samplingTopK = 1
+        inference.samplingTopP = 1.0
+        inference.samplingTemperature = 0
+        inference.maxOutputTokens = min(snapshot.maxOutputTokens, maxOutputTokens)
+
+        let raw = await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
+            inference.generate(
+                prompt: prompt,
+                onToken: onToken,
+                onComplete: { result in
+                    switch result {
+                    case .success(let text):
+                        continuation.resume(returning: text)
+                    case .failure(let error):
+                        log("[\(label)] probe failed: \(error.localizedDescription)")
+                        continuation.resume(returning: nil)
+                    }
+                }
+            )
+        }
+
+        inference.samplingTopK = snapshot.topK
+        inference.samplingTopP = snapshot.topP
+        inference.samplingTemperature = snapshot.temperature
+        inference.maxOutputTokens = snapshot.maxOutputTokens
+        await inference.resetKVSession()
+
+        return raw
+    }
 
     func kvPrefillTokensForCurrentTurn() -> Int {
         // 协议默认实现返回 0 (无 KV 能力的后端); LiteRTBackend 覆写成真实值。

@@ -115,9 +115,11 @@ struct ContentView: View {
     #if canImport(UIKit)
     @State private var holdHaptic = UIImpactFeedbackGenerator(style: .medium)
     #endif
+    @State private var cachedDisplayItems: [DisplayItem] = []
+    @State private var cachedDisplayMessageIDs: [UUID] = []
 
     private var displayItems: [DisplayItem] {
-        buildDisplayItems(from: engine.messages, isProcessing: engine.isProcessing)
+        cachedDisplayItems
     }
 
     private var scrollSignal: ScrollSignal {
@@ -258,6 +260,7 @@ struct ContentView: View {
         .task {
             guard !ProcessInfo.processInfo.isRunningXCTest else { return }
             engine.setup()
+            refreshDisplayItems()
             // 不在这里 initialize hold-to-talk ASR. 改为用户第一次按住说话时
             // 通过 ASRService.ensureInitialized 懒加载, 避免 cold start 就占用 ASR 内存 (zh ~160MB / en ~180MB).
         }
@@ -283,6 +286,12 @@ struct ContentView: View {
                 holdASRWarmupTask = nil
                 holdToTalkASR.unload()
             }
+        }
+        .onChange(of: engine.messagesRevision) { _, _ in
+            refreshDisplayItems()
+        }
+        .onChange(of: engine.isProcessing) { _, _ in
+            refreshDisplayItems()
         }
         .onChange(of: isInputFocused) { _, focused in
             if focused {
@@ -317,6 +326,35 @@ struct ContentView: View {
         .fullScreenCover(isPresented: $showConfigurations) {
             ConfigurationsView(engine: engine)
         }
+    }
+
+    private func refreshDisplayItems() {
+        let messages = engine.messages
+        let messageIDs = messages.map(\.id)
+
+        defer {
+            cachedDisplayMessageIDs = messageIDs
+        }
+
+        if let lastUserIndex = messages.lastIndex(where: { $0.role == .user }),
+           let cachedUserIndex = cachedDisplayMessageIDs.lastIndex(of: messages[lastUserIndex].id),
+           cachedUserIndex == lastUserIndex,
+           cachedDisplayMessageIDs.prefix(cachedUserIndex + 1).elementsEqual(messageIDs.prefix(lastUserIndex + 1)),
+           let displayCutIndex = cachedDisplayItems.lastIndex(where: { $0.id == messages[lastUserIndex].id }) {
+            let tailStart = messages.index(after: lastUserIndex)
+            let tailMessages = tailStart < messages.endIndex ? Array(messages[tailStart...]) : []
+            let tailItems = buildDisplayItems(
+                from: tailMessages,
+                isProcessing: engine.isProcessing
+            )
+            cachedDisplayItems = Array(cachedDisplayItems.prefix(displayCutIndex + 1)) + tailItems
+            return
+        }
+
+        cachedDisplayItems = buildDisplayItems(
+            from: engine.messages,
+            isProcessing: engine.isProcessing
+        )
     }
 
     @ViewBuilder
@@ -424,17 +462,24 @@ struct ContentView: View {
                                 images: msg.images.compactMap(\.uiImage),
                                 audios: msg.audios
                             )
+                            .equatable()
                         case .response(let block):
+                            let isLastItem = item.id == displayItems.last?.id
+                            let isStreamingResponseText = engine.isProcessing && isLastItem
                             AIResponseView(
                                 block: block,
-                                expandedSkills: expandedSkills,
+                                expandedSkillIDs: expandedSkillIDs(for: block),
                                 isThinkingExpanded: expandedThoughts.contains(block.id),
+                                isStreamingResponseText: isStreamingResponseText,
                                 onToggle: { toggleExpand($0) },
                                 onToggleThinking: { toggleThinking(block.id) },
-                                onRetry: canRetry(item: item, block: block)
+                                onRetry: isLastItem && canRetry(item: item, block: block)
                                     ? { Task { await engine.retryLastResponse() } }
-                                    : nil
+                                    : nil,
+                                followUpSuggestions: isLastItem ? followUpSuggestions(for: item, block: block) : [],
+                                onFollowUpSuggestion: applyFollowUpSuggestion
                             )
+                            .equatable()
                         }
                     }
                 }
@@ -454,7 +499,9 @@ struct ContentView: View {
             )
             .simultaneousGesture(
                 DragGesture(minimumDistance: 8).onChanged { _ in
-                    shouldAutoFollowChat = false
+                    if shouldAutoFollowChat {
+                        shouldAutoFollowChat = false
+                    }
                 }
             )
             .task(id: scrollSignal) {
@@ -535,9 +582,63 @@ struct ContentView: View {
         }
     }
 
+    private func expandedSkillIDs(for block: ResponseBlock) -> Set<UUID> {
+        let ids = block.skills.map(\.id)
+        return Set(ids.filter { expandedSkills.contains($0) })
+    }
+
+    private func followUpSuggestions(for item: DisplayItem, block: ResponseBlock) -> [FollowUpSuggestion] {
+        guard item.id == displayItems.last?.id else { return [] }
+        guard !engine.isProcessing, !block.isThinking else { return [] }
+        guard block.skills.isEmpty else { return [] }
+        guard block.responseText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
+            return []
+        }
+        guard inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              selectedImages.isEmpty,
+              importedAudioSnapshot == nil,
+              !audioCapture.isCapturing
+        else {
+            return []
+        }
+
+        return [
+            FollowUpSuggestion(
+                id: "expand",
+                title: tr("展开说说", "Tell me more"),
+                prompt: tr("继续展开刚才的回答。", "Tell me more about your last answer.")
+            ),
+            FollowUpSuggestion(
+                id: "example",
+                title: tr("举个例子", "Give an example"),
+                prompt: tr("举一个具体例子。", "Give me a concrete example.")
+            ),
+            FollowUpSuggestion(
+                id: "summary",
+                title: tr("总结三点", "Summarize"),
+                prompt: tr("把刚才的内容总结成三点。", "Summarize that in three points.")
+            )
+        ]
+    }
+
+    private func applyFollowUpSuggestion(_ suggestion: FollowUpSuggestion) {
+        showAttachmentTray = false
+        isVoiceInputMode = false
+        inputText = suggestion.prompt
+        isInputFocused = true
+    }
+
     private func toggleThinkingMode() {
+        guard currentModelSupportsThinking else {
+            showTransientTopNotice(tr("当前模型不支持思考模式", "Current model does not support Thinking mode"))
+            return
+        }
+
         engine.config.enableThinking.toggle()
         engine.applySamplingConfig()
+        showTransientTopNotice(
+            engine.config.enableThinking ? tr("思考模式已开启", "Thinking mode on") : tr("思考模式已关闭", "Thinking mode off")
+        )
         // 切换 Think 需要清 KV cache: system prompt 的 <|think|> 段变化后,
         // 若当前会话已有 context, 下一轮走 delta prompt 路径会**复用**旧
         // system prompt, 模型继续按旧设置 reasoning. reset 强制下一轮重新
@@ -555,38 +656,20 @@ struct ContentView: View {
 
     // MARK: - 顶部栏
 
-    // MARK: - topBar (v2: 极简两元素)
+    // MARK: - topBar (v2: 对称轻量入口)
     //
-    // 设计稿:左 chip (历史会话入口 + 状态指示) + 右 gear (设置)
+    // 设计稿:左侧「历史状态 + 新会话」, 右侧「Think + 设置」; 中间只给状态提示。
+    // 历史状态 chip 与 设置 gear 完全沿用 main 的逻辑/风格/位置 (历史最外、gear 最外);
+    // 新会话 与 Think 是后加的, 统一成跟 gear 同一种安静线性图标语言。
     // 移除项 (跟用户当面讨论确认):
     //   - Gemma 4 E2B 模型名 → 进 settings 看
     //   - LIVE 按钮 → 中央 orb 已有 "进入 LIVE" 入口
-    //   - 思考模式 toggle → 暂存,后续放到别处 (待定)
     private var topBar: some View {
         HStack(spacing: 0) {
-            // 左:历史状态 chip.
-            // 28pt 外圈 + 6pt 内点 + opacity 0.6 — 这不是"按钮", 是"悬浮状态痕迹".
-            // 视觉重量比 orb / Dynamic Island 都要轻, 不抢戏.
-            Button(action: {
-                engine.flushPendingSessionSave()
-                showHistory = true
-            }) {
-                ZStack {
-                    Circle()
-                        .fill(Theme.bgHover.opacity(UIScale.topStatusChipBgOpacity))
-                        .frame(
-                            width: UIScale.topStatusChipDiameter,
-                            height: UIScale.topStatusChipDiameter
-                        )
-                    Circle()
-                        .fill(engine.isModelLoaded ? Theme.accentMuted : Theme.textTertiary)
-                        .frame(
-                            width: UIScale.topStatusChipDotSize,
-                            height: UIScale.topStatusChipDotSize
-                        )
-                }
+            HStack(spacing: 8) {
+                historyStatusButton
+                newSessionTopBarButton
             }
-            .buttonStyle(.plain)
 
             Spacer(minLength: 12)
 
@@ -597,18 +680,127 @@ struct ContentView: View {
 
             Spacer(minLength: 12)
 
-            // 右:settings gear — 裸 icon,opacity 0.72 让它"浮在空气里".
-            Button(action: { showConfigurations = true }) {
-                Image(systemName: "gearshape")
-                    .font(.system(size: UIScale.gearIconSize, weight: .regular))
-                    .foregroundStyle(Theme.textSecondary)
-                    .opacity(UIScale.gearIconOpacity)
+            HStack(spacing: 8) {
+                thinkingModeButton
+                settingsTopBarButton
             }
-            .buttonStyle(.plain)
         }
         .padding(.horizontal, Theme.inputPadH)
         .padding(.vertical, 10)
         .animation(.easeInOut(duration: 0.18), value: activeTopStatusHint)
+        .animation(.easeInOut(duration: 0.18), value: engine.config.enableThinking)
+        .animation(.easeInOut(duration: 0.18), value: currentModelSupportsThinking)
+    }
+
+    private var newSessionTopBarButton: some View {
+        Button(action: {
+            engine.flushPendingSessionSave()
+            engine.startNewSession()
+        }) {
+            // + 包在圆角方块里 — 跟 Think 的 T 方块同款 chip (尺寸/圆角/描边一致),
+            // 让左内 + 与右内 T 成对称一对; 它是一次性动作, 没有点亮态。
+            // + 比 T 细 (细十字 vs 字母), 同 pt 看着偏轻; 放大到 14pt 补足视觉分量,
+            // 让两个 chip 的"满度"对齐。
+            Image(systemName: "plus")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Theme.textSecondary)
+                .opacity(UIScale.gearIconOpacity)
+                .frame(width: 22, height: 22)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .strokeBorder(Theme.textSecondary.opacity(0.42), lineWidth: 1)
+                )
+                .frame(
+                    width: UIScale.topStatusChipDiameter,
+                    height: UIScale.topStatusChipDiameter
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(tr("新会话", "New chat")))
+    }
+
+    private var historyStatusButton: some View {
+        Button(action: {
+            engine.flushPendingSessionSave()
+            showHistory = true
+        }) {
+            ZStack {
+                // 可见外圈缩到 24 (略大于 +/T chip 的 22), 不再像 28 那样偏大;
+                // 外层仍保留 28 点击区, 跟其它三个图标的 tap / 垂直对齐一致。
+                Circle()
+                    .fill(Theme.bgHover.opacity(UIScale.topStatusChipBgOpacity))
+                    .frame(width: 24, height: 24)
+                Circle()
+                    .fill(engine.isModelLoaded ? Theme.accentMuted : Theme.textTertiary)
+                    .frame(
+                        width: UIScale.topStatusChipDotSize,
+                        height: UIScale.topStatusChipDotSize
+                    )
+            }
+            .frame(
+                width: UIScale.topStatusChipDiameter,
+                height: UIScale.topStatusChipDiameter
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(tr("历史记录", "History")))
+    }
+
+    private var thinkingModeButton: some View {
+        let isSupported = currentModelSupportsThinking
+        let isActive = isSupported && engine.config.enableThinking
+
+        // 字母 T 包在圆角方块里 — 零噪点的字母, 跟 gear/pencil 同属"低细节"一家;
+        // 壳呼应 app 内「思考」块的 accentSubtle 圆角方块 (ResponseUI). 品牌色只在开启时点亮。
+        let tint: Color = isSupported
+            ? (isActive ? Theme.accentMuted : Theme.textSecondary)
+            : Theme.textTertiary
+        let glyphOpacity: Double = isSupported ? (isActive ? 0.96 : UIScale.gearIconOpacity) : 0.36
+
+        return Button(action: toggleThinkingMode) {
+            Text("T")
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundStyle(tint)
+                .opacity(glyphOpacity)
+                .frame(width: 22, height: 22)
+                .background(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(isActive ? Theme.accentSubtle : Color.clear)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .strokeBorder(
+                            isActive ? Color.clear : tint.opacity(isSupported ? 0.42 : 0.24),
+                            lineWidth: 1
+                        )
+                )
+                .frame(
+                    width: UIScale.topStatusChipDiameter,
+                    height: UIScale.topStatusChipDiameter
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(tr("思考模式", "Thinking mode")))
+        .accessibilityValue(Text(isActive ? tr("已开启", "On") : tr("已关闭", "Off")))
+    }
+
+    private var settingsTopBarButton: some View {
+        Button(action: { showConfigurations = true }) {
+            Image(systemName: "gearshape")
+                .font(.system(size: UIScale.gearIconSize, weight: .regular))
+                .foregroundStyle(Theme.textSecondary)
+                .opacity(UIScale.gearIconOpacity)
+                .frame(
+                    width: UIScale.topStatusChipDiameter,
+                    height: UIScale.topStatusChipDiameter
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(tr("设置", "Settings")))
     }
 
     private var activeTopStatusHint: TopStatusHint? {
@@ -1547,10 +1739,8 @@ struct ContentView: View {
         LiveModelDefinition.isAvailable
     }
 
-    /// 顶部 "思考" 按钮是否显示。只有声明 supportsThinking=true 的模型才显示, 否则
-    /// 整个按钮藏掉 (而不是 disable+灰色) — disable 还在那里占位但点不亮, 反而更
-    /// 让用户疑惑。比如 MiniCPM-V 4.6 没思考模式, 整个按钮在 v4.6 加载时消失。
-    private var showThinkingButton: Bool {
+    /// 当前选中模型是否支持 thinking。顶部 T 始终保留位置, 但非 thinking 模型置灰。
+    private var currentModelSupportsThinking: Bool {
         currentModelCapabilities.supportsThinking
     }
 
@@ -2022,10 +2212,17 @@ private struct SessionHistorySheet: View {
 
 // MARK: - 用户气泡
 
-struct UserBubble: View {
+struct UserBubble: View, Equatable {
     let text: String
     let images: [UIImage]
     let audios: [ChatAudioAttachment]
+
+    static func == (lhs: UserBubble, rhs: UserBubble) -> Bool {
+        lhs.text == rhs.text
+            && lhs.images.count == rhs.images.count
+            && lhs.audios.map(\.id) == rhs.audios.map(\.id)
+    }
+
     var body: some View {
         HStack {
             Spacer(minLength: Theme.bubbleMinSpacer)

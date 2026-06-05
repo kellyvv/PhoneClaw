@@ -43,6 +43,8 @@ extension AgentEngine {
         guard !normalizedText.isEmpty || !promptAttachments.isEmpty || audioInput != nil else { return }
         isProcessing = true
         lastTurnRawModelOutputs.removeAll()
+        lastTurnPromptDiagnostics.removeAll()
+        lastTurnStreamingPrompt = nil
         beginGenerationTracking()
 
         let currentUserMessage = ChatMessage(
@@ -85,7 +87,64 @@ extension AgentEngine {
 
         applySamplingConfig()
 
-        let matchedSkillIdsForTurn = requiresMultimodal ? [] : matchedSkillIds(for: normalizedText)
+        var matchedSkillIdsForTurn = requiresMultimodal
+            ? []
+            : matchedSkillIds(for: normalizedText, allowSticky: false)
+        if !requiresMultimodal, matchedSkillIdsForTurn.isEmpty {
+            matchedSkillIdsForTurn = await modelIntentRoutedSkillIds(for: normalizedText)
+        }
+        var allowPreloadedSkillFallbackForTurn = !matchedSkillIdsForTurn.isEmpty
+        var suppressStickySkillRoutingForTurn = false
+        if !requiresMultimodal,
+           let previousObservation = latestPriorToolObservation() {
+            let previousSkillId = previousObservation.skillId
+            let routesToPreviousSkill = previousSkillId.map { matchedSkillIdsForTurn.contains($0) } == true
+                || matchedSkillIdsForTurn.contains(previousObservation.toolName)
+            let stickySkillId = matchedSkillIdsForTurn.isEmpty ? recentActiveSkillId() : nil
+            let shouldClassifyAgainstPrevious =
+                routesToPreviousSkill || stickySkillId != nil || matchedSkillIdsForTurn.isEmpty
+            if shouldClassifyAgainstPrevious {
+                let decision = await classifyDialogueActForToolFollowUp(
+                    userQuestion: normalizedText,
+                    observation: previousObservation
+                )
+                if let decision {
+                    if decision.blocksToolExecution {
+                        switch decision.act {
+                        case .verifyLastResult, .explainLastResult, .clarifyLastResult:
+                            self.lastTurnMatchedSkillIds = []
+                            await answerFromPriorToolObservation(
+                                userQuestion: normalizedText,
+                                observation: previousObservation,
+                                decision: decision
+                            )
+                            return
+                        case .cancelOrReject, .chitchat:
+                            suppressStickySkillRoutingForTurn = true
+                        case .newTask, .continueTask, .correctParameters, .refreshResult:
+                            break
+                        }
+                    }
+
+                    if matchedSkillIdsForTurn.isEmpty,
+                       decision.targetPreviousResult,
+                       decision.act.allowsToolExecution,
+                       let previousSkillId {
+                        matchedSkillIdsForTurn = [previousSkillId]
+                        allowPreloadedSkillFallbackForTurn = true
+                    }
+                }
+                if matchedSkillIdsForTurn.isEmpty,
+                   !suppressStickySkillRoutingForTurn,
+                   let stickySkillId {
+                    matchedSkillIdsForTurn = [stickySkillId]
+                }
+            }
+        } else if !requiresMultimodal,
+                  matchedSkillIdsForTurn.isEmpty,
+                  let stickySkillId = recentActiveSkillId() {
+            matchedSkillIdsForTurn = [stickySkillId]
+        }
         // 暴露给 CLI harness (ScenarioRunner) 做断言. iOS UI 不读, 0 行为影响.
         self.lastTurnMatchedSkillIds = matchedSkillIdsForTurn
         // T2 (2026-04-17): 把 Planner 入口从 matched>=2 降到 matched>=1.
@@ -105,7 +164,7 @@ extension AgentEngine {
         let shouldUsePlanner = !requiresMultimodal && matchedSkillIdsForTurn.count >= 2
         let shouldUseFullAgentPrompt =
             !requiresMultimodal
-            && shouldUseToolingPrompt(for: normalizedText)
+            && !matchedSkillIdsForTurn.isEmpty
         let activeSkillInfos: [SkillInfo]
         if shouldUseFullAgentPrompt {
             if matchedSkillIdsForTurn.isEmpty {
@@ -123,20 +182,6 @@ extension AgentEngine {
         let historyDepth = requiresMultimodal ? 0 : policy.safeHistoryDepth(headroomMB: headroomMB)
         let plannerHistoryDepth = shouldUsePlanner ? 0 : historyDepth
         let promptImages = promptImages(historyDepth: historyDepth, currentImages: promptAttachments)
-
-        let routedPath = Self.decideRoute(
-            requiresMultimodal: requiresMultimodal,
-            shouldUsePlanner: shouldUsePlanner,
-            shouldUseFullAgentPrompt: shouldUseFullAgentPrompt
-        )
-        PCLog.turn(
-            route: routedPath,
-            skillCount: matchedSkillIdsForTurn.count,
-            multimodal: requiresMultimodal,
-            inputChars: text.count,
-            historyDepth: historyDepth,
-            headroomMB: MemoryStats.headroomMB
-        )
 
         // Tag 这条 assistant placeholder 的 skillName, 让 sticky routing 在
         // 下一轮追问时能识别上下文 (即使本轮 LLM 没调 tool 只是澄清).
@@ -166,7 +211,7 @@ extension AgentEngine {
             let systemPrompt = PromptBuilder.multimodalSystemPrompt(
                 hasImages: !promptImages.isEmpty,
                 hasAudio: audioInput != nil,
-                enableThinking: config.enableThinking
+                enableThinking: effectiveEnableThinking
             )
             let multimodalPlan = makePromptPlan(
                 prompt: systemPrompt.isEmpty ? normalizedText : systemPrompt + "\n" + normalizedText,
@@ -188,7 +233,10 @@ extension AgentEngine {
                       self.messages.indices.contains(msgIndex) else { return }
                 multimodalBuffer += token
                 let cleaned = self.cleanOutputStreaming(multimodalBuffer)
-                self.messages[msgIndex].update(content: (cleaned.isEmpty ? "" : cleaned) + "▍")
+                self.enqueueStreamingMessageContentUpdate(
+                    at: msgIndex,
+                    content: (cleaned.isEmpty ? "" : cleaned) + "▍"
+                )
             } onComplete: { [weak self] result in
                 guard let self = self else { return }
                 guard self.messages.indices.contains(msgIndex) else {
@@ -202,7 +250,8 @@ extension AgentEngine {
                     log("[Agent] 1st raw: \(fullText.prefix(300))")
                     #endif
                     let cleaned = self.cleanOutput(fullText)
-                    self.messages[msgIndex].update(
+                    self.setStreamingMessageContent(
+                        at: msgIndex,
                         content: cleaned.isEmpty ? PromptLocale.current.emptyReplyPlaceholder : cleaned
                     )
                     self.recordRecentImageFollowUpContext(
@@ -289,7 +338,7 @@ extension AgentEngine {
                 userMessage: normalizedText,
                 assistantSummary: imageFollowUpBridgeSummary,
                 systemPrompt: config.systemPrompt,
-                enableThinking: config.enableThinking
+                enableThinking: effectiveEnableThinking
             )
             promptBundle = (
                 lightPrompt: imageFollowUpTextPrompt,
@@ -357,7 +406,7 @@ extension AgentEngine {
                         userMessage: normalizedText,
                         assistantSummary: imageFollowUpBridgeSummary,
                         systemPrompt: config.systemPrompt,
-                        enableThinking: config.enableThinking
+                        enableThinking: effectiveEnableThinking
                     )
                     promptBundle = (
                         lightPrompt: imageFollowUpTextPrompt,
@@ -394,14 +443,17 @@ extension AgentEngine {
         let lightPrompt = promptBundle.lightPrompt
         let plannerInputPrompt = promptBundle.plannerInputPrompt
         let streamingPrompt = promptBundle.streamingPrompt
+        lastTurnStreamingPrompt = streamingPrompt
         let canUseDelta = promptBundle.canUseDelta
         if canUseDelta {
             log("[Agent] KV cache delta mode: \(streamingPrompt.count) chars (vs full \(lightPrompt.count) chars)")
         }
         await prepareSessionGroupTransitionIfNeeded(for: textPromptPlan)
-        #if DEBUG
         log("[Agent] text prompt mode=\(shouldUseFullAgentPrompt ? "agent" : "light"), planner-input-chars=\(plannerInputPrompt.count), streaming-chars=\(streamingPrompt.count), skills=\(activeSkillInfos.count)")
-        #endif
+        logPromptDiagnostics(
+            label: shouldUseFullAgentPrompt ? "processInput.agent" : "processInput.light",
+            prompt: streamingPrompt
+        )
 
         let msgIndex: Int
         if let existingIndex = earlyAssistantPlaceholderIndex,
@@ -467,13 +519,16 @@ extension AgentEngine {
                     if trimmed.isEmpty { return }
                     if "<tool_call>".hasPrefix(trimmed) { return }
                     bufferFlushed = true
-                    self.messages[msgIndex].update(content: self.cleanOutputStreaming(buffer))
+                    self.enqueueStreamingMessageContentUpdate(
+                        at: msgIndex,
+                        content: self.cleanOutputStreaming(buffer)
+                    )
                     return
                 }
 
                 let cleaned = self.cleanOutputStreaming(buffer)
                 if !cleaned.isEmpty {
-                self.messages[msgIndex].update(content: cleaned)
+                    self.enqueueStreamingMessageContentUpdate(at: msgIndex, content: cleaned)
                 }
             },
             onComplete: { [weak self] result in
@@ -485,12 +540,9 @@ extension AgentEngine {
                 switch result {
                 case .success(let fullText):
                     self.lastTurnRawModelOutputs.append(fullText)
-                    #if DEBUG
-                    log("[Agent] 1st raw: \(fullText.prefix(300))")
-                    #endif
 
                     if self.parseToolCall(fullText) != nil {
-                        self.messages[msgIndex].update(content: "")
+                        self.setStreamingMessageContent(at: msgIndex, content: "")
                         self.recordCompletedObservation(plan: textPromptPlan)
                         // Tool chain continues the turn — txn stays .streaming,
                         // finishTurn() will be called when the chain completes.
@@ -503,34 +555,60 @@ extension AgentEngine {
                             )
                         }
                         return
-                    } else {
-                        let cleaned = self.cleanOutput(fullText)
-                        self.recordCompletedObservation(plan: textPromptPlan)
-                        if forceImageFollowUpTextPrompt,
-                           let imageFollowUpBridgeSummary,
-                           !cleaned.isEmpty {
-                            Task { [weak self] in
-                                guard let self else { return }
-                                let repaired = await self.streamImageFollowUpStableReply(
-                                    cleanedDraft: cleaned,
-                                    assistantSummary: imageFollowUpBridgeSummary,
+                    }
+
+                    let cleaned = self.cleanOutput(fullText)
+                    if shouldUseFullAgentPrompt,
+                       matchedSkillIdsForTurn.count == 1,
+                       !preloadedSkills.isEmpty,
+                       self.canFallbackToPreloadedSkillTool(skillIds: matchedSkillIdsForTurn) {
+                        if allowPreloadedSkillFallbackForTurn {
+                            log("[Agent] preloaded skill fallback triggered after missing tool_call")
+                            self.setStreamingMessageContent(at: msgIndex, content: "")
+                            self.recordCompletedObservation(plan: textPromptPlan)
+                            Task {
+                                await self.executePreloadedSkillToolFallback(
+                                    extractionPromptBase: lightPrompt,
+                                    toolChainPrompt: streamingPrompt,
                                     userQuestion: normalizedText,
-                                    msgIndex: msgIndex
+                                    skillIds: matchedSkillIdsForTurn,
+                                    preloadedSkills: preloadedSkills,
+                                    images: promptImages,
+                                    msgIndex: msgIndex,
+                                    fallbackText: cleaned
                                 )
-                                if self.messages.indices.contains(msgIndex) {
-                                    self.messages[msgIndex].update(
-                                        content: repaired.isEmpty ? PromptLocale.current.emptyReplyPlaceholder : repaired
-                                    )
-                                }
-                                self.finishTurn()
                             }
                             return
                         }
-                        self.messages[msgIndex].update(
-                            content: cleaned.isEmpty ? PromptLocale.current.emptyReplyPlaceholder : cleaned
-                        )
-                        self.finishTurn()
                     }
+
+                    self.recordCompletedObservation(plan: textPromptPlan)
+                    if forceImageFollowUpTextPrompt,
+                       let imageFollowUpBridgeSummary,
+                       !cleaned.isEmpty {
+                        Task { [weak self] in
+                            guard let self else { return }
+                            let repaired = await self.streamImageFollowUpStableReply(
+                                cleanedDraft: cleaned,
+                                assistantSummary: imageFollowUpBridgeSummary,
+                                userQuestion: normalizedText,
+                                msgIndex: msgIndex
+                            )
+                            if self.messages.indices.contains(msgIndex) {
+                                self.setStreamingMessageContent(
+                                    at: msgIndex,
+                                    content: repaired.isEmpty ? PromptLocale.current.emptyReplyPlaceholder : repaired
+                                )
+                            }
+                            self.finishTurn()
+                        }
+                        return
+                    }
+                    self.setStreamingMessageContent(
+                        at: msgIndex,
+                        content: cleaned.isEmpty ? PromptLocale.current.emptyReplyPlaceholder : cleaned
+                    )
+                    self.finishTurn()
                 case .failure(let error):
                     if self.isUserCancellationError(error) {
                         log("[Agent] generation cancelled")
@@ -554,6 +632,7 @@ extension AgentEngine {
     // MARK: - Skill 结果后的后续推理（支持多轮工具链）
 
     func streamLLM(prompt: String, images: [CIImage]) async -> String? {
+        logPromptDiagnostics(label: "streamLLM.headless", prompt: prompt)
         return await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
             inference.generate(
                 prompt: prompt,
@@ -574,6 +653,7 @@ extension AgentEngine {
     }
 
     func streamLLM(prompt: String, msgIndex: Int, images: [CIImage]) async -> String? {
+        logPromptDiagnostics(label: "streamLLM.ui", prompt: prompt)
         var buffer = ""
         return await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
             var toolCallDetected = false
@@ -589,7 +669,7 @@ extension AgentEngine {
                 if buffer.contains("<tool_call>") {
                     toolCallDetected = true
                     if bufferFlushed && self.messages[msgIndex].role == .assistant {
-                        self.messages[msgIndex].update(content: "")
+                        self.setStreamingMessageContent(at: msgIndex, content: "")
                     }
                     return
                 }
@@ -603,7 +683,7 @@ extension AgentEngine {
 
                 let cleaned = self.cleanOutputStreaming(buffer)
                 if !cleaned.isEmpty && self.messages[msgIndex].role == .assistant {
-                    self.messages[msgIndex].update(content: cleaned)
+                    self.enqueueStreamingMessageContentUpdate(at: msgIndex, content: cleaned)
                 }
             },
             onComplete: { [weak self] result in
@@ -613,6 +693,7 @@ extension AgentEngine {
                 }
                 switch result {
                 case .success(let text):
+                    self.flushPendingStreamingMessageContentUpdates()
                     self.lastTurnRawModelOutputs.append(text)
                     log("[Agent] LLM raw: \(text.prefix(300))")
                     continuation.resume(returning: text)
@@ -713,6 +794,8 @@ extension AgentEngine {
     }
 
     func settleCancelledMessage(at index: Int) {
+        guard messages.indices.contains(index) else { return }
+        flushPendingStreamingMessageContentUpdates()
         guard messages.indices.contains(index) else { return }
         let content = messages[index].content
             .replacingOccurrences(of: "▍", with: "")

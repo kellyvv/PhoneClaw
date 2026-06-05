@@ -4,15 +4,33 @@ import Foundation
 import UIKit
 #endif
 
+struct FollowUpSuggestion: Identifiable, Equatable {
+    let id: String
+    let title: String
+    let prompt: String
+}
+
 // MARK: - AI 回复
 
-struct AIResponseView: View {
+struct AIResponseView: View, Equatable {
     let block: ResponseBlock
-    let expandedSkills: Set<UUID>
+    let expandedSkillIDs: Set<UUID>
     let isThinkingExpanded: Bool
+    let isStreamingResponseText: Bool
     let onToggle: (UUID) -> Void
     let onToggleThinking: () -> Void
     let onRetry: (() -> Void)?
+    let followUpSuggestions: [FollowUpSuggestion]
+    let onFollowUpSuggestion: (FollowUpSuggestion) -> Void
+
+    static func == (lhs: AIResponseView, rhs: AIResponseView) -> Bool {
+        lhs.block == rhs.block
+            && lhs.expandedSkillIDs == rhs.expandedSkillIDs
+            && lhs.isThinkingExpanded == rhs.isThinkingExpanded
+            && lhs.isStreamingResponseText == rhs.isStreamingResponseText
+            && (lhs.onRetry != nil) == (rhs.onRetry != nil)
+            && lhs.followUpSuggestions == rhs.followUpSuggestions
+    }
 
     private var hasSkill: Bool { !block.skills.isEmpty }
     private var hasThinkingText: Bool {
@@ -34,7 +52,7 @@ struct AIResponseView: View {
                 ForEach(block.skills) { card in
                     SkillCardView(
                         card: card,
-                        isExpanded: expandedSkills.contains(card.id),
+                        isExpanded: expandedSkillIDs.contains(card.id),
                         onToggle: { onToggle(card.id) }
                     )
                     .transition(.opacity.combined(with: .scale(scale: 0.95)))
@@ -55,9 +73,18 @@ struct AIResponseView: View {
 
                 if let text = block.responseText {
                     StreamingMarkdownView(
+                        renderID: block.id,
                         content: text,
-                        isStreaming: block.isThinking
+                        isStreaming: isStreamingResponseText
                     )
+                }
+
+                if !followUpSuggestions.isEmpty, !block.isThinking {
+                    FollowUpSuggestionRow(
+                        suggestions: followUpSuggestions,
+                        onTap: onFollowUpSuggestion
+                    )
+                    .padding(.top, 2)
                 }
 
                 if let onRetry, !block.isThinking {
@@ -81,24 +108,107 @@ struct AIResponseView: View {
     }
 }
 
+private struct FollowUpSuggestionRow: View {
+    let suggestions: [FollowUpSuggestion]
+    let onTap: (FollowUpSuggestion) -> Void
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 7) {
+                ForEach(suggestions) { suggestion in
+                    Button {
+                        onTap(suggestion)
+                    } label: {
+                        Text(suggestion.title)
+                            .font(.system(size: 12, weight: .regular, design: .rounded))
+                            .foregroundStyle(Theme.textTertiary.opacity(0.9))
+                            .lineLimit(1)
+                            .padding(.horizontal, 10)
+                            .frame(height: 30)
+                            .background(Theme.bgHover.opacity(0.34), in: Capsule())
+                            .overlay(
+                                Capsule()
+                                    .strokeBorder(Theme.border.opacity(0.42), lineWidth: 0.5)
+                                    .allowsHitTesting(false)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .frame(maxWidth: assistantTextMaxWidth, alignment: .leading)
+    }
+
+    private var assistantTextMaxWidth: CGFloat {
+        #if os(macOS)
+        return 620
+        #else
+        let availableWidth = UIScale.screenWidth - Theme.chatPadH * 2
+        return max(280, availableWidth)
+        #endif
+    }
+}
+
 // MARK: - Streaming Markdown
 
 /// Lightweight assistant text renderer.
 /// MarkdownUI's default list typography is too document-like for the floating chat UI,
 /// so plain text / lists / code blocks are mapped to a quieter local rhythm.
 private struct StreamingMarkdownView: View {
+    let renderID: UUID
     let content: String
     let isStreaming: Bool
 
     var body: some View {
         #if canImport(UIKit)
-        SelectableAssistantTextView(content: content)
+        if Self.needsUIKitLinkTextView(content) {
+            SelectableAssistantTextView(renderID: renderID, content: content, useCache: !isStreaming)
+                .frame(maxWidth: assistantTextMaxWidth, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .animation(nil, value: content)
+        } else {
+            AssistantAttributedLabel(renderID: renderID, content: content, useCache: !isStreaming)
+                .frame(maxWidth: assistantTextMaxWidth, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .animation(nil, value: content)
+        }
+        #else
+        AssistantTextStack(renderID: renderID, content: content, useCache: !isStreaming)
+            .equatable()
             .frame(maxWidth: assistantTextMaxWidth, alignment: .leading)
             .fixedSize(horizontal: false, vertical: true)
             .animation(nil, value: content)
+        #endif
+    }
+
+    private var assistantTextMaxWidth: CGFloat {
+        #if os(macOS)
+        return 620
         #else
+        let availableWidth = UIScale.screenWidth - Theme.chatPadH * 2
+        return max(280, availableWidth)
+        #endif
+    }
+
+    private static func needsUIKitLinkTextView(_ content: String) -> Bool {
+        content.range(of: "http://", options: [.caseInsensitive]) != nil
+            || content.range(of: "https://", options: [.caseInsensitive]) != nil
+            || content.range(of: "www.", options: [.caseInsensitive]) != nil
+    }
+}
+
+private struct AssistantTextStack: View, Equatable {
+    let renderID: UUID
+    let content: String
+    let useCache: Bool
+
+    static func == (lhs: AssistantTextStack, rhs: AssistantTextStack) -> Bool {
+        lhs.renderID == rhs.renderID && lhs.content == rhs.content && lhs.useCache == rhs.useCache
+    }
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            ForEach(AssistantTextBlock.parse(content)) { block in
+            ForEach(blocks) { block in
                 switch block.kind {
                 case .heading(let text, let level):
                     Text(text)
@@ -158,19 +268,10 @@ private struct StreamingMarkdownView: View {
             }
         }
         .textSelection(.enabled)
-        .frame(maxWidth: assistantTextMaxWidth, alignment: .leading)
-        .fixedSize(horizontal: false, vertical: true)
-        .animation(nil, value: content)
-        #endif
     }
 
-    private var assistantTextMaxWidth: CGFloat {
-        #if os(macOS)
-        return 620
-        #else
-        let availableWidth = UIScale.screenWidth - Theme.chatPadH * 2
-        return max(280, availableWidth)
-        #endif
+    private var blocks: [AssistantTextBlock] {
+        useCache ? AssistantTextBlockCache.blocks(for: content) : AssistantTextBlock.parseIncremental(content)
     }
 }
 
@@ -209,8 +310,116 @@ private final class SelectionDismissibleTextView: UITextView {
     }
 }
 
-private struct SelectableAssistantTextView: UIViewRepresentable {
+private struct AssistantAttributedLabel: UIViewRepresentable {
+    let renderID: UUID
     let content: String
+    let useCache: Bool
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeUIView(context: Context) -> UILabel {
+        let label = UILabel()
+        label.backgroundColor = .clear
+        label.numberOfLines = 0
+        label.lineBreakMode = .byWordWrapping
+        label.adjustsFontForContentSizeCategory = false
+        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        label.setContentCompressionResistancePriority(.required, for: .vertical)
+        return label
+    }
+
+    func updateUIView(_ label: UILabel, context: Context) {
+        guard context.coordinator.appliedContent != content else { return }
+        label.attributedText = attributedText()
+        context.coordinator.appliedContent = content
+        context.coordinator.invalidateSizeCache()
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UILabel, context: Context) -> CGSize? {
+        let width = proposal.width ?? 348
+        uiView.preferredMaxLayoutWidth = width
+        return context.coordinator.sizeThatFits(
+            renderID: renderID,
+            content: content,
+            width: width,
+            label: uiView,
+            useCache: useCache
+        )
+    }
+
+    private func attributedText() -> NSAttributedString {
+        if useCache {
+            return AssistantRenderedTextCache.attributedText(
+                for: renderID,
+                content: content
+            ) {
+                SelectableAssistantTextView.attributedText(
+                    from: AssistantTextBlockCache.blocks(for: content)
+                )
+            }
+        }
+        return SelectableAssistantTextView.attributedText(
+            from: AssistantTextBlock.parseIncremental(content)
+        )
+    }
+
+    final class Coordinator {
+        var appliedContent: String?
+        private var cachedSizeContent: String?
+        private var cachedSizeWidth: CGFloat = 0
+        private var cachedSize: CGSize?
+
+        func invalidateSizeCache() {
+            cachedSizeContent = nil
+            cachedSizeWidth = 0
+            cachedSize = nil
+        }
+
+        func sizeThatFits(renderID: UUID, content: String, width: CGFloat, label: UILabel, useCache: Bool) -> CGSize {
+            let normalizedWidth = width.rounded(.toNearestOrAwayFromZero)
+            if useCache,
+               let size = AssistantRenderedTextCache.size(
+                    for: .label,
+                    renderID: renderID,
+                    content: content,
+                    width: normalizedWidth
+               ) {
+                return size
+            }
+
+            if cachedSizeContent == content,
+               abs(cachedSizeWidth - normalizedWidth) < 0.5,
+               let cachedSize {
+                return cachedSize
+            }
+
+            let measured = label.sizeThatFits(
+                CGSize(width: width, height: CGFloat.greatestFiniteMagnitude)
+            )
+            let size = CGSize(width: width, height: ceil(measured.height))
+            cachedSizeContent = content
+            cachedSizeWidth = normalizedWidth
+            cachedSize = size
+            if useCache {
+                AssistantRenderedTextCache.storeSize(
+                    size,
+                    for: .label,
+                    renderID: renderID,
+                    content: content,
+                    width: normalizedWidth
+                )
+            }
+            return size
+        }
+    }
+}
+
+private struct SelectableAssistantTextView: UIViewRepresentable {
+    let renderID: UUID
+    let content: String
+    let useCache: Bool
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -222,6 +431,11 @@ private struct SelectableAssistantTextView: UIViewRepresentable {
         textView.isEditable = false
         textView.isSelectable = true
         textView.isScrollEnabled = false
+        textView.dataDetectorTypes = [.link]
+        textView.linkTextAttributes = [
+            .foregroundColor: Self.linkColor,
+            .underlineStyle: NSUnderlineStyle.single.rawValue
+        ]
         textView.textContainerInset = .zero
         textView.textContainer.lineFragmentPadding = 0
         textView.textContainer.widthTracksTextView = true
@@ -236,39 +450,105 @@ private struct SelectableAssistantTextView: UIViewRepresentable {
 
     func updateUIView(_ textView: UITextView, context: Context) {
         guard context.coordinator.appliedContent != content else { return }
-        textView.attributedText = context.coordinator.attributedText(for: content)
+        textView.attributedText = context.coordinator.attributedText(
+            for: content,
+            renderID: renderID,
+            useCache: useCache
+        )
         context.coordinator.appliedContent = content
+        context.coordinator.invalidateSizeCache()
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
         let width = proposal.width ?? 348
         uiView.bounds.size.width = width
-        let size = uiView.sizeThatFits(
-            CGSize(width: width, height: CGFloat.greatestFiniteMagnitude)
+        return context.coordinator.sizeThatFits(
+            renderID: renderID,
+            content: content,
+            width: width,
+            textView: uiView,
+            useCache: useCache
         )
-        return CGSize(width: width, height: ceil(size.height))
     }
 
     final class Coordinator {
         var appliedContent: String?
         private var cachedContent: String?
         private var cachedAttributedText: NSAttributedString?
+        private var cachedSizeContent: String?
+        private var cachedSizeWidth: CGFloat = 0
+        private var cachedSize: CGSize?
 
-        func attributedText(for content: String) -> NSAttributedString {
+        func attributedText(for content: String, renderID: UUID, useCache: Bool) -> NSAttributedString {
             if cachedContent == content, let cachedAttributedText {
                 return cachedAttributedText
             }
 
-            let attributedText = SelectableAssistantTextView.attributedText(
-                from: AssistantTextBlock.parse(content)
-            )
+            let attributedText: NSAttributedString
+            if useCache {
+                attributedText = AssistantRenderedTextCache.attributedText(
+                    for: renderID,
+                    content: content
+                ) {
+                    SelectableAssistantTextView.attributedText(
+                        from: AssistantTextBlockCache.blocks(for: content)
+                    )
+                }
+            } else {
+                attributedText = SelectableAssistantTextView.attributedText(
+                    from: AssistantTextBlock.parseIncremental(content)
+                )
+            }
             cachedContent = content
             cachedAttributedText = attributedText
             return attributedText
         }
+
+        func invalidateSizeCache() {
+            cachedSizeContent = nil
+            cachedSize = nil
+            cachedSizeWidth = 0
+        }
+
+        func sizeThatFits(renderID: UUID, content: String, width: CGFloat, textView: UITextView, useCache: Bool) -> CGSize {
+            let normalizedWidth = width.rounded(.toNearestOrAwayFromZero)
+            if useCache,
+               let size = AssistantRenderedTextCache.size(
+                    for: .textView,
+                    renderID: renderID,
+                    content: content,
+                    width: normalizedWidth
+               ) {
+                return size
+            }
+
+            if cachedSizeContent == content,
+               abs(cachedSizeWidth - normalizedWidth) < 0.5,
+               let cachedSize {
+                return cachedSize
+            }
+
+            let measured = textView.sizeThatFits(
+                CGSize(width: width, height: CGFloat.greatestFiniteMagnitude)
+            )
+            let size = CGSize(width: width, height: ceil(measured.height))
+            cachedSizeContent = content
+            cachedSizeWidth = normalizedWidth
+            cachedSize = size
+            if useCache {
+                AssistantRenderedTextCache.storeSize(
+                    size,
+                    for: .textView,
+                    renderID: renderID,
+                    content: content,
+                    width: normalizedWidth
+                )
+            }
+            return size
+        }
     }
 
-    private static func attributedText(from blocks: [AssistantTextBlock]) -> NSAttributedString {
+    fileprivate static func attributedText(from blocks: [AssistantTextBlock]) -> NSAttributedString {
         let result = NSMutableAttributedString()
 
         for block in blocks {
@@ -339,7 +619,88 @@ private struct SelectableAssistantTextView: UIViewRepresentable {
             }
         }
 
+        applyLinks(in: result)
         return result
+    }
+
+    private static func applyLinks(in attributedText: NSMutableAttributedString) {
+        applyMarkdownLinks(in: attributedText)
+        applyRawURLLinks(in: attributedText)
+        applyRawDomainLinks(in: attributedText)
+    }
+
+    private static func applyMarkdownLinks(in attributedText: NSMutableAttributedString) {
+        let pattern = #"\[([^\]\n]{1,160})\]\((https?://[^\s)]+)\)"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return }
+        let fullText = attributedText.string
+        let matches = regex.matches(
+            in: fullText,
+            range: NSRange(location: 0, length: (fullText as NSString).length)
+        )
+
+        for match in matches.reversed() {
+            guard match.numberOfRanges == 3 else { continue }
+            let nsText = attributedText.string as NSString
+            let label = nsText.substring(with: match.range(at: 1))
+            let rawURL = nsText.substring(with: match.range(at: 2))
+            guard let url = URL(string: rawURL) else { continue }
+
+            var attributes = attributedText.attributes(at: max(0, match.range.location), effectiveRange: nil)
+            attributes[.link] = url
+            attributes[.foregroundColor] = linkColor
+            attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue
+            attributedText.replaceCharacters(
+                in: match.range,
+                with: NSAttributedString(string: label, attributes: attributes)
+            )
+        }
+    }
+
+    private static func applyRawURLLinks(in attributedText: NSMutableAttributedString) {
+        let pattern = #"https?://[^\s\]\)）>，。；;、]+"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return }
+        let fullText = attributedText.string
+        let matches = regex.matches(
+            in: fullText,
+            range: NSRange(location: 0, length: (fullText as NSString).length)
+        )
+
+        for match in matches {
+            let rawURL = (fullText as NSString).substring(with: match.range)
+            guard let url = URL(string: rawURL) else { continue }
+            attributedText.addAttributes([
+                .link: url,
+                .foregroundColor: linkColor,
+                .underlineStyle: NSUnderlineStyle.single.rawValue
+            ], range: match.range)
+        }
+    }
+
+    private static func applyRawDomainLinks(in attributedText: NSMutableAttributedString) {
+        let pattern = #"(?<![@/:])\b(?:www\.)[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?:/[^\s\]\)）>，。；;、]*)?"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return }
+        let fullText = attributedText.string
+        let matches = regex.matches(
+            in: fullText,
+            range: NSRange(location: 0, length: (fullText as NSString).length)
+        )
+
+        for match in matches {
+            if attributedText.attribute(.link, at: match.range.location, effectiveRange: nil) != nil {
+                continue
+            }
+            let rawDomain = (fullText as NSString).substring(with: match.range)
+            guard let url = URL(string: "https://\(rawDomain)") else { continue }
+            attributedText.addAttributes([
+                .link: url,
+                .foregroundColor: linkColor,
+                .underlineStyle: NSUnderlineStyle.single.rawValue
+            ], range: match.range)
+        }
+    }
+
+    private static var linkColor: UIColor {
+        UIColor.systemBlue
     }
 
     private static func attributes(
@@ -372,7 +733,132 @@ private struct SelectableAssistantTextView: UIViewRepresentable {
         return UIFont(descriptor: descriptor, size: size)
     }
 }
+
+private final class AssistantAttributedTextCacheBox {
+    let attributedText: NSAttributedString
+
+    init(attributedText: NSAttributedString) {
+        self.attributedText = attributedText
+    }
+}
+
+private final class AssistantTextSizeCacheBox {
+    let size: CGSize
+
+    init(size: CGSize) {
+        self.size = size
+    }
+}
+
+private enum AssistantRenderedTextKind: String {
+    case label
+    case textView
+}
+
+private enum AssistantRenderedTextCache {
+    private static let attributedCache: NSCache<NSString, AssistantAttributedTextCacheBox> = {
+        let cache = NSCache<NSString, AssistantAttributedTextCacheBox>()
+        cache.countLimit = 700
+        cache.totalCostLimit = 4_000_000
+        return cache
+    }()
+
+    private static let sizeCache: NSCache<NSString, AssistantTextSizeCacheBox> = {
+        let cache = NSCache<NSString, AssistantTextSizeCacheBox>()
+        cache.countLimit = 1_400
+        return cache
+    }()
+
+    static func attributedText(
+        for renderID: UUID,
+        content: String,
+        make: () -> NSAttributedString
+    ) -> NSAttributedString {
+        let key = attributedKey(renderID: renderID, content: content)
+        if let cached = attributedCache.object(forKey: key) {
+            return cached.attributedText
+        }
+
+        let attributedText = make()
+        attributedCache.setObject(
+            AssistantAttributedTextCacheBox(attributedText: attributedText),
+            forKey: key,
+            cost: max(1, content.utf8.count * 2)
+        )
+        return attributedText
+    }
+
+    static func size(
+        for kind: AssistantRenderedTextKind,
+        renderID: UUID,
+        content: String,
+        width: CGFloat
+    ) -> CGSize? {
+        sizeCache.object(
+            forKey: sizeKey(kind: kind, renderID: renderID, content: content, width: width)
+        )?.size
+    }
+
+    static func storeSize(
+        _ size: CGSize,
+        for kind: AssistantRenderedTextKind,
+        renderID: UUID,
+        content: String,
+        width: CGFloat
+    ) {
+        sizeCache.setObject(
+            AssistantTextSizeCacheBox(size: size),
+            forKey: sizeKey(kind: kind, renderID: renderID, content: content, width: width)
+        )
+    }
+
+    private static func attributedKey(renderID: UUID, content: String) -> NSString {
+        NSString(string: "\(renderID.uuidString)|\(content)")
+    }
+
+    private static func sizeKey(
+        kind: AssistantRenderedTextKind,
+        renderID: UUID,
+        content: String,
+        width: CGFloat
+    ) -> NSString {
+        let roundedWidth = Int(width.rounded(.toNearestOrAwayFromZero))
+        return NSString(string: "\(kind.rawValue)|\(roundedWidth)|\(renderID.uuidString)|\(content)")
+    }
+}
 #endif
+
+private final class AssistantTextBlockCacheBox {
+    let blocks: [AssistantTextBlock]
+
+    init(blocks: [AssistantTextBlock]) {
+        self.blocks = blocks
+    }
+}
+
+private enum AssistantTextBlockCache {
+    private static let cache: NSCache<NSString, AssistantTextBlockCacheBox> = {
+        let cache = NSCache<NSString, AssistantTextBlockCacheBox>()
+        cache.countLimit = 700
+        cache.totalCostLimit = 2_000_000
+        return cache
+    }()
+
+    static func blocks(for content: String) -> [AssistantTextBlock] {
+        let key = NSString(string: content)
+        if let cached = cache.object(forKey: key) {
+            return cached.blocks
+        }
+
+        let parsed = AssistantTextBlock.parse(content)
+        cache.setObject(
+            AssistantTextBlockCacheBox(blocks: parsed),
+            forKey: key,
+            cost: max(1, content.utf8.count)
+        )
+        return parsed
+    }
+}
 
 private struct AssistantTextBlock: Identifiable {
     enum Kind {
@@ -387,11 +873,18 @@ private struct AssistantTextBlock: Identifiable {
     var kind: Kind
 
     static func parse(_ source: String) -> [AssistantTextBlock] {
-        let lines = source
+        parseLines(normalizedLines(from: source))
+    }
+
+    /// 规范化换行后按行切分。增量解析器复用此入口, 保证行切分口径与全量解析完全一致。
+    static func normalizedLines(from source: String) -> [String] {
+        source
             .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
             .components(separatedBy: "\n")
+    }
 
+    static func parseLines(_ lines: [String]) -> [AssistantTextBlock] {
         var blocks: [AssistantTextBlock] = []
         var paragraph: [String] = []
         var codeLines: [String] = []
@@ -549,6 +1042,207 @@ private struct AssistantTextBlock: Identifiable {
     }
 }
 
+// MARK: - 流式增量解析 (block freezing)
+//
+// 流式时每帧拿到的是"到目前为止的全文", 整段重解析是 O(n²): 每帧解析当前全长,
+// 沿整条流累加 ≈ N², 所以输出越长越卡。但前面已写完的块不会再变, 只有"正在写的最后
+// 一个块"每帧在动。这里缓存已定稿前缀的块, 每帧只解析尾部那一个块, 把流式解析摊到 O(n)。
+//
+// 单槽设计: 同一时刻只有一条 AI 消息在流式, 其 content 单调增长 → 前缀稳定命中;
+// 历史消息内容不变, 走各视图层自己的 content 守卫/缓存, 不会进到这里。前缀一旦对不上
+// (换消息 / 重试 / 编辑) 就整体重建, 退化为全量解析, 正确性不受影响。
+
+extension AssistantTextBlock {
+    /// 解析 lines, 但**忽略最后一行**(它正在打字, 语义未定)且**不定稿最后一个块**。
+    /// 返回 (已定稿的块, 这些块消费的行数)。调用方对剩余行做尾部全量解析以渲染正在写的块。
+    ///
+    /// 定稿安全性: 最后一行可能是空行 / 缩进续行 / 新块起始, 缩进续行还会反向把内容接到
+    /// 前面的 list 块上, 所以只对已固定的行做决策; 最后一个块(及末尾未闭合的 list)永远留尾部。
+    static func parseStablePrefix(_ lines: [String]) -> (blocks: [AssistantTextBlock], lineCount: Int) {
+        let lines = lines.isEmpty ? lines : Array(lines.dropLast())
+        var blocks: [AssistantTextBlock] = []
+        var startLines: [Int] = []
+        var paragraph: [String] = []
+        var paragraphStart = -1
+        var codeLines: [String] = []
+        var codeStart = -1
+        var isInCodeBlock = false
+
+        func flushParagraph() {
+            let text = clean(paragraph.joined(separator: " "))
+            let start = paragraphStart
+            paragraph.removeAll()
+            paragraphStart = -1
+            guard !text.isEmpty else { return }
+            let isLead = text.count <= 16 && text.hasSuffix("：")
+            blocks.append(.init(id: blocks.count, kind: .paragraph(text, isLead: isLead)))
+            startLines.append(start)
+        }
+        func flushCodeBlock() {
+            let text = codeLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+            let start = codeStart
+            codeLines.removeAll()
+            codeStart = -1
+            guard !text.isEmpty else { return }
+            blocks.append(.init(id: blocks.count, kind: .codeBlock(text)))
+            startLines.append(start)
+        }
+        func appendToLastList(_ raw: String) -> Bool {
+            let text = clean(raw)
+            guard !text.isEmpty, let lastIndex = blocks.indices.last else { return false }
+            switch blocks[lastIndex].kind {
+            case .numbered(let number, let existing):
+                blocks[lastIndex].kind = .numbered(number, clean(existing + " " + text))
+                return true
+            case .bullet(let existing):
+                blocks[lastIndex].kind = .bullet(clean(existing + " " + text))
+                return true
+            case .heading, .paragraph, .codeBlock:
+                return false
+            }
+        }
+
+        for (index, rawLine) in lines.enumerated() {
+            let trimmedLine = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmedLine.hasPrefix("```") {
+                if isInCodeBlock {
+                    flushCodeBlock()
+                    isInCodeBlock = false
+                } else {
+                    flushParagraph()
+                    isInCodeBlock = true
+                    codeStart = index
+                }
+                continue
+            }
+            if isInCodeBlock {
+                codeLines.append(rawLine)
+                continue
+            }
+            if trimmedLine.isEmpty {
+                flushParagraph()
+                continue
+            }
+            if rawLine.first?.isWhitespace == true, appendToLastList(rawLine) {
+                continue
+            }
+            let line = trimmedLine
+            if isStandaloneMarkdownMarker(line) {
+                flushParagraph()
+                continue
+            }
+            if let heading = headingItem(from: line) {
+                flushParagraph()
+                blocks.append(.init(id: blocks.count, kind: .heading(clean(heading.text), level: heading.level)))
+                startLines.append(index)
+                continue
+            }
+            if let item = numberedItem(from: line) {
+                flushParagraph()
+                blocks.append(.init(id: blocks.count, kind: .numbered(item.number, clean(item.text))))
+                startLines.append(index)
+                continue
+            }
+            if let item = bulletItem(from: line) {
+                flushParagraph()
+                blocks.append(.init(id: blocks.count, kind: .bullet(clean(item))))
+                startLines.append(index)
+                continue
+            }
+            if paragraph.isEmpty { paragraphStart = index }
+            paragraph.append(line)
+        }
+        // 末尾不 flush: paragraph / code buffer 是正在写的最后一个块, 留给尾部。
+
+        let hasPendingParagraph = !paragraph.isEmpty
+        let hasPending = hasPendingParagraph || isInCodeBlock
+        let lastIsList: Bool = {
+            guard let last = blocks.last else { return false }
+            if case .bullet = last.kind { return true }
+            if case .numbered = last.kind { return true }
+            return false
+        }()
+
+        let stableCount: Int
+        let lineCount: Int
+        if !hasPending {
+            // 末尾已 flush 的块就是正在写的那个 → 不定稿。
+            stableCount = blocks.isEmpty ? 0 : blocks.count - 1
+            lineCount = blocks.isEmpty ? 0 : startLines[blocks.count - 1]
+        } else if lastIsList {
+            // 末尾 list 可能被后续缩进续行扩展 → 不定稿。
+            stableCount = blocks.isEmpty ? 0 : blocks.count - 1
+            lineCount = blocks.isEmpty ? 0 : startLines[blocks.count - 1]
+        } else {
+            // 末尾非 list 块已被 pending 封口; pending 是正在写的新块。
+            stableCount = blocks.count
+            lineCount = hasPendingParagraph ? paragraphStart : codeStart
+        }
+
+        let stable = stableCount > 0 ? Array(blocks[0..<stableCount]) : []
+        return (stable, max(0, lineCount))
+    }
+
+    /// 流式增量解析入口。语义等价于 `parse(source)`, 但复用已定稿前缀, 每帧只解析尾部。
+    static func parseIncremental(_ source: String) -> [AssistantTextBlock] {
+        StreamingMarkdownParseCache.shared.blocks(for: source)
+    }
+}
+
+private final class StreamingMarkdownParseCache: @unchecked Sendable {
+    static let shared = StreamingMarkdownParseCache()
+
+    private let lock = NSLock()
+    private var stableBlocks: [AssistantTextBlock] = []
+    private var stableLineCount = 0
+    private var firstLine = ""
+    private var boundaryLine = ""
+
+    func blocks(for source: String) -> [AssistantTextBlock] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let lines = AssistantTextBlock.normalizedLines(from: source)
+
+        // 前缀对不上(换消息 / 重试 / 编辑)就丢弃缓存, 退化为全量, 正确性不受影响。
+        if !isPrefixConsistent(with: lines) {
+            stableBlocks = []
+            stableLineCount = 0
+        }
+
+        // 从已定稿边界继续, 把本帧新固定下来的块并入缓存。每行至多被定稿解析一次。
+        if stableLineCount <= lines.count {
+            let suffix = Array(lines[stableLineCount...])
+            let (newlyStable, advance) = AssistantTextBlock.parseStablePrefix(suffix)
+            for block in newlyStable {
+                stableBlocks.append(AssistantTextBlock(id: stableBlocks.count, kind: block.kind))
+            }
+            stableLineCount += advance
+        }
+
+        firstLine = lines.first ?? ""
+        boundaryLine = stableLineCount > 0 ? lines[stableLineCount - 1] : ""
+
+        // 尾部(正在写的那个块)每帧重解析 —— 短、有界。
+        guard stableLineCount < lines.count else { return stableBlocks }
+        let tail = AssistantTextBlock.parseLines(Array(lines[stableLineCount...]))
+        var result = stableBlocks
+        for block in tail {
+            result.append(AssistantTextBlock(id: result.count, kind: block.kind))
+        }
+        return result
+    }
+
+    /// O(1) 前缀校验: 首行与定稿边界行不变即认为是同一条消息的增量。
+    /// 如前缀不一致就重建缓存, 让重试 / 编辑 / 换消息回到全量解析路径。
+    private func isPrefixConsistent(with lines: [String]) -> Bool {
+        guard stableLineCount > 0 else { return true }
+        guard lines.count >= stableLineCount else { return false }
+        guard (lines.first ?? "") == firstLine else { return false }
+        return lines[stableLineCount - 1] == boundaryLine
+    }
+}
+
 // MARK: - Thinking Card
 
 struct ThinkingCardView: View {
@@ -572,8 +1266,10 @@ struct ThinkingCardView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
-                Image(systemName: "brain.head.profile")
-                    .font(.system(size: 13, weight: .semibold))
+                // T 字标 — 跟顶栏 Think chip 的开启态同一套语言 (accentSubtle 圆角方块 + 品牌色 T),
+                // 取代原来高细节的 brain.head.profile, 和整体图标风格统一。
+                Text("T")
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
                     .foregroundStyle(Theme.accent)
                     .frame(width: 26, height: 26)
                     .background(Theme.accentSubtle, in: RoundedRectangle(cornerRadius: 7))
@@ -686,11 +1382,17 @@ struct SkillCardView: View {
         if toolNameContains("contacts-delete") {
             return "trash"
         }
+        if toolNameContains("health-report") {
+            return "doc.text.magnifyingglass"
+        }
         if toolNameContains("health-sleep") {
             return "moon"
         }
         if toolNameContains("health-workout") {
             return "figure.run"
+        }
+        if toolNameContains("health-weight") {
+            return "scalemass"
         }
         if toolNameContains("health-active-energy") {
             return "flame"
@@ -733,11 +1435,17 @@ struct SkillCardView: View {
             if toolNameContains("clipboard-read") {
                 return tr("读取了剪贴板", "Read Clipboard")
             }
+            if toolNameContains("health-report") {
+                return tr("生成了健康报告", "Generated Health Report")
+            }
             if toolNameContains("health-sleep") {
                 return tr("读取了睡眠", "Read Sleep")
             }
             if toolNameContains("health-workout") {
                 return tr("读取了运动记录", "Read Workouts")
+            }
+            if toolNameContains("health-weight") {
+                return tr("读取了体重", "Read Weight")
             }
             if toolNameContains("health-distance") {
                 return tr("读取了距离", "Read Distance")
@@ -787,11 +1495,17 @@ struct SkillCardView: View {
         if toolNameContains("clipboard-read") {
             return tr("正在读取剪贴板…", "Reading Clipboard…")
         }
+        if toolNameContains("health-report") {
+            return tr("正在生成健康报告…", "Generating Health Report…")
+        }
         if toolNameContains("health-sleep") {
             return tr("正在读取睡眠…", "Reading Sleep…")
         }
         if toolNameContains("health-workout") {
             return tr("正在读取运动记录…", "Reading Workouts…")
+        }
+        if toolNameContains("health-weight") {
+            return tr("正在读取体重…", "Reading Weight…")
         }
         if toolNameContains("health-distance") {
             return tr("正在读取距离…", "Reading Distance…")

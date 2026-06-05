@@ -64,6 +64,10 @@ class LiveAudioIO {
 
     /// 中断恢复观察者
     private var interruptionObserver: Any?
+    private var routeChangeObserver: Any?
+
+    private var playbackStartedAt: CFAbsoluteTime?
+    private var playbackAudioDuration: TimeInterval?
 
     // MARK: - Lifecycle
 
@@ -81,7 +85,13 @@ class LiveAudioIO {
         ) { [weak self] notification in
             self?.handleInterruption(notification)
         }
-
+        routeChangeObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification,
+            object: session,
+            queue: nil
+        ) { [weak self] notification in
+            self?.handleRouteChange(notification)
+        }
         // ── Output path ──
         // Connect ONCE with a fixed format. Never reconnect during playback —
         // reconnecting disrupts AEC's reference signal tracking.
@@ -216,6 +226,10 @@ class LiveAudioIO {
             NotificationCenter.default.removeObserver(observer)
             interruptionObserver = nil
         }
+        if let observer = routeChangeObserver {
+            NotificationCenter.default.removeObserver(observer)
+            routeChangeObserver = nil
+        }
         audioInputHandler = nil
         audioInputBufferHandler = nil
         visualisationInputHandler = nil
@@ -266,6 +280,9 @@ class LiveAudioIO {
         }
     }
 
+    private func handleRouteChange(_ notification: Notification) {
+    }
+
     // MARK: - Output (for TTS)
 
     func playWAV(_ wavData: Data) async {
@@ -286,8 +303,9 @@ class LiveAudioIO {
 
         // Do NOT reconnect playerNode here — connection is fixed in start().
         // Reconnecting disrupts AEC reference signal tracking.
+        finishPlayback()
         playerNode.stop()
-        isPlaying = true
+        preparePlayback(buffer: buffer)
 
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             continuationLock.withLock {
@@ -295,12 +313,13 @@ class LiveAudioIO {
             }
             playerNode.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in
                 guard let self else { return }
-                self.isPlaying = false
+                self.finishPlayback()
                 print("[AudioIO] ✅ Playback done")
                 self.onPlaybackStopped?()
                 self.resumeContinuation()
             }
             playerNode.play()
+            recordPlaybackStarted()
             // 回调在 play() 之后触发 — 此时音频已开始播放
             onPlaybackStarted?()
         }
@@ -308,9 +327,28 @@ class LiveAudioIO {
 
     func stopPlayback() {
         playerNode.stop()
-        isPlaying = false
+        finishPlayback()
         onPlaybackStopped?()
         resumeContinuation()
+    }
+
+    private func preparePlayback(buffer: AVAudioPCMBuffer) {
+        let sampleRate = buffer.format.sampleRate
+        let duration = sampleRate > 0 ? Double(buffer.frameLength) / sampleRate : nil
+        playbackStartedAt = nil
+        playbackAudioDuration = duration
+        isPlaying = true
+    }
+
+    private func recordPlaybackStarted() {
+        playbackStartedAt = CFAbsoluteTimeGetCurrent()
+    }
+
+    private func finishPlayback() {
+        guard isPlaying || playbackStartedAt != nil || playbackAudioDuration != nil else { return }
+        isPlaying = false
+        playbackStartedAt = nil
+        playbackAudioDuration = nil
     }
 
     // MARK: - Continuation

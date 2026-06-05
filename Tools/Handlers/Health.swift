@@ -19,6 +19,42 @@ enum HealthTools {
 
     /// HealthKit store 单例 — Apple 官方建议整个 app 只创建一个
     private static let store = HKHealthStore()
+    static let readAuthorizationRequestedDefaultsKey = "PhoneClawHealthReadAuthorizationRequested"
+
+    static var hasRequestedReadAuthorization: Bool {
+        UserDefaults.standard.bool(forKey: readAuthorizationRequestedDefaultsKey)
+    }
+
+    private static let healthDataContract = PhoneGroundToolContract(
+        evidenceTypes: [.health],
+        answerContract: .groundedDataSummary,
+        freshness: .userScopedData,
+        supportsRecovery: false
+    )
+
+    private static var defaultReadTypes: Set<HKObjectType> {
+        var types = Set<HKObjectType>()
+
+        [
+            HKQuantityTypeIdentifier.stepCount,
+            .distanceWalkingRunning,
+            .activeEnergyBurned,
+            .restingHeartRate,
+            .heartRate,
+            .heartRateVariabilitySDNN,
+            .bodyMass,
+        ].compactMap {
+            HKQuantityType.quantityType(forIdentifier: $0)
+        }.forEach { types.insert($0) }
+
+        if let sleepType = HKObjectType.categoryType(forIdentifier: .sleepAnalysis) {
+            types.insert(sleepType)
+        }
+        types.insert(HKWorkoutType.workoutType())
+
+        return types
+    }
+
     private enum HealthQueryOutcome<Value> {
         case success(Value)
         case noData
@@ -33,9 +69,14 @@ enum HealthTools {
         registerDistanceToday(into: registry)
         registerActiveEnergyToday(into: registry)
         registerHeartRateResting(into: registry)
+        registerHeartRateRecent(into: registry)
+        registerHeartRateVariability(into: registry)
+        registerWeightLatest(into: registry)
         registerSleepLastNight(into: registry)
         registerSleepWeek(into: registry)
         registerWorkoutRecent(into: registry)
+        registerReportRange(into: registry)
+        registerReportWeek(into: registry)
     }
 
     // ── health-steps-today ──
@@ -44,6 +85,7 @@ enum HealthTools {
             name: "health-steps-today",
             description: tr("读取用户今日步数 (从本地 0 点到当前时间的累计步数)。仅读取,不修改。", "Read the user's step count for today (cumulative steps from local midnight to now). Read-only, no modifications."),
             parameters: tr("无", "None"),
+            phoneGroundContract: healthDataContract,
             isParameterless: true,
             skipFollowUp: true,
             execute: { args in
@@ -61,6 +103,7 @@ enum HealthTools {
             name: "health-steps-yesterday",
             description: tr("读取用户昨日步数 (昨天本地 0 点到 23:59:59 的累计步数)。仅读取,不修改。", "Read the user's step count for yesterday (cumulative steps from yesterday local midnight to 23:59:59). Read-only, no modifications."),
             parameters: tr("无", "None"),
+            phoneGroundContract: healthDataContract,
             isParameterless: true,
             skipFollowUp: true,
             execute: { args in
@@ -78,6 +121,7 @@ enum HealthTools {
             name: "health-sleep-last-night",
             description: tr("读取用户昨晚的睡眠数据 (最近 24 小时内的睡眠记录)。返回总时长和分阶段明细。", "Read the user's sleep data for last night (sleep records within the past 24 hours). Returns total duration and per-stage breakdown."),
             parameters: tr("无", "None"),
+            phoneGroundContract: healthDataContract,
             isParameterless: true,
             skipFollowUp: true,
             execute: { args in
@@ -95,6 +139,7 @@ enum HealthTools {
             name: "health-sleep-week",
             description: tr("读取用户最近 7 天的睡眠汇总 (每晚总时长 + 7 天平均)。", "Read a sleep summary for the user's past 7 days (total duration per night + 7-day average)."),
             parameters: tr("无", "None"),
+            phoneGroundContract: healthDataContract,
             isParameterless: true,
             skipFollowUp: true,
             execute: { args in
@@ -112,6 +157,7 @@ enum HealthTools {
             name: "health-workout-recent",
             description: tr("读取用户最近 7 天的运动记录 (类型、时长、消耗)。", "Read the user's workout records for the past 7 days (type, duration, calories burned)."),
             parameters: tr("无", "None"),
+            phoneGroundContract: healthDataContract,
             isParameterless: true,
             skipFollowUp: true,
             execute: { args in
@@ -123,12 +169,59 @@ enum HealthTools {
         ))
     }
 
+    // ── health-report-week ──
+    private static func registerReportWeek(into registry: ToolRegistry) {
+        registry.register(RegisteredTool(
+            name: "health-report-week",
+            description: tr(
+                "读取用户最近 7 天的综合健康数据并生成本地周报：步数、距离、活动能量、睡眠、运动、心率、HRV、体重。仅读取。",
+                "Read the user's past 7 days of Health data and generate a local weekly report: steps, distance, active energy, sleep, workouts, heart rate, HRV, and weight. Read-only."
+            ),
+            parameters: tr("无", "None"),
+            phoneGroundContract: healthDataContract,
+            isParameterless: true,
+            skipFollowUp: true,
+            execute: { args in
+                try await healthReportWeekCanonical(args).detail
+            },
+            executeCanonical: { args in
+                try await healthReportWeekCanonical(args)
+            }
+        ))
+    }
+
+    // ── health-report-range ──
+    private static func registerReportRange(into registry: ToolRegistry) {
+        registry.register(RegisteredTool(
+            name: "health-report-range",
+            description: tr(
+                "读取用户指定天数内的综合健康数据并生成本地报告：步数、距离、活动能量、睡眠、运动、心率、HRV、体重。仅读取。",
+                "Read the user's Health data for a requested day range and generate a local report: steps, distance, active energy, sleep, workouts, heart rate, HRV, and weight. Read-only."
+            ),
+            parameters: tr(
+                "{\"days\":{\"type\":\"integer\",\"description\":\"查询最近几天的健康数据，1 到 90 天。例如一周=7，两周=14，一个月=30。\",\"required\":true}}",
+                "{\"days\":{\"type\":\"integer\",\"description\":\"Number of recent days to query, 1 to 90. For example: one week=7, two weeks=14, one month=30.\",\"required\":true}}"
+            ),
+            phoneGroundContract: healthDataContract,
+            requiredParameters: ["days"],
+            isParameterless: false,
+            skipFollowUp: true,
+            execute: { args in
+                try await healthReportRangeCanonical(args).detail
+            },
+            executeCanonical: { args in
+                try await healthReportRangeCanonical(args)
+            }
+        ))
+    }
+
     // ── health-distance-today ──
     private static func registerDistanceToday(into registry: ToolRegistry) {
         registry.register(RegisteredTool(
             name: "health-distance-today",
             description: tr("读取用户今日步行+跑步距离 (从本地 0 点到当前时间, 单位 km)。仅读取。", "Read the user's walking+running distance for today (from local midnight to now, in km). Read-only."),
             parameters: tr("无", "None"),
+            phoneGroundContract: healthDataContract,
             isParameterless: true,
             skipFollowUp: true,
             execute: { args in
@@ -146,6 +239,7 @@ enum HealthTools {
             name: "health-active-energy-today",
             description: tr("读取用户今日活动消耗的卡路里 (从本地 0 点到当前时间)。仅读取。", "Read the user's active calories burned today (from local midnight to now). Read-only."),
             parameters: tr("无", "None"),
+            phoneGroundContract: healthDataContract,
             isParameterless: true,
             skipFollowUp: true,
             execute: { args in
@@ -163,6 +257,7 @@ enum HealthTools {
             name: "health-heart-rate-resting",
             description: tr("读取用户最近的静息心率 (最近 24 小时平均, 单位 BPM)。仅读取。", "Read the user's recent resting heart rate (average over the past 24 hours, in BPM). Read-only."),
             parameters: tr("无", "None"),
+            phoneGroundContract: healthDataContract,
             isParameterless: true,
             skipFollowUp: true,
             execute: { args in
@@ -174,12 +269,67 @@ enum HealthTools {
         ))
     }
 
+    // ── health-heart-rate-recent ──
+    private static func registerHeartRateRecent(into registry: ToolRegistry) {
+        registry.register(RegisteredTool(
+            name: "health-heart-rate-recent",
+            description: tr("读取用户最近一条心率记录 (单位 BPM)。仅读取。", "Read the user's most recent heart rate sample (in BPM). Read-only."),
+            parameters: tr("无", "None"),
+            phoneGroundContract: healthDataContract,
+            isParameterless: true,
+            skipFollowUp: true,
+            execute: { args in
+                try await heartRateRecentCanonical(args).detail
+            },
+            executeCanonical: { args in
+                try await heartRateRecentCanonical(args)
+            }
+        ))
+    }
+
+    // ── health-heart-rate-variability ──
+    private static func registerHeartRateVariability(into registry: ToolRegistry) {
+        registry.register(RegisteredTool(
+            name: "health-heart-rate-variability",
+            description: tr("读取用户最近一条心率变异性 HRV SDNN 记录 (单位 ms)。仅读取。", "Read the user's most recent heart rate variability (HRV SDNN) sample (in ms). Read-only."),
+            parameters: tr("无", "None"),
+            phoneGroundContract: healthDataContract,
+            isParameterless: true,
+            skipFollowUp: true,
+            execute: { args in
+                try await heartRateVariabilityCanonical(args).detail
+            },
+            executeCanonical: { args in
+                try await heartRateVariabilityCanonical(args)
+            }
+        ))
+    }
+
+    // ── health-weight-latest ──
+    private static func registerWeightLatest(into registry: ToolRegistry) {
+        registry.register(RegisteredTool(
+            name: "health-weight-latest",
+            description: tr("读取用户最近一条体重记录 (单位 kg)。仅读取。", "Read the user's most recent body weight sample (in kg). Read-only."),
+            parameters: tr("无", "None"),
+            phoneGroundContract: healthDataContract,
+            isParameterless: true,
+            skipFollowUp: true,
+            execute: { args in
+                try await weightLatestCanonical(args).detail
+            },
+            executeCanonical: { args in
+                try await weightLatestCanonical(args)
+            }
+        ))
+    }
+
     // ── health-steps-range ──
     private static func registerStepsRange(into registry: ToolRegistry) {
         registry.register(RegisteredTool(
             name: "health-steps-range",
             description: tr("读取最近 N 天的每日步数。返回每日列表 + 总数 + 日均。", "Read daily step counts for the past N days. Returns a daily list + total + daily average."),
             parameters: tr("{\"days\":{\"type\":\"integer\",\"description\":\"查询天数 (1-30)\",\"required\":true}}", "{\"days\":{\"type\":\"integer\",\"description\":\"Number of days to query (1-30)\",\"required\":true}}"),
+            phoneGroundContract: healthDataContract,
             requiredParameters: ["days"],
             isParameterless: false,
             skipFollowUp: true,
@@ -250,7 +400,13 @@ enum HealthTools {
         let start = Calendar.current.date(byAdding: .hour, value: -24, to: now)!
         switch await fetchSleepAnalysisResult(start: start, end: now) {
         case .success(let stages):
-            let totalMin = stages.reduce(0) { $0 + $1.minutes }
+            let totalMin = totalAsleepMinutes(in: stages)
+            guard totalMin > 0 else {
+                return healthEmpty(
+                    summary: tr("最近 24 小时没有可用的睡眠时长记录", "No usable sleep-duration record in the past 24 hours"),
+                    extras: ["total_minutes": 0, "stages": stages.map { ["stage": $0.stage, "minutes": $0.minutes] as [String: Any] }]
+                )
+            }
             let hours = totalMin / 60
             let mins = totalMin % 60
             let stageList = stages.map { ["stage": $0.stage, "minutes": $0.minutes] as [String: Any] }
@@ -279,7 +435,13 @@ enum HealthTools {
         let weekAgo = cal.date(byAdding: .day, value: -7, to: cal.startOfDay(for: now))!
         switch await fetchSleepAnalysisResult(start: weekAgo, end: now) {
         case .success(let stages):
-            let totalMin = stages.reduce(0) { $0 + $1.minutes }
+            let totalMin = totalAsleepMinutes(in: stages)
+            guard totalMin > 0 else {
+                return healthEmpty(
+                    summary: tr("最近 7 天没有可用的睡眠时长记录", "No usable sleep-duration records in the past 7 days"),
+                    extras: ["nights": [] as [Any], "avg_minutes": 0]
+                )
+            }
             let avgMin = totalMin / 7
             let avgH = avgMin / 60
             let avgM = avgMin % 60
@@ -381,12 +543,15 @@ enum HealthTools {
             )
         case .noData:
             return healthEmpty(
-                summary: tr("今天还没有可用的活动能量数据。", "No active energy data available yet today."),
+                summary: tr(
+                    "今天还没有活动能量记录。健康里可能没有生成这项数据；如果只想看活动量，可以问今天走了多少步。",
+                    "No active energy record is available today. Health may not have generated this metric; ask for today's steps if you want activity level."
+                ),
                 extras: ["calories": 0, "unit": "kcal", "date": isoDateString(now)]
             )
         case .failure(let error):
             return healthFailure(
-                summary: tr("无法读取能量消耗数据。请确认健康权限已开启。", "Unable to read active energy data. Please make sure Health permission is enabled."),
+                summary: tr("无法读取活动能量数据：\(error)", "Unable to read active energy data: \(error)"),
                 detail: error,
                 errorCode: "HEALTH_ACTIVE_ENERGY_READ_FAILED"
             )
@@ -417,6 +582,310 @@ enum HealthTools {
                 errorCode: "HEALTH_HEART_RATE_READ_FAILED"
             )
         }
+    }
+
+    private static func heartRateRecentCanonical(_ args: [String: Any]) async throws -> CanonicalToolResult {
+        switch await fetchMostRecentQuantityResult(
+            identifier: .heartRate,
+            unit: HKUnit.count().unitDivided(by: .minute()),
+            daysBack: 7
+        ) {
+        case .success(let sample):
+            let rounded = Int(sample.value.rounded())
+            let summary = tr("最近一次心率是 \(rounded) BPM。", "Your most recent heart rate is \(rounded) BPM.")
+            return healthSuccess(
+                summary: summary,
+                extras: ["bpm": rounded, "unit": "BPM", "date": isoDateString(sample.date)]
+            )
+        case .noData:
+            return healthEmpty(
+                summary: tr("最近 7 天还没有可用的心率数据。", "No heart rate data available in the past 7 days."),
+                extras: ["bpm": 0, "unit": "BPM"]
+            )
+        case .failure(let error):
+            return healthFailure(
+                summary: tr("无法读取心率数据。请确认健康权限已开启。", "Unable to read heart rate data. Please make sure Health permission is enabled."),
+                detail: error,
+                errorCode: "HEALTH_HEART_RATE_READ_FAILED"
+            )
+        }
+    }
+
+    private static func heartRateVariabilityCanonical(_ args: [String: Any]) async throws -> CanonicalToolResult {
+        switch await fetchMostRecentQuantityResult(
+            identifier: .heartRateVariabilitySDNN,
+            unit: HKUnit.secondUnit(with: .milli),
+            daysBack: 30
+        ) {
+        case .success(let sample):
+            let rounded = Int(sample.value.rounded())
+            let summary = tr("最近一次心率变异性是 \(rounded) ms。", "Your most recent HRV is \(rounded) ms.")
+            return healthSuccess(
+                summary: summary,
+                extras: ["hrv_ms": rounded, "unit": "ms", "date": isoDateString(sample.date)]
+            )
+        case .noData:
+            return healthEmpty(
+                summary: tr("最近 30 天还没有可用的心率变异性数据。", "No heart rate variability data available in the past 30 days."),
+                extras: ["hrv_ms": 0, "unit": "ms"]
+            )
+        case .failure(let error):
+            return healthFailure(
+                summary: tr("无法读取心率变异性数据。请确认健康权限已开启。", "Unable to read heart rate variability data. Please make sure Health permission is enabled."),
+                detail: error,
+                errorCode: "HEALTH_HRV_READ_FAILED"
+            )
+        }
+    }
+
+    private static func weightLatestCanonical(_ args: [String: Any]) async throws -> CanonicalToolResult {
+        switch await fetchMostRecentQuantityResult(
+            identifier: .bodyMass,
+            unit: HKUnit.gramUnit(with: .kilo),
+            daysBack: 365
+        ) {
+        case .success(let sample):
+            let kg = (sample.value * 10).rounded() / 10
+            let summary = tr("最近一次体重记录是 \(kg) kg。", "Your most recent weight record is \(kg) kg.")
+            return healthSuccess(
+                summary: summary,
+                extras: ["weight_kg": kg, "unit": "kg", "date": isoDateString(sample.date)]
+            )
+        case .noData:
+            return healthEmpty(
+                summary: tr("最近一年还没有可用的体重记录。", "No body weight data available in the past year."),
+                extras: ["weight_kg": 0, "unit": "kg"]
+            )
+        case .failure(let error):
+            return healthFailure(
+                summary: tr("无法读取体重数据。请确认健康权限已开启。", "Unable to read body weight data. Please make sure Health permission is enabled."),
+                detail: error,
+                errorCode: "HEALTH_WEIGHT_READ_FAILED"
+            )
+        }
+    }
+
+    private static func healthReportWeekCanonical(_ args: [String: Any]) async throws -> CanonicalToolResult {
+        try await healthReportRangeCanonical(["days": 7])
+    }
+
+    private static func healthReportRangeCanonical(_ args: [String: Any]) async throws -> CanonicalToolResult {
+        let rawDays = (args["days"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let requestedDays = (args["days"] as? Int) ?? rawDays.flatMap(Int.init) ?? 7
+        let days = max(1, min(90, requestedDays))
+
+        if let err = await requestAllReadAuthorization() {
+            return healthFailure(
+                summary: tr("无法生成健康报告。请确认健康权限已开启。", "Unable to generate the Health report. Please make sure Health permissions are enabled."),
+                detail: err,
+                errorCode: "HEALTH_REPORT_READ_FAILED"
+            )
+        }
+
+        let cal = Calendar.current
+        let now = Date()
+        let start = cal.date(byAdding: .day, value: -(days - 1), to: cal.startOfDay(for: now))!
+
+        let steps = await fetchDailyQuantitySumsResult(identifier: .stepCount, unit: .count(), days: days)
+        let distance = await fetchDailyQuantitySumsResult(identifier: .distanceWalkingRunning, unit: .meter(), days: days)
+        let activeEnergy = await fetchDailyQuantitySumsResult(identifier: .activeEnergyBurned, unit: .kilocalorie(), days: days)
+        let sleep = await fetchSleepAnalysisResult(start: start, end: now)
+        let workouts = await fetchWorkoutsResult(start: start, end: now)
+        let restingHeartRate = await fetchLatestQuantityResult(
+            identifier: .restingHeartRate,
+            unit: HKUnit.count().unitDivided(by: .minute()),
+            hoursBack: 24 * days
+        )
+        let recentHeartRate = await fetchMostRecentQuantityResult(
+            identifier: .heartRate,
+            unit: HKUnit.count().unitDivided(by: .minute()),
+            daysBack: days
+        )
+        let hrv = await fetchMostRecentQuantityResult(
+            identifier: .heartRateVariabilitySDNN,
+            unit: HKUnit.secondUnit(with: .milli),
+            daysBack: days
+        )
+        let weight = await fetchMostRecentQuantityResult(
+            identifier: .bodyMass,
+            unit: HKUnit.gramUnit(with: .kilo),
+            daysBack: days
+        )
+
+        var lines: [String] = []
+        var unavailable: [String] = []
+        var extras: [String: Any] = ["days": days, "date": isoDateString(now)]
+        var stepAverage: Int?
+        var sleepAverage: Int?
+        var workoutCount: Int?
+
+        switch steps {
+        case .success(let entries):
+            let total = entries.reduce(0) { $0 + Int($1.value.rounded()) }
+            let avg = entries.isEmpty ? 0 : total / entries.count
+            stepAverage = avg
+            extras["steps_total"] = total
+            extras["steps_daily_avg"] = avg
+            extras["steps_daily"] = entries.map { ["date": $0.date, "steps": Int($0.value.rounded())] as [String: Any] }
+            if let best = entries.max(by: { $0.value < $1.value }) {
+                extras["steps_best_day"] = best.date
+                extras["steps_best_day_count"] = Int(best.value.rounded())
+            }
+            lines.append(tr("活动：共 \(total) 步，日均 \(avg) 步。", "Activity: \(total) steps total, \(avg) per day."))
+        case .noData:
+            unavailable.append(tr("步数", "steps"))
+        case .failure(let error):
+            unavailable.append(tr("步数读取失败：\(error)", "steps failed: \(error)"))
+        }
+
+        switch distance {
+        case .success(let entries):
+            let totalMeters = entries.reduce(0.0) { $0 + $1.value }
+            let km = totalMeters / 1000
+            extras["distance_km_total"] = roundedOneDecimal(km)
+            if km > 0 {
+                lines.append(tr("距离：步行+跑步约 \(formatOneDecimal(km)) 公里。", "Distance: about \(formatOneDecimal(km)) km walking+running."))
+            } else {
+                unavailable.append(tr("步行距离", "walking distance"))
+            }
+        case .noData:
+            unavailable.append(tr("步行距离", "walking distance"))
+        case .failure(let error):
+            unavailable.append(tr("距离读取失败：\(error)", "distance failed: \(error)"))
+        }
+
+        switch activeEnergy {
+        case .success(let entries):
+            let kcal = Int(entries.reduce(0.0) { $0 + $1.value }.rounded())
+            extras["active_energy_kcal_total"] = kcal
+            if kcal > 0 {
+                lines.append(tr("活动能量：约 \(kcal) 千卡。", "Active energy: about \(kcal) kcal."))
+            } else {
+                unavailable.append(tr("活动能量", "active energy"))
+            }
+        case .noData:
+            unavailable.append(tr("活动能量", "active energy"))
+        case .failure(let error):
+            unavailable.append(tr("活动能量读取失败：\(error)", "active energy failed: \(error)"))
+        }
+
+        switch sleep {
+        case .success(let stages):
+            let totalMin = totalAsleepMinutes(in: stages)
+            if totalMin > 0 {
+                let avg = totalMin / days
+                sleepAverage = avg
+                extras["sleep_total_minutes"] = totalMin
+                extras["sleep_avg_minutes"] = avg
+                lines.append(tr("睡眠：日均 \(minutesText(avg))。", "Sleep: \(minutesText(avg)) per day on average."))
+            } else {
+                unavailable.append(tr("睡眠", "sleep"))
+            }
+        case .noData:
+            unavailable.append(tr("睡眠", "sleep"))
+        case .failure(let error):
+            unavailable.append(tr("睡眠读取失败：\(error)", "sleep failed: \(error)"))
+        }
+
+        switch workouts {
+        case .success(let records):
+            let totalMin = records.reduce(0) { $0 + $1.durationMin }
+            workoutCount = records.count
+            extras["workouts_count"] = records.count
+            extras["workouts_total_minutes"] = totalMin
+            extras["workouts"] = records.map {
+                ["type": $0.type, "duration_min": $0.durationMin, "calories": $0.calories, "date": $0.date] as [String: Any]
+            }
+            lines.append(tr("运动：\(records.count) 次，共 \(totalMin) 分钟。", "Workouts: \(records.count) sessions, \(totalMin) min total."))
+        case .noData:
+            workoutCount = 0
+            lines.append(tr("运动：最近 \(days) 天没有运动记录。", "Workouts: no workout records in the past \(days) days."))
+        case .failure(let error):
+            unavailable.append(tr("运动读取失败：\(error)", "workouts failed: \(error)"))
+        }
+
+        var heartParts: [String] = []
+        switch restingHeartRate {
+        case .success(let bpm):
+            let rounded = Int(bpm.rounded())
+            heartParts.append(tr("静息 \(rounded) BPM", "resting \(rounded) BPM"))
+            extras["resting_bpm"] = rounded
+        case .failure(let error):
+            unavailable.append(tr("静息心率读取失败：\(error)", "resting heart rate failed: \(error)"))
+        case .noData:
+            break
+        }
+        switch recentHeartRate {
+        case .success(let sample):
+            let rounded = Int(sample.value.rounded())
+            heartParts.append(tr("最近 \(rounded) BPM", "recent \(rounded) BPM"))
+            extras["recent_bpm"] = rounded
+            extras["recent_bpm_date"] = isoDateString(sample.date)
+        case .failure(let error):
+            unavailable.append(tr("心率读取失败：\(error)", "heart rate failed: \(error)"))
+        case .noData:
+            break
+        }
+        switch hrv {
+        case .success(let sample):
+            let rounded = Int(sample.value.rounded())
+            heartParts.append("HRV \(rounded) ms")
+            extras["hrv_ms"] = rounded
+            extras["hrv_date"] = isoDateString(sample.date)
+        case .failure(let error):
+            unavailable.append(tr("HRV 读取失败：\(error)", "HRV failed: \(error)"))
+        case .noData:
+            break
+        }
+        if !heartParts.isEmpty {
+            lines.append(tr("心率：", "Heart: ") + heartParts.joined(separator: tr("，", ", ")) + "。")
+        } else {
+            unavailable.append(tr("心率/HRV", "heart rate/HRV"))
+        }
+
+        switch weight {
+        case .success(let sample):
+            let kg = roundedOneDecimal(sample.value)
+            extras["weight_kg"] = kg
+            extras["weight_date"] = isoDateString(sample.date)
+            lines.append(tr("体重：最近记录 \(formatOneDecimal(kg)) kg。", "Weight: latest record \(formatOneDecimal(kg)) kg."))
+        case .failure(let error):
+            unavailable.append(tr("体重读取失败：\(error)", "weight failed: \(error)"))
+        case .noData:
+            unavailable.append(tr("体重", "weight"))
+        }
+
+        if lines.isEmpty {
+            return healthEmpty(
+                summary: tr("最近 \(days) 天没有可用的健康数据记录。", "No usable Health records are available for the past \(days) days."),
+                extras: extras
+            )
+        }
+
+        let advice = healthRangeAdvice(stepAverage: stepAverage, sleepAverage: sleepAverage, workoutCount: workoutCount)
+        extras["unavailable"] = unavailable
+        extras["advice"] = advice
+
+        let summary: String
+        if LanguageService.shared.current.isChinese {
+            var reportLines = ["最近 \(days) 天健康报告："]
+            reportLines.append(contentsOf: lines.map { "- \($0)" })
+            if !unavailable.isEmpty {
+                reportLines.append("- 暂无：\(unavailable.joined(separator: "、"))。")
+            }
+            reportLines.append("- 建议：\(advice)")
+            summary = reportLines.joined(separator: "\n")
+        } else {
+            var reportLines = ["Past \(days) days Health report:"]
+            reportLines.append(contentsOf: lines.map { "- \($0)" })
+            if !unavailable.isEmpty {
+                reportLines.append("- Unavailable: \(unavailable.joined(separator: ", ")).")
+            }
+            reportLines.append("- Suggestion: \(advice)")
+            summary = reportLines.joined(separator: "\n")
+        }
+
+        return healthSuccess(summary: summary, extras: extras)
     }
 
     private static func stepsRangeCanonical(_ args: [String: Any]) async throws -> CanonicalToolResult {
@@ -462,11 +931,24 @@ enum HealthTools {
             return tr("设备不支持 HealthKit", "This device does not support HealthKit")
         }
         do {
-            try await store.requestAuthorization(toShare: [], read: types)
+            try await store.requestAuthorization(toShare: [], read: defaultReadTypes.union(types))
+            UserDefaults.standard.set(true, forKey: readAuthorizationRequestedDefaultsKey)
         } catch {
             return tr("健康数据授权失败: \(error.localizedDescription)", "Health data authorization failed: \(error.localizedDescription)")
         }
         return nil
+    }
+
+    static func requestAllReadAuthorization() async -> String? {
+        await requestReadAuth(for: defaultReadTypes)
+    }
+
+    private static func isHealthNoDataError(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        if nsError.code == HKError.Code.errorNoData.rawValue {
+            return true
+        }
+        return error.localizedDescription.localizedCaseInsensitiveContains("No data available")
     }
 
     private static func fetchQuantitySumResult(
@@ -479,7 +961,7 @@ enum HealthTools {
             return .failure(tr("不支持的数据类型：\(identifier.rawValue)", "Unsupported data type: \(identifier.rawValue)"))
         }
         if let err = await requestReadAuth(for: [qType]) {
-            print("[Health] auth request error: \(err)")
+            PCLog.error("health_auth_failed", detail: "type=\(identifier.rawValue) error=\(err)")
             return .failure(err)
         }
         return await withCheckedContinuation { (continuation: CheckedContinuation<HealthQueryOutcome<Double>, Never>) in
@@ -492,6 +974,14 @@ enum HealthTools {
                 options: .cumulativeSum
             ) { _, stats, error in
                 if let error {
+                    if isHealthNoDataError(error) {
+                        continuation.resume(returning: .noData)
+                        return
+                    }
+                    PCLog.error(
+                        "health_quantity_sum_failed",
+                        detail: "type=\(identifier.rawValue) error=\(error.localizedDescription)"
+                    )
                     continuation.resume(
                         returning: .failure(tr("Health 查询失败：\(error.localizedDescription)", "Health query failed: \(error.localizedDescription)"))
                     )
@@ -517,13 +1007,14 @@ enum HealthTools {
             return .failure(tr("不支持的数据类型：\(identifier.rawValue)", "Unsupported data type: \(identifier.rawValue)"))
         }
         if let err = await requestReadAuth(for: [qType]) {
-            print("[Health] auth request error: \(err)")
+            PCLog.error("health_auth_failed", detail: "type=\(identifier.rawValue) error=\(err)")
             return .failure(err)
         }
         let cal = Calendar.current
         let now = Date()
+        let dayCount = max(1, days)
         let endOfToday = cal.startOfDay(for: cal.date(byAdding: .day, value: 1, to: now)!)
-        let start = cal.date(byAdding: .day, value: -days, to: cal.startOfDay(for: now))!
+        let start = cal.date(byAdding: .day, value: -(dayCount - 1), to: cal.startOfDay(for: now))!
         let interval = DateComponents(day: 1)
 
         return await withCheckedContinuation { (continuation: CheckedContinuation<HealthQueryOutcome<[(date: String, value: Double)]>, Never>) in
@@ -539,6 +1030,14 @@ enum HealthTools {
             )
             query.initialResultsHandler = { _, results, error in
                 if let error {
+                    if isHealthNoDataError(error) {
+                        continuation.resume(returning: .noData)
+                        return
+                    }
+                    PCLog.error(
+                        "health_daily_quantity_failed",
+                        detail: "type=\(identifier.rawValue) error=\(error.localizedDescription)"
+                    )
                     continuation.resume(
                         returning: .failure(tr("Health 查询失败：\(error.localizedDescription)", "Health query failed: \(error.localizedDescription)"))
                     )
@@ -570,7 +1069,7 @@ enum HealthTools {
             return .failure(tr("不支持的数据类型：\(identifier.rawValue)", "Unsupported data type: \(identifier.rawValue)"))
         }
         if let err = await requestReadAuth(for: [qType]) {
-            print("[Health] auth error: \(err)")
+            PCLog.error("health_auth_failed", detail: "type=\(identifier.rawValue) error=\(err)")
             return .failure(err)
         }
         return await withCheckedContinuation { (continuation: CheckedContinuation<HealthQueryOutcome<Double>, Never>) in
@@ -585,6 +1084,14 @@ enum HealthTools {
                 options: .discreteAverage
             ) { _, stats, error in
                 if let error {
+                    if isHealthNoDataError(error) {
+                        continuation.resume(returning: .noData)
+                        return
+                    }
+                    PCLog.error(
+                        "health_latest_quantity_failed",
+                        detail: "type=\(identifier.rawValue) error=\(error.localizedDescription)"
+                    )
                     continuation.resume(
                         returning: .failure(tr("Health 查询失败：\(error.localizedDescription)", "Health query failed: \(error.localizedDescription)"))
                     )
@@ -601,6 +1108,56 @@ enum HealthTools {
         }
     }
 
+    /// 查询最近一条离散数值样本 (heart rate, HRV, weight 等)。
+    private static func fetchMostRecentQuantityResult(
+        identifier: HKQuantityTypeIdentifier,
+        unit: HKUnit,
+        daysBack: Int
+    ) async -> HealthQueryOutcome<(value: Double, date: Date)> {
+        guard let qType = HKQuantityType.quantityType(forIdentifier: identifier) else {
+            return .failure(tr("不支持的数据类型：\(identifier.rawValue)", "Unsupported data type: \(identifier.rawValue)"))
+        }
+        if let err = await requestReadAuth(for: [qType]) {
+            PCLog.error("health_auth_failed", detail: "type=\(identifier.rawValue) error=\(err)")
+            return .failure(err)
+        }
+        return await withCheckedContinuation { (continuation: CheckedContinuation<HealthQueryOutcome<(value: Double, date: Date)>, Never>) in
+            let now = Date()
+            let start = Calendar.current.date(byAdding: .day, value: -daysBack, to: now)!
+            let predicate = HKQuery.predicateForSamples(
+                withStart: start, end: now, options: .strictStartDate
+            )
+            let query = HKSampleQuery(
+                sampleType: qType,
+                predicate: predicate,
+                limit: 1,
+                sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: false)]
+            ) { _, samples, error in
+                if let error {
+                    if isHealthNoDataError(error) {
+                        continuation.resume(returning: .noData)
+                        return
+                    }
+                    PCLog.error(
+                        "health_most_recent_quantity_failed",
+                        detail: "type=\(identifier.rawValue) error=\(error.localizedDescription)"
+                    )
+                    continuation.resume(
+                        returning: .failure(tr("Health 查询失败：\(error.localizedDescription)", "Health query failed: \(error.localizedDescription)"))
+                    )
+                    return
+                }
+
+                guard let sample = (samples as? [HKQuantitySample])?.first else {
+                    continuation.resume(returning: .noData)
+                    return
+                }
+                continuation.resume(returning: .success((sample.quantity.doubleValue(for: unit), sample.startDate)))
+            }
+            store.execute(query)
+        }
+    }
+
     /// 查询睡眠分析数据 (HKCategoryType)。
     /// 返回 [(stage: String, minutes: Int)] 数组。
     private static func fetchSleepAnalysisResult(
@@ -611,7 +1168,7 @@ enum HealthTools {
             forIdentifier: .sleepAnalysis
         ) else { return .failure(tr("不支持的数据类型：sleepAnalysis", "Unsupported data type: sleepAnalysis")) }
         if let err = await requestReadAuth(for: [sleepType]) {
-            print("[Health] auth error: \(err)")
+            PCLog.error("health_auth_failed", detail: "type=sleepAnalysis error=\(err)")
             return .failure(err)
         }
         return await withCheckedContinuation { (continuation: CheckedContinuation<HealthQueryOutcome<[(stage: String, minutes: Int)]>, Never>) in
@@ -625,6 +1182,14 @@ enum HealthTools {
                 sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)]
             ) { _, samples, error in
                 if let error {
+                    if isHealthNoDataError(error) {
+                        continuation.resume(returning: .noData)
+                        return
+                    }
+                    PCLog.error(
+                        "health_sleep_query_failed",
+                        detail: "type=sleepAnalysis error=\(error.localizedDescription)"
+                    )
                     continuation.resume(
                         returning: .failure(tr("Health 查询失败：\(error.localizedDescription)", "Health query failed: \(error.localizedDescription)"))
                     )
@@ -677,7 +1242,7 @@ enum HealthTools {
     ) async -> HealthQueryOutcome<[(type: String, durationMin: Int, calories: Int, date: String)]> {
         let workoutType = HKWorkoutType.workoutType()
         if let err = await requestReadAuth(for: [workoutType]) {
-            print("[Health] auth error: \(err)")
+            PCLog.error("health_auth_failed", detail: "type=workout error=\(err)")
             return .failure(err)
         }
         return await withCheckedContinuation { (continuation: CheckedContinuation<HealthQueryOutcome<[(type: String, durationMin: Int, calories: Int, date: String)]>, Never>) in
@@ -691,6 +1256,14 @@ enum HealthTools {
                 sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: false)]
             ) { _, samples, error in
                 if let error {
+                    if isHealthNoDataError(error) {
+                        continuation.resume(returning: .noData)
+                        return
+                    }
+                    PCLog.error(
+                        "health_workout_query_failed",
+                        detail: "type=workout error=\(error.localizedDescription)"
+                    )
                     continuation.resume(
                         returning: .failure(tr("Health 查询失败：\(error.localizedDescription)", "Health query failed: \(error.localizedDescription)"))
                     )
@@ -729,14 +1302,71 @@ enum HealthTools {
         return f.string(from: date)
     }
 
+    private static func roundedOneDecimal(_ value: Double) -> Double {
+        (value * 10).rounded() / 10
+    }
+
+    private static func formatOneDecimal(_ value: Double) -> String {
+        String(format: "%.1f", value)
+    }
+
+    private static func minutesText(_ minutes: Int) -> String {
+        let hours = minutes / 60
+        let mins = minutes % 60
+        if LanguageService.shared.current.isChinese {
+            if hours > 0 {
+                return "\(hours) 小时 \(mins) 分钟"
+            }
+            return "\(mins) 分钟"
+        }
+        if hours > 0 {
+            return "\(hours) h \(mins) min"
+        }
+        return "\(mins) min"
+    }
+
+    private static func totalAsleepMinutes(in stages: [(stage: String, minutes: Int)]) -> Int {
+        stages.reduce(0) { total, entry in
+            let isAsleep = entry.stage == "asleep"
+                || entry.stage == "core"
+                || entry.stage == "deep"
+                || entry.stage == "REM"
+            return total + (isAsleep ? entry.minutes : 0)
+        }
+    }
+
+    private static func healthRangeAdvice(
+        stepAverage: Int?,
+        sleepAverage: Int?,
+        workoutCount: Int?
+    ) -> String {
+        if let stepAverage, stepAverage < 3_000 {
+            return tr("日均步数偏少，先把每天散步或通勤步数稳定到 3000-5000 步。", "Average steps are low; first aim for 3,000-5,000 steady daily walking or commute steps.")
+        }
+        if let sleepAverage, sleepAverage < 6 * 60 {
+            return tr("睡眠时长偏少，优先把作息稳定下来。", "Sleep duration is low; prioritize a steadier sleep schedule.")
+        }
+        if let workoutCount, workoutCount == 0 {
+            return tr("可以安排 1-2 次低强度训练或快走。", "Consider 1-2 low-intensity workouts or brisk walks.")
+        }
+        return tr("整体节奏可以，继续保持并关注趋势变化。", "The overall rhythm looks fine; keep it up and watch the trend.")
+    }
+
     private static func healthSuccess(
         summary: String,
         extras: [String: Any] = [:]
     ) -> CanonicalToolResult {
-        CanonicalToolResult(
+        var payloadExtras = extras
+        payloadExtras["phone_ground"] = healthPhoneGroundMetadata(status: "succeeded")
+        payloadExtras["evidence_pack"] = healthEvidencePack(
+            summary: summary,
+            extras: extras,
+            status: (extras["type"] as? String) == "empty" ? "empty" : "sufficient"
+        )
+        return CanonicalToolResult(
             success: true,
             summary: summary,
-            detail: successPayload(result: summary, extras: extras)
+            detail: successPayload(result: summary, extras: payloadExtras)
         )
     }
 
@@ -754,12 +1384,61 @@ enum HealthTools {
         detail: String,
         errorCode: String
     ) -> CanonicalToolResult {
-        CanonicalToolResult(
+        let extras: [String: Any] = [
+            "error_code": errorCode,
+            "phone_ground": healthPhoneGroundMetadata(status: "failed"),
+            "evidence_pack": healthEvidencePack(
+                summary: summary,
+                extras: ["error_code": errorCode],
+                status: "failed"
+            )
+        ]
+        return CanonicalToolResult(
             success: false,
             summary: summary,
-            detail: failurePayload(error: detail, extras: ["error_code": errorCode]),
+            detail: failurePayload(error: detail, extras: extras),
             errorCode: errorCode
         )
+    }
+
+    private static func healthPhoneGroundMetadata(status: String) -> [String: Any] {
+        [
+            "version": "phoneground_v0",
+            "evidence_type": PhoneGroundEvidenceType.health.rawValue,
+            "answer_contract": PhoneGroundAnswerContract.groundedDataSummary.rawValue,
+            "freshness": PhoneGroundFreshnessRequirement.userScopedData.rawValue,
+            "privacy": "device_local",
+            "status": status
+        ]
+    }
+
+    private static func healthEvidencePack(
+        summary: String,
+        extras: [String: Any],
+        status: String
+    ) -> [String: Any] {
+        let metricKeys = extras.keys
+            .filter { key in
+                !["phone_ground", "evidence_pack", "success", "status", "result"].contains(key)
+            }
+            .sorted()
+        return [
+            "version": "phoneground_health_v0",
+            "source_type": PhoneGroundEvidenceType.health.rawValue,
+            "sufficiency": status,
+            "generated_at": iso8601String(from: Date()),
+            "metric_keys": metricKeys,
+            "item_count": summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0 : 1,
+            "items": [
+                [
+                    "id": "health_summary",
+                    "type": PhoneGroundEvidenceType.health.rawValue,
+                    "title": tr("健康数据摘要", "Health data summary"),
+                    "content": summary,
+                    "confidence": "device_data"
+                ] as [String: Any]
+            ]
+        ]
     }
 
     private static func stepsNoDataResult(

@@ -971,6 +971,19 @@ final class BackgroundDownloadSession: NSObject, URLSessionDownloadDelegate, URL
         super.init()
     }
 
+    func cancelOrphanedTasks() {
+        session.getAllTasks { [weak self] tasks in
+            guard let self else { return }
+            self.stateQueue.async {
+                let activeTaskIDs = Set(self.transfers.keys)
+                for task in tasks where !activeTaskIDs.contains(task.taskIdentifier) {
+                    PCLog.debug("[Download] cancelling orphaned background task \(task.taskIdentifier)")
+                    task.cancel()
+                }
+            }
+        }
+    }
+
     func start(
         request: URLRequest,
         resumeData: Data?,

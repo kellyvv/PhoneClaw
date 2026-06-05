@@ -83,15 +83,29 @@ extension AgentEngine {
 
     func cleanOutputStreaming(_ text: String) -> String {
         let (safe, _) = OutputSanitizer.sanitize(text, mode: .chatUI)
-        return normalizeSafetyTruncation(in: safe)
+        return normalizeSafetyTruncation(in: stripUnexpectedThinkingMarkersIfNeeded(safe))
     }
 
     func cleanOutput(_ text: String) -> String {
         let cleaned = OutputSanitizer.sanitizeFinal(text, mode: .chatUI)
-        return normalizeSafetyTruncation(in: cleaned)
+        return normalizeSafetyTruncation(in: stripUnexpectedThinkingMarkersIfNeeded(cleaned))
     }
 
     // MARK: - 安全截断保留 / 句子边界
+
+    private func stripUnexpectedThinkingMarkersIfNeeded(_ text: String) -> String {
+        guard !config.enableThinking else { return text }
+
+        var result = text
+        result = result.replacingOccurrences(of: "[[/PHONECLAW_THINK]]", with: "")
+        result = result.replacingOccurrences(of: "[[PHONECLAW_THINK]]", with: "")
+        result = result.replacingOccurrences(
+            of: #"(?im)^\s*Thinking Process:\s*\n*"#,
+            with: "",
+            options: .regularExpression
+        )
+        return result.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 
     private func normalizeSafetyTruncation(in text: String) -> String {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)

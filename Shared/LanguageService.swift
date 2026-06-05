@@ -76,6 +76,12 @@ final class LanguageService {
         self.current = Self.resolve(raw: stored ?? .auto)
     }
 
+    /// Process-local language override for CLI harnesses and diagnostics.
+    /// Unlike `selected`, this does not persist to UserDefaults.
+    func setTemporaryLanguageForCurrentProcess(_ language: AppLanguage) {
+        current = Self.resolve(raw: language)
+    }
+
     /// 根据 raw 选择计算 resolved 语言。`.auto` 走系统 preferred languages,
     /// 只要第一条以 `zh` 开头就判为中文, 其它一律英文 (不做第三语言降级)。
     private static func resolve(raw: AppLanguage) -> LocalizationContext {

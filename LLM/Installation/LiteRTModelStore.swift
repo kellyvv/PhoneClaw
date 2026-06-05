@@ -15,9 +15,6 @@ import Foundation
 @Observable
 @MainActor
 final class LiteRTModelStore: ModelInstaller {
-    private static let sourceProbeByteLimit = 128 * 1024
-    private static let sourceProbeTimeout: TimeInterval = 6
-
     // MARK: - State
 
     private(set) var installStates: [String: ModelInstallState] = [:]
@@ -45,6 +42,7 @@ final class LiteRTModelStore: ModelInstaller {
         // 必须在 refreshInstallStates() 之前跑, 否则 installer 会把残留目录
         // 当成"已安装"算进状态里。详见 cleanupObsoleteCoreMLV46 doc。
         cleanupObsoleteCoreMLV46()
+        BackgroundDownloadSession.shared.cancelOrphanedTasks()
 
         refreshInstallStates()
 
@@ -215,6 +213,9 @@ final class LiteRTModelStore: ModelInstaller {
             return
         }
 
+        installStates[modelID] = .checkingSource
+        downloadProgress[modelID] = nil
+
         let initialProgress = await initialDownloadProgress(for: model)
         installStates[modelID] = .downloading(
             completedFiles: 0,
@@ -344,120 +345,14 @@ final class LiteRTModelStore: ModelInstaller {
 
     /// 给一组 URLs (companion 用) 打 ranked sources, 复用主文件的镜像排序逻辑。
     private func rankedDownloadSources(for urls: [URL]) async -> [DownloadFile.Source] {
-        let original = urls.enumerated().map { index, url in
+        urls.enumerated().map { index, url in
             DownloadFile.Source(label: mirrorName(for: url), url: url, priority: index)
-        }
-        let probeCandidates = original.filter { !isHuggingFaceOrigin($0.url) }
-        guard probeCandidates.count > 1 else { return original }
-
-        var results: [SourceProbeResult] = []
-        await withTaskGroup(of: SourceProbeResult?.self) { group in
-            for source in probeCandidates {
-                group.addTask {
-                    await Self.probe(source: source)
-                }
-            }
-            for await result in group {
-                if let result {
-                    results.append(result)
-                }
-            }
-        }
-
-        guard !results.isEmpty else { return original }
-
-        let rankedLabels = results
-            .sorted {
-                if $0.bytesPerSecond == $1.bytesPerSecond {
-                    return $0.source.priority < $1.source.priority
-                }
-                return $0.bytesPerSecond > $1.bytesPerSecond
-            }
-            .map(\.source.label)
-
-        let ranked = rankedLabels.compactMap { label in
-            original.first { $0.label == label }
-        }
-        let remaining = original.filter { source in
-            !rankedLabels.contains(source.label)
-        }
-        return (ranked + remaining).enumerated().map { index, source in
-            DownloadFile.Source(label: source.label, url: source.url, priority: index)
         }
     }
 
     private func rankedDownloadSources(for model: ModelDescriptor) async -> [DownloadFile.Source] {
-        let original = model.downloadURLs.enumerated().map { index, url in
+        model.downloadURLs.enumerated().map { index, url in
             DownloadFile.Source(label: mirrorName(for: url), url: url, priority: index)
-        }
-        let probeCandidates = original.filter { !isHuggingFaceOrigin($0.url) }
-        guard probeCandidates.count > 1 else { return original }
-
-        var results: [SourceProbeResult] = []
-        await withTaskGroup(of: SourceProbeResult?.self) { group in
-            for source in probeCandidates {
-                group.addTask {
-                    await Self.probe(source: source)
-                }
-            }
-            for await result in group {
-                if let result {
-                    results.append(result)
-                }
-            }
-        }
-
-        guard !results.isEmpty else { return original }
-
-        let rankedLabels = results
-            .sorted {
-                if $0.bytesPerSecond == $1.bytesPerSecond {
-                    return $0.source.priority < $1.source.priority
-                }
-                return $0.bytesPerSecond > $1.bytesPerSecond
-            }
-            .map(\.source.label)
-
-        let ranked = rankedLabels.compactMap { label in
-            original.first { $0.label == label }
-        }
-        let remaining = original.filter { source in
-            !rankedLabels.contains(source.label)
-        }
-        return (ranked + remaining).enumerated().map { index, source in
-            DownloadFile.Source(label: source.label, url: source.url, priority: index)
-        }
-    }
-
-    private static func probe(source: DownloadFile.Source) async -> SourceProbeResult? {
-        var request = URLRequest(url: source.url)
-        request.setValue("bytes=0-\(sourceProbeByteLimit - 1)", forHTTPHeaderField: "Range")
-        request.timeoutInterval = sourceProbeTimeout
-
-        let startedAt = CFAbsoluteTimeGetCurrent()
-        do {
-            let (bytes, response) = try await URLSession.shared.bytes(for: request)
-            guard let http = response as? HTTPURLResponse,
-                  (200..<300).contains(http.statusCode) else {
-                return nil
-            }
-
-            var received = 0
-            for try await _ in bytes {
-                received += 1
-                if received >= sourceProbeByteLimit {
-                    break
-                }
-            }
-
-            guard received > 0 else { return nil }
-            let elapsed = max(CFAbsoluteTimeGetCurrent() - startedAt, 0.001)
-            return SourceProbeResult(
-                source: source,
-                bytesPerSecond: Double(received) / elapsed
-            )
-        } catch {
-            return nil
         }
     }
 
@@ -484,10 +379,6 @@ final class LiteRTModelStore: ModelInstaller {
         if host.contains("hf-mirror") { return "HF Mirror" }
         if host.contains("huggingface") { return "HuggingFace" }
         return host
-    }
-
-    private func isHuggingFaceOrigin(_ url: URL) -> Bool {
-        url.host?.contains("huggingface.co") == true
     }
 
     private func validateDownloadedFile(model: ModelDescriptor, at url: URL) async throws {
@@ -751,6 +642,12 @@ final class LiteRTModelStore: ModelInstaller {
             if activeTasks[model.id] != nil {
                 continue
             }
+            if case .checkingSource = installStates[model.id] {
+                continue
+            }
+            if case .downloading = installStates[model.id] {
+                continue
+            }
 
             if let path = artifactPath(for: model) {
                 installStates[model.id] = path.path.hasPrefix(Bundle.main.bundlePath) ? .bundled : .downloaded
@@ -902,11 +799,6 @@ private actor LiteRTDownloadObserver: DownloadObserver {
     func onFailure(assetID: String, failure: DownloadFailure) async {
         PCLog.debug("[Download] ❌ asset \(assetID) failed: \(failure)")
     }
-}
-
-private struct SourceProbeResult: Sendable {
-    let source: DownloadFile.Source
-    let bytesPerSecond: Double
 }
 
 // MARK: - Download Error

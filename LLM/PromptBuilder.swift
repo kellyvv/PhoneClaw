@@ -453,13 +453,23 @@ struct PromptBuilder {
                     prompt += "<|turn>model\n<tool_call>\n{\"name\": \"\(skillName)\", \"arguments\": {}}\n</tool_call><turn|>\n"
                 }
             case .skillResult:
+                guard msg.skillResultKind != .skillInstructions else { continue }
                 let skillLabel = msg.skillName ?? "tool"
                 // History 的 skill result 用当前语言 label. 历史 prompt 里 Chinese
                 // label 会把英文模型 drift 回中文 (E2B 对前文语言特别敏感)。
-                prompt += "<|turn>user\n" + tr(
-                    "工具 \(skillLabel) 的执行结果：\(msg.content)",
-                    "Result of tool \(skillLabel): \(msg.content)"
-                ) + "<turn|>\n"
+                let resultText: String
+                if msg.skillResultKind == .generatedContent {
+                    resultText = tr(
+                        "Skill \(skillLabel) 生成的内容：\(msg.content)",
+                        "Generated content from skill \(skillLabel): \(msg.content)"
+                    )
+                } else {
+                    resultText = tr(
+                        "工具 \(skillLabel) 的执行结果：\(msg.content)",
+                        "Result of tool \(skillLabel): \(msg.content)"
+                    )
+                }
+                prompt += "<|turn>user\n" + resultText + "<turn|>\n"
             }
         }
 
@@ -577,6 +587,235 @@ struct PromptBuilder {
         <turn|>
         <|turn>model
         """
+    }
+
+    static func buildSkillIntentRoutingPrompt(
+        userQuestion: String,
+        availableNetworkSkillsSummary: String
+    ) -> String {
+        let trimmedQuestion = userQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
+        let clippedQuestion = trimmedQuestion.count > 500
+            ? String(trimmedQuestion.prefix(500))
+            : trimmedQuestion
+
+        let systemBody: String
+        let skillsLabel: String
+        let questionLabel: String
+        if LanguageService.shared.current.isChinese {
+            systemBody = """
+            你只做路由分类, 不回答用户问题。
+            判断用户这个问题是否需要调用下面某个 network skill。
+            network skill 只用于公开互联网或网页相关能力。
+            如果可靠回答必须依赖当前、近期、实时、会随时间变化、会随地点变化、或需要网页查证的公开信息, 输出最合适的 skill id。
+            不要因为用户没有写"搜索"或"联网"就输出 none; 要根据问题本身是否需要外部公开信息来判断。
+            如果不需要外部网页信息, 输出 none。
+            只输出一个 skill id 或 none, 不要解释, 不要输出 JSON, 不要输出 `<tool_call>`。
+            """
+            skillsLabel = "可用 network skills:"
+            questionLabel = "用户问题:"
+        } else {
+            systemBody = """
+            You only classify routing; do not answer the user.
+            Decide whether this user message needs one of the network skills below.
+            A network skill is only for public internet or webpage capabilities.
+            If a reliable answer depends on current, recent, live, time-varying, location-varying, or web-verifiable public information, output the best skill id.
+            Do not output none merely because the user did not explicitly say "search" or "browse"; decide from whether the question itself requires external public information.
+            If no external web information is needed, output none.
+            Output exactly one skill id or none. Do not explain, do not output JSON, and do not emit `<tool_call>`.
+            """
+            skillsLabel = "Available network skills:"
+            questionLabel = "User message:"
+        }
+
+        return """
+        <|turn>system
+        \(systemBody)
+
+        \(skillsLabel)
+        \(availableNetworkSkillsSummary)
+        <turn|>
+        <|turn>user
+        \(questionLabel)
+        \(clippedQuestion)
+        <turn|>
+        <|turn>model
+        """
+    }
+
+    static func buildDialogueActPrompt(
+        userQuestion: String,
+        previousSkillName: String,
+        previousToolName: String,
+        previousResultSummary: String
+    ) -> String {
+        let clippedQuestion = compactToolResultSummary(userQuestion, maxCharacters: 500)
+        let clippedSummary = compactToolResultSummary(previousResultSummary, maxCharacters: 1_200)
+        if LanguageService.shared.current.isChinese {
+            return """
+            <|turn>system
+            你只做对话行为分类, 不回答用户问题, 不调用工具。
+            判断当前用户消息和上一轮工具结果之间的关系。输出必须是一个 JSON object。
+
+            可选 act:
+            - new_task: 用户提出了新的独立任务或新问题
+            - continue_task: 用户要继续上一任务的下一步
+            - correct_parameters: 用户在纠正上一轮参数、范围、对象或条件
+            - refresh_result: 用户明确要求重新获取、刷新、再查一次
+            - verify_last_result: 用户在核对上一轮结果是否可信、是否确定
+            - explain_last_result: 用户要解释上一轮结果为什么这样、含义是什么
+            - clarify_last_result: 用户要澄清上一轮结果中的某个细节
+            - cancel_or_reject: 用户取消、否定或拒绝继续
+            - chitchat: 闲聊或不需要工具的自然回复
+
+            决策原则:
+            - “上一轮工具结果”指最近一次真实工具返回的结果; 即使中间有一轮没有调用工具的确认、解释或澄清回答, 当前消息仍可能是在继续那个工具结果。
+            - 最高优先级: 如果当前消息指出上一轮的范围、对象、时间、数量、地点、实体、条件不对, 并给出替代值或新约束, act 必须是 correct_parameters, target 必须是 previous_result, should_execute_tool 必须是 true。
+            - 如果当前消息是省略式追问, 只给出新的时间、范围、对象、地点、实体或条件片段, 并且需要沿用上一轮能力才能回答, act 必须是 correct_parameters 或 continue_task, target 必须是 previous_result, should_execute_tool 必须是 true。
+            - 如果最近工具能力本身是查询、读取、搜索、查看或列出信息, 且当前消息用“那/再/换/then/what about”等承接词给出新对象或新范围, 应复用最近工具能力执行。
+            - 如果当前消息只是核对、质疑、解释、澄清上一轮结果, 不要重新执行工具。
+            - 如果当前消息改了范围/对象/条件, 或明确要求重新获取, 才允许继续执行工具。
+            - 不要根据某个具体业务词做判断; 只根据对话行为和上一轮结果的关系判断。
+            - 占位示例: “不是 <旧值>, 是 <新值>”/“改成 <新值>”/“use <new value> instead” 属于 correct_parameters, 不是 verify_last_result。
+            - 占位示例: “那查 <新时间/新范围/新对象> 的”/“换成 <新条件>”/“what about <new scope>?” 属于 correct_parameters 或 continue_task, should_execute_tool=true。
+            - 占位示例: “确定吗?”/“是真的吗?”/“why so low?” 属于 verify_last_result 或 explain_last_result, should_execute_tool=false。
+
+            JSON schema:
+            {"act":"...", "target":"previous_result|new_task|none", "should_execute_tool":true|false, "confidence":0.0}
+            只输出 JSON, 不要 Markdown、解释、代码块或 `<tool_call>`。
+            <turn|>
+            <|turn>user
+            上一轮能力: \(previousSkillName)
+            上一轮工具: \(previousToolName)
+            上一轮结果摘要:
+            \(clippedSummary)
+
+            当前用户消息:
+            \(clippedQuestion)
+            <turn|>
+            <|turn>model
+
+            """
+        } else {
+            return """
+            <|turn>system
+            You only classify the dialogue act. Do not answer the user and do not call tools.
+            Decide how the current user message relates to the previous tool result. Output exactly one JSON object.
+
+            Allowed act values:
+            - new_task: the user asks a new independent task or question
+            - continue_task: the user wants the next step of the previous task
+            - correct_parameters: the user corrects the previous range, entity, object, or condition
+            - refresh_result: the user explicitly asks to fetch, refresh, rerun, or check again
+            - verify_last_result: the user is checking whether the previous result is reliable or certain
+            - explain_last_result: the user asks why the previous result is that way or what it means
+            - clarify_last_result: the user asks for a detail about the previous result
+            - cancel_or_reject: the user cancels, rejects, or refuses to continue
+            - chitchat: casual conversation or a reply that needs no tool
+
+            Decision principles:
+            - "Previous tool result" means the most recent real tool result. Even if there was an intervening no-tool verification, explanation, or clarification reply, the current message may still continue that tool result.
+            - Highest priority: if the current message says the previous scope, object, time, count, location, entity, or condition was wrong and provides a replacement value or new constraint, act must be correct_parameters, target must be previous_result, and should_execute_tool must be true.
+            - If the current message is an elliptical follow-up that only supplies a new time, range, object, location, entity, or condition fragment, and answering requires reusing the previous capability, act must be correct_parameters or continue_task, target must be previous_result, and should_execute_tool must be true.
+            - If the recent capability was itself querying, reading, searching, checking, or listing information, and the current message uses a continuation like "then", "again", "switch to", or "what about" plus a new object or scope, reuse the recent capability and execute the tool.
+            - If the message only verifies, challenges, explains, or clarifies the previous result, do not execute a tool again.
+            - If the message changes scope/entity/conditions, or explicitly asks to fetch again, allow tool execution.
+            - Do not rely on domain-specific keyword lists; judge the dialogue act and relation to the previous result.
+            - Placeholder example: “not <old value>, <new value>” / “change it to <new value>” / “use <new value> instead” is correct_parameters, not verify_last_result.
+            - Placeholder example: “then check <new time/range/object>” / “switch to <new condition>” / “what about <new scope>?” is correct_parameters or continue_task, should_execute_tool=true.
+            - Placeholder example: “are you sure?” / “really?” / “why so low?” is verify_last_result or explain_last_result, should_execute_tool=false.
+
+            JSON schema:
+            {"act":"...", "target":"previous_result|new_task|none", "should_execute_tool":true|false, "confidence":0.0}
+            Output only JSON. No Markdown, explanations, code blocks, or `<tool_call>`.
+            <turn|>
+            <|turn>user
+            Previous capability: \(previousSkillName)
+            Previous tool: \(previousToolName)
+            Previous result summary:
+            \(clippedSummary)
+
+            Current user message:
+            \(clippedQuestion)
+            <turn|>
+            <|turn>model
+
+            """
+        }
+    }
+
+    static func buildPreviousToolObservationReplyPrompt(
+        userQuestion: String,
+        dialogueAct: String,
+        previousSkillName: String,
+        previousToolName: String,
+        previousResultSummary: String,
+        previousResultDetail: String
+    ) -> String {
+        let summary = compactToolResultSummary(previousResultSummary, maxCharacters: 1_500)
+        let detail = compactToolResultSummary(previousResultDetail, maxCharacters: 2_400)
+        if LanguageService.shared.current.isChinese {
+            return """
+            <|turn>system
+            \(defaultSystemPrompt)
+            你正在回答一个针对上一轮工具结果的追问。
+            不要调用工具, 不要输出 `<tool_call>`, 不要声称已经重新读取、重新搜索或刷新数据。
+            只基于下面给出的上一轮工具结果回答。若用户在核对可信度, 说明“这是上一轮工具返回的结果”, 并给出可能的误差来源或限制。
+            回答要简洁, 不要复读内部字段名。
+            <turn|>
+            <|turn>user
+            当前用户追问:
+            \(userQuestion)
+
+            对话行为:
+            \(dialogueAct)
+
+            上一轮能力:
+            \(previousSkillName)
+
+            上一轮工具:
+            \(previousToolName)
+
+            上一轮结果摘要:
+            \(summary)
+
+            上一轮结果原始内容:
+            \(detail)
+            <turn|>
+            <|turn>model
+
+            """
+        } else {
+            return """
+            <|turn>system
+            \(defaultSystemPrompt)
+            You are answering a follow-up about the previous tool result.
+            Do not call tools, do not emit `<tool_call>`, and do not claim that you re-read, re-searched, refreshed, or reran anything.
+            Answer only from the previous tool result below. If the user is verifying reliability, say it is the previous tool-returned result and mention plausible limitations or error sources.
+            Keep the answer concise and do not repeat internal field names.
+            <turn|>
+            <|turn>user
+            Current follow-up:
+            \(userQuestion)
+
+            Dialogue act:
+            \(dialogueAct)
+
+            Previous capability:
+            \(previousSkillName)
+
+            Previous tool:
+            \(previousToolName)
+
+            Previous result summary:
+            \(summary)
+
+            Previous raw result:
+            \(detail)
+            <turn|>
+            <|turn>model
+
+            """
+        }
     }
 
     static func buildImageFollowUpTextPrompt(
@@ -873,18 +1112,46 @@ struct PromptBuilder {
         userQuestion: String,
         toolName: String,
         toolResultSummary: String,
-        currentImageCount: Int = 0
+        currentImageCount: Int = 0,
+        enableThinking: Bool = false
     ) -> String {
-        let result = compactToolResultSummary(toolResultSummary)
+        let result = compactToolResultSummary(
+            toolResultSummary,
+            maxCharacters: toolName == "web-search" ? 5_200 : 3_200
+        )
         let toolSpecificInstructions = compactToolAnswerInstructions(toolName: toolName)
+        let allowsFollowUpFetch = toolName == "web-search"
         if LanguageService.shared.current.isChinese {
+            let thinkingPrefix = enableThinking ? "<|think|>" : ""
+            let thinkingInstruction = enableThinking ? "\n\n\(thinkingLanguageInstruction)" : ""
+            let answerOnlyRule: String
+            let finalInstruction: String
+            if allowsFollowUpFetch {
+                answerOnlyRule = "你正在根据已经执行完成的 web-search 结果继续完成用户问题。如果结果已经足够，最终回答只输出答案；如果搜索结果明确提示需要读取原文且一个网页可以补全证据，只允许调用一次 web-fetch，不要再次调用 web-search 或其他工具。"
+                finalInstruction = """
+                如果需要读取原文, 只输出:
+                <tool_call>{"name":"web-fetch","arguments":{"url":"https://example.com","max_characters":6000}}</tool_call>
+                其中 url 必须替换为上方最相关的一条真实来源 URL。
+                如果不需要继续读取, 请基于工具返回内容直接回答用户。
+                直接回答时不要输出 JSON、字段名、模板、代码块或中间步骤。不要提到内部工具调用流程。
+                """
+            } else {
+                answerOnlyRule = enableThinking
+                    ? "你正在根据一个已经执行完成的工具结果回答用户。最终回答部分只输出答案，不要再次调用工具。"
+                    : "你正在根据一个已经执行完成的工具结果回答用户。只输出最终答案，不要再次调用工具。"
+                finalInstruction = """
+                请基于工具返回内容直接回答用户。
+                不要输出 JSON、字段名、模板、代码块或中间步骤。不要提到内部工具调用流程。
+                """
+            }
             return """
             <|turn>system
-            \(defaultSystemPrompt)
-            你正在根据一个已经执行完成的工具结果回答用户。只输出最终答案，不要再次调用工具。
+            \(thinkingPrefix)\(defaultSystemPrompt)
+            \(currentTimeAnchorBlock())
+            \(answerOnlyRule)
             回答必须简洁：优先 3-6 条要点；每条 1 句；总长度尽量控制在 500 字以内。
-            如果工具结果包含来源、链接或时间，保留这些可核验信息。不要编造工具结果之外的信息。
-            \(toolSpecificInstructions)
+            如果是联网工具结果，正文只写结论，来源链接统一放到单独的“引用网址”段；不要把 URL/host 混在正文要点里。不要编造工具结果之外的信息。
+            \(toolSpecificInstructions)\(thinkingInstruction)
             <turn|>
             <|turn>user
             用户问题：
@@ -893,20 +1160,42 @@ struct PromptBuilder {
             工具 \(toolName) 返回：
             \(result)
 
-            请基于工具返回内容直接回答用户。
-            不要输出 JSON、字段名、模板、代码块或中间步骤。不要提到内部工具调用流程。
+            \(finalInstruction)
             <turn|>
             <|turn>model
 
             """
         } else {
+            let thinkingPrefix = enableThinking ? "<|think|>" : ""
+            let thinkingInstruction = enableThinking ? "\n\n\(thinkingLanguageInstruction)" : ""
+            let answerOnlyRule: String
+            let finalInstruction: String
+            if allowsFollowUpFetch {
+                answerOnlyRule = "You are continuing from a completed web-search result. If the result is sufficient, output only the final answer. If the search result explicitly needs page text and one webpage can complete the evidence, you may call web-fetch once; do not call web-search or any other tool again."
+                finalInstruction = """
+                If you need to read the page, output only:
+                <tool_call>{"name":"web-fetch","arguments":{"url":"https://example.com","max_characters":6000}}</tool_call>
+                Replace url with the most relevant real source URL from the results above.
+                If no further fetch is needed, answer the user directly from the tool result.
+                In direct answers, do not output JSON, field names, templates, code blocks, or intermediate steps. Do not mention internal tool-calling flow.
+                """
+            } else {
+                answerOnlyRule = enableThinking
+                    ? "You are answering from a completed tool result. In the final answer section, output only the answer; do not call tools again."
+                    : "You are answering from a completed tool result. Output only the final answer; do not call tools again."
+                finalInstruction = """
+                Answer the user directly based on the tool result.
+                Do not output JSON, field names, templates, code blocks, or intermediate steps. Do not mention internal tool-calling flow.
+                """
+            }
             return """
             <|turn>system
-            \(defaultSystemPrompt)
-            You are answering from a completed tool result. Output only the final answer; do not call tools again.
+            \(thinkingPrefix)\(defaultSystemPrompt)
+            \(currentTimeAnchorBlock())
+            \(answerOnlyRule)
             Keep the answer concise: prefer 3-6 bullets, one sentence each, and keep it under about 300 words.
-            Preserve verifiable source URLs, dates, or timestamps when present. Do not invent facts beyond the tool result.
-            \(toolSpecificInstructions)
+            For web tool results, keep the body focused on the conclusion and put source links in a separate “Sources” section; do not mix URLs/hosts into the body bullets. Do not invent facts beyond the tool result.
+            \(toolSpecificInstructions)\(thinkingInstruction)
             <turn|>
             <|turn>user
             User question:
@@ -915,8 +1204,7 @@ struct PromptBuilder {
             Tool \(toolName) returned:
             \(result)
 
-            Answer the user directly based on the tool result.
-            Do not output JSON, field names, templates, code blocks, or intermediate steps. Do not mention internal tool-calling flow.
+            \(finalInstruction)
             <turn|>
             <|turn>model
 
@@ -928,16 +1216,208 @@ struct PromptBuilder {
         switch toolName {
         case "web-search":
             return tr(
-                "对 web-search：先判断搜索结果是否能回答用户问题。不要把首页、频道页、站点简介或媒体介绍当作新闻事实；只有结果包含明确标题、日期、事件或官方/可信来源时，才称为最新消息。带[未确认/传闻]的结果必须明确说未确认，不能说成已发布或确定会发布；每条新闻/传闻必须保留来源 URL。带[相关但非精确匹配]的结果不要列为用户所问对象的消息。否则直接说“这次搜索没有返回明确可核验的最新消息”，再列出可查看来源。",
-                "For web-search: first decide whether the results actually answer the user's question. Do not treat homepages, category pages, site descriptions, or media blurbs as news facts; call something latest news only when the result has a concrete title, date, event, or official/credible source. Results labeled [unconfirmed/rumor] must be described as unconfirmed, not as released or certain; every news/rumor item must keep its source URL. Do not list results labeled [related, not exact match] as news about the object the user asked for. Otherwise say that the search did not return clearly verifiable latest information, then list possible sources to check."
+                "对 web-search：优先查看 evidence_pack。若 evidence_pack.sufficiency=sufficient 或 answerability=direct，必须只基于 evidence_pack.chunks / 可直接使用的搜索条目回答。直接回答必须分成两段：先写“总结”，再写“引用网址”。必须全程使用当前会话语言回答，即使来源页面是其他语言。“总结”段只写结论、关键数值和必要的不确定性，不要夹 URL、host、来源括号或搜索时间；“引用网址”段列出 1-5 条支撑结论的 Markdown 链接，优先使用 evidence_pack.chunks 里的真实 URL，同源去重。若用户问具体数值、价格、汇率、比分或“多少”，总结第一句先给证据里的具体数值。若 answerability=needs_fetch 且 evidence_pack 为空或偏薄，才选择最相关 URL 调用一次 web-fetch。无法选择或读取后仍不足时，在总结里说明“这次搜索没有返回足够可用结果”，并在引用网址里列出已查来源。不要把首页、频道页、站点简介或低置信条目当作事实。",
+                "For web-search: inspect evidence_pack first. If evidence_pack.sufficiency=sufficient or answerability=direct, answer only from evidence_pack.chunks / directly usable search entries. Direct answers must use two sections: “Summary” first, then “Sources.” Write the entire answer in the current conversation language, even if sources use another language. The Summary section should contain only the conclusion, key values, and necessary uncertainty; do not include URLs, hosts, inline source parentheses, or search timestamps there. The Sources section must list 1-5 supporting Markdown links, preferring real URLs from evidence_pack.chunks and deduplicating by source. If the user asks for a concrete value, price, exchange rate, score, or “how much/how many,” the first Summary sentence must give the concrete value from evidence. If answerability=needs_fetch and the evidence_pack is empty or thin, choose the most relevant URL and call web-fetch once. Only if no source can be chosen, or the fetched page is still insufficient, say the search did not return sufficiently usable results and list checked sources under Sources. Do not treat homepages, category pages, site descriptions, or low-confidence entries as facts."
             )
         case "web-fetch":
             return tr(
-                "对 web-fetch：只总结已读取网页正文；如果正文不足以回答，明确说明页面中没有找到对应信息。",
-                "For web-fetch: summarize only the fetched page text; if the page text is insufficient, clearly say the requested information was not found on the page."
+                "对 web-fetch：只使用已读取网页正文回答。必须全程使用当前会话语言回答，即使网页正文是其他语言。若正文包含按时间、排行或列表排列的数据，选最相关/最新的一条直接给结论；不要因为页面没有写“绝对最新”就空泛拒答。直接回答同样分成“总结”和“引用网址”，来源只放在“引用网址”段。只有正文确实没有覆盖用户问题时，才明确说明页面中没有找到对应信息。",
+                "For web-fetch: answer only from the fetched page text. Write the entire answer in the current conversation language, even if the page text uses another language. If the text contains dated, ranked, or listed data, choose the most relevant/latest entry and give the conclusion; do not refuse just because the page does not explicitly label it as “absolute latest.” Direct answers should also use “Summary” and “Sources,” with source links only in Sources. Only say the requested information was not found when the page text truly does not cover the user question."
             )
         default:
             return ""
+        }
+    }
+
+    static func buildWebQueryPlanPrompt(
+        userQuestion: String,
+        initialQuery: String,
+        currentImageCount: Int = 0
+    ) -> String {
+        if LanguageService.shared.current.isChinese {
+            return """
+            <|turn>system
+            \(defaultSystemPrompt)
+            \(currentTimeAnchorBlock())
+            你是联网搜索查询规划器。你的任务是把用户问题改写成 2-4 条适合搜索引擎的查询词。
+            规则:
+            - 只输出 JSON 对象，不要解释、不要 Markdown、不要调用工具。
+            - JSON schema: {"queries":["..."],"freshness":"current|recent|static|unspecified"}
+            - queries 必须保留用户的主体、地点、时间范围、比较条件和语言偏好。
+            - 如果用户问实时、今天、最近、价格、汇率、天气、新闻、比赛、政策、版本等变化信息，freshness 用 current 或 recent，并让查询词包含必要时间语义。
+            - 不要凭空添加用户没问的实体、城市、品牌、日期或网站名。
+            - 每条 query 控制在 6-20 个词或 4-40 个中文字符，避免完整句子。
+            <turn|>
+            <|turn>user
+            用户问题:
+            \(userQuestion)\(imagePromptSuffix(count: currentImageCount))
+
+            初始查询:
+            \(initialQuery)
+            <turn|>
+            <|turn>model
+
+            """
+        } else {
+            return """
+            <|turn>system
+            \(defaultSystemPrompt)
+            \(currentTimeAnchorBlock())
+            You are a web-search query planner. Rewrite the user question into 2-4 search-engine queries.
+            Rules:
+            - Output only one JSON object. No explanation, Markdown, or tool calls.
+            - JSON schema: {"queries":["..."],"freshness":"current|recent|static|unspecified"}
+            - queries must preserve the subject, location, time range, comparison constraints, and language preference.
+            - If the user asks for live/current/recent prices, exchange rates, weather, news, sports, policy, versions, or other changing facts, set freshness to current or recent and include necessary time semantics in the queries.
+            - Do not add entities, cities, brands, dates, or websites the user did not ask for.
+            - Keep each query concise, about 4-14 words.
+            <turn|>
+            <|turn>user
+            User question:
+            \(userQuestion)\(imagePromptSuffix(count: currentImageCount))
+
+            Initial query:
+            \(initialQuery)
+            <turn|>
+            <|turn>model
+
+            """
+        }
+    }
+
+    static func buildWebQueryReplanPrompt(
+        userQuestion: String,
+        previousSearchSummary: String,
+        currentImageCount: Int = 0
+    ) -> String {
+        let summary = compactToolResultSummary(previousSearchSummary, maxCharacters: 4_200)
+        if LanguageService.shared.current.isChinese {
+            return """
+            <|turn>system
+            \(defaultSystemPrompt)
+            \(currentTimeAnchorBlock())
+            你是联网搜索二次查询规划器。上一轮搜索证据不足，你需要基于失败信息重新生成 2-4 条不同的搜索 query。
+            规则:
+            - 只输出 JSON 对象，不要解释、不要 Markdown、不要调用工具。
+            - JSON schema: {"queries":["..."],"reason":"..."}
+            - 新 queries 必须保留用户原始问题的主体、地点、时间范围和约束。
+            - 避免重复上一轮 query；换用同义表达、英文/中文变体、官方/数据源表达、具体实体名或更窄条件。
+            - 不要凭空添加用户没问的实体、城市、品牌、日期或网站名。
+            - 每条 query 控制在 6-20 个词或 4-40 个中文字符。
+            <turn|>
+            <|turn>user
+            用户问题:
+            \(userQuestion)\(imagePromptSuffix(count: currentImageCount))
+
+            上一轮搜索摘要:
+            \(summary)
+            <turn|>
+            <|turn>model
+
+            """
+        } else {
+            return """
+            <|turn>system
+            \(defaultSystemPrompt)
+            \(currentTimeAnchorBlock())
+            You are a second-pass web-search query planner. The previous search produced insufficient evidence. Generate 2-4 different search queries.
+            Rules:
+            - Output only one JSON object. No explanation, Markdown, or tool calls.
+            - JSON schema: {"queries":["..."],"reason":"..."}
+            - New queries must preserve the user's original subject, location, time range, and constraints.
+            - Avoid repeating previous queries; use synonyms, language variants, official/data-source wording, specific entity names, or narrower constraints.
+            - Do not add entities, cities, brands, dates, or websites the user did not ask for.
+            - Keep each query concise, about 4-14 words.
+            <turn|>
+            <|turn>user
+            User question:
+            \(userQuestion)\(imagePromptSuffix(count: currentImageCount))
+
+            Previous search summary:
+            \(summary)
+            <turn|>
+            <|turn>model
+
+            """
+        }
+    }
+
+    static func buildWebAnswerRepairPrompt(
+        userQuestion: String,
+        toolName: String,
+        toolResultSummary: String,
+        draftAnswer: String,
+        validationIssues: [String],
+        currentImageCount: Int = 0
+    ) -> String {
+        let result = compactToolResultSummary(toolResultSummary, maxCharacters: 5_200)
+        let draft = compactToolResultSummary(draftAnswer, maxCharacters: 1_600)
+        let issues = validationIssues.isEmpty
+            ? tr("输出格式或证据约束不稳定。", "The output format or evidence grounding is unstable.")
+            : validationIssues.map { "- \($0)" }.joined(separator: "\n")
+
+        if LanguageService.shared.current.isChinese {
+            return """
+            <|turn>system
+            \(defaultSystemPrompt)
+            \(currentTimeAnchorBlock())
+            你正在修复一个联网搜索回答。只允许基于下面的工具结果重写最终答案；不要调用工具；不要补充工具结果之外的信息。
+            输出契约:
+            - 必须包含“总结”和“引用网址”两个段落。
+            - 必须全程使用中文回答，即使来源页面是英文或其他语言。
+            - “总结”只写结论、关键数值和必要的不确定性；不要放 URL、host、来源括号、搜索时间或内部流程。
+            - “引用网址”只列 Markdown 链接，例如: 1. [站点名](https://example.com)。
+            - 如果证据不足，就在“总结”里明确说证据不足，并在“引用网址”列出已查来源；不要编造。
+            <turn|>
+            <|turn>user
+            用户问题：
+            \(userQuestion)\(imagePromptSuffix(count: currentImageCount))
+
+            工具 \(toolName) 返回：
+            \(result)
+
+            待修复回答：
+            \(draft)
+
+            需要修复的问题：
+            \(issues)
+
+            请只输出修复后的最终答案。
+            <turn|>
+            <|turn>model
+
+            """
+        } else {
+            return """
+            <|turn>system
+            \(defaultSystemPrompt)
+            \(currentTimeAnchorBlock())
+            You are repairing a web-grounded answer. Rewrite the final answer using only the tool result below; do not call tools; do not add facts beyond the tool result.
+            Output contract:
+            - Include exactly two visible sections: “Summary” and “Sources.”
+            - Write the entire answer in English, even if some sources are Chinese or another language.
+            - “Summary” contains only the conclusion, key values, and necessary uncertainty; no URLs, hosts, inline source parentheses, search timestamps, or internal process.
+            - “Sources” contains Markdown links only, for example: 1. [site](https://example.com).
+            - If evidence is insufficient, say so in “Summary” and list checked sources in “Sources”; do not invent.
+            <turn|>
+            <|turn>user
+            User question:
+            \(userQuestion)\(imagePromptSuffix(count: currentImageCount))
+
+            Tool \(toolName) returned:
+            \(result)
+
+            Draft answer:
+            \(draft)
+
+            Issues to fix:
+            \(issues)
+
+            Output only the repaired final answer.
+            <turn|>
+            <|turn>model
+
+            """
         }
     }
 

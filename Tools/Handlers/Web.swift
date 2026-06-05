@@ -2,24 +2,146 @@ import Foundation
 
 enum WebTools {
 
-    fileprivate struct SearchResult {
+    private enum EvidenceConfidence: String {
+        case high
+        case medium
+        case low
+    }
+
+    fileprivate struct SearchResult: Sendable {
         let title: String
         let url: String
         let snippet: String
         let source: String
         let publishedAt: String?
 
-        var dictionary: [String: Any] {
+        func dictionary(rank: Int) -> [String: Any] {
+            let homepageLike = WebTools.isHomepageLikeURL(url)
+            let hasConcreteData = WebTools.hasConcreteDataSignal(snippet)
+                || ((publishedAt?.isEmpty == false) && snippet.count >= 40)
+            let needsFetch = homepageLike || !hasConcreteData
+            let confidence: EvidenceConfidence = {
+                if homepageLike { return .low }
+                if hasConcreteData && snippet.count >= 120 { return .high }
+                if hasConcreteData { return .medium }
+                if snippet.isEmpty { return .low }
+                return .medium
+            }()
             var value: [String: Any] = [
+                "rank": rank,
                 "title": title,
                 "url": url,
+                "host": WebTools.hostName(from: url),
                 "snippet": snippet,
-                "source": source
+                "source": source,
+                "confidence": confidence.rawValue,
+                "needs_fetch": needsFetch,
+                "is_homepage_like": homepageLike,
+                "has_concrete_data": hasConcreteData,
+                "directly_usable": !homepageLike && !snippet.isEmpty && !needsFetch && confidence != .low
             ]
             if let publishedAt, !publishedAt.isEmpty {
                 value["published_at"] = publishedAt
             }
             return value
+        }
+    }
+
+    private struct SearchPlan: Sendable {
+        let originalQuery: String
+        let normalizedQuery: String
+        let queries: [String]
+        let freshness: String
+        let locale: String
+        let generatedAt: String
+        let planner: String
+        let strategy: String
+
+        var dictionary: [String: Any] {
+            [
+                "original_query": originalQuery,
+                "normalized_query": normalizedQuery,
+                "queries": queries,
+                "freshness": freshness,
+                "locale": locale,
+                "generated_at": generatedAt,
+                "planner": planner,
+                "strategy": strategy
+            ]
+        }
+    }
+
+    private struct SearchDocument: Sendable {
+        let title: String
+        let url: String
+        let host: String
+        let content: String
+        let sourceRank: Int
+        let fetchedAt: String
+        let truncated: Bool
+    }
+
+    private struct EvidenceChunk: Sendable {
+        let id: String
+        let title: String
+        let url: String
+        let host: String
+        let text: String
+        let sourceType: String
+        let sourceRank: Int
+        let score: Double
+        let matchedConcepts: Int
+        let hasConcreteData: Bool
+        let publishedAt: String?
+        let fetchedAt: String?
+
+        var dictionary: [String: Any] {
+            var value: [String: Any] = [
+                "id": id,
+                "title": title,
+                "url": url,
+                "host": host,
+                "text": text,
+                "source_type": sourceType,
+                "source_rank": sourceRank,
+                "score": score,
+                "matched_concepts": matchedConcepts,
+                "has_concrete_data": hasConcreteData
+            ]
+            if let publishedAt, !publishedAt.isEmpty {
+                value["published_at"] = publishedAt
+            }
+            if let fetchedAt, !fetchedAt.isEmpty {
+                value["fetched_at"] = fetchedAt
+            }
+            return value
+        }
+    }
+
+    private struct WebRAGPack: Sendable {
+        let sufficiency: String
+        let chunks: [EvidenceChunk]
+        let fetchedDocumentCount: Int
+        let failedFetchCount: Int
+
+        var hasSufficientEvidence: Bool {
+            sufficiency == "sufficient"
+        }
+
+        var dictionary: [String: Any] {
+            [
+                "version": "web_rag_v1",
+                "phone_ground": [
+                    "version": "phoneground_v0",
+                    "evidence_type": PhoneGroundEvidenceType.web.rawValue,
+                    "answer_contract": PhoneGroundAnswerContract.groundedSources.rawValue
+                ],
+                "sufficiency": sufficiency,
+                "chunk_count": chunks.count,
+                "fetched_document_count": fetchedDocumentCount,
+                "failed_fetch_count": failedFetchCount,
+                "chunks": chunks.map(\.dictionary)
+            ]
         }
     }
 
@@ -54,8 +176,14 @@ enum WebTools {
                 "Search the live web for current information for free; no API key required, using public search result pages with fallback sources"
             ),
             parameters: tr(
-                "query: 搜索关键词, max_results: 返回结果数（可选，默认 5，最多 8）",
-                "query: search query, max_results: number of results (optional, default 5, max 8)"
+                "query: 搜索关键词, question: 用户原问题（可选，用于保留时间/地点/约束）, planned_queries: 查询规划器生成的 2-4 条搜索词（可选）, max_results: 返回结果数（可选，默认 5，最多 8）。保留用户原始时间、地点和主体；不要把“今天/最新”机械改写成年份。",
+                "query: search query, question: original user question (optional, preserves time/location/constraints), planned_queries: 2-4 search queries generated by the query planner (optional), max_results: number of results (optional, default 5, max 8). Preserve the user's original time, location, and subject; do not mechanically rewrite “today/latest” into a year."
+            ),
+            phoneGroundContract: PhoneGroundToolContract(
+                evidenceTypes: [.web],
+                answerContract: .groundedSources,
+                freshness: .realtime,
+                supportsRecovery: true
             ),
             requiredParameters: ["query"],
             aliases: ["web_search", "search-web", "search_web"],
@@ -76,6 +204,12 @@ enum WebTools {
             parameters: tr(
                 "url: 要读取的网页 URL, max_characters: 最大返回字符数（可选，默认 6000，最多 12000）",
                 "url: webpage URL to read, max_characters: maximum returned characters (optional, default 6000, max 12000)"
+            ),
+            phoneGroundContract: PhoneGroundToolContract(
+                evidenceTypes: [.web],
+                answerContract: .groundedSources,
+                freshness: .realtime,
+                supportsRecovery: true
             ),
             requiredParameters: ["url"],
             aliases: ["web_fetch", "fetch-web", "fetch_web", "read-url"],
@@ -102,58 +236,91 @@ enum WebTools {
 
         let maxResults = clampedInt(args["max_results"], defaultValue: 5, minValue: 1, maxValue: 8)
         let fetchedAt = iso8601String(from: Date())
-        let isNewsQuery = isNewsLikeQuery(query)
-        let providerQuery = normalizedSearchQuery(query, isNewsQuery: isNewsQuery)
+        let originalQuestion = {
+            let question = stringArgument(args["question"])
+            return question.isEmpty ? query : question
+        }()
+        let providerQuery = normalizedSearchQuery(query)
+        let plannedQueries = stringArrayArgument(args["planned_queries"])
+        let plan = makeSearchPlan(
+            originalQuery: originalQuestion,
+            normalizedQuery: providerQuery,
+            fetchedAt: fetchedAt,
+            plannedQueries: plannedQueries
+        )
         var providerErrors: [String] = []
 
-        let providers: [(String, (String, Int) async throws -> [SearchResult])] = isNewsQuery
-            ? [
-                ("bing-news-rss", searchBingNewsRSS),
-                ("duckduckgo-html", searchDuckDuckGo),
-                ("bing-rss", searchBingRSS)
-            ]
-            : [
-                ("duckduckgo-html", searchDuckDuckGo),
-                ("bing-rss", searchBingRSS)
-            ]
+        let providers: [(String, (String, Int) async throws -> [SearchResult])] = [
+            ("duckduckgo-html", searchDuckDuckGo),
+            ("bing-rss", searchBingRSS),
+            ("bing-news-rss", searchBingNewsRSS)
+        ]
 
-        for (providerName, provider) in providers {
-            do {
-                let results = uniqueResults(try await provider(providerQuery, maxResults))
-                    .prefix(maxResults)
-                    .map { $0 }
-                if !results.isEmpty {
-                    return searchSuccess(
-                        query: providerQuery,
-                        fetchedAt: fetchedAt,
-                        provider: providerName,
-                        results: results,
-                        providerErrors: providerErrors,
-                        isNewsQuery: isNewsQuery
-                    )
+        var allResults: [SearchResult] = []
+        for plannedQuery in plan.queries {
+            for (providerName, provider) in providers {
+                do {
+                    let results = uniqueResults(try await provider(plannedQuery, maxResults))
+                    if results.isEmpty {
+                        providerErrors.append("\(providerName) [\(plannedQuery)]: empty")
+                    } else {
+                        allResults.append(contentsOf: results)
+                    }
+                } catch {
+                    providerErrors.append("\(providerName) [\(plannedQuery)]: \(error.localizedDescription)")
                 }
-                providerErrors.append("\(providerName): empty")
-            } catch {
-                providerErrors.append("\(providerName): \(error.localizedDescription)")
             }
         }
 
-        let summary = tr(
-            "没有找到可用的实时搜索结果。免费搜索来源可能暂时限流或没有匹配内容。",
-            "No live search results were available. Free search sources may be rate-limited or have no matching content."
-        )
-        let detail = successPayload(
-            result: summary,
+        let mergedResults = uniqueResults(allResults)
+            .sorted { lhs, rhs in
+                searchResultSort(lhs, rhs, query: originalQuestion)
+            }
+            .prefix(maxResults)
+            .map { $0 }
+        if !mergedResults.isEmpty {
+            let evidencePack = await buildEvidencePack(
+                userQuestion: originalQuestion,
+                plan: plan,
+                fetchedAt: fetchedAt,
+                results: mergedResults
+            )
+            return searchSuccess(
+                originalQuery: query,
+                userQuestion: originalQuestion,
+                providerQuery: providerQuery,
+                plan: plan,
+                fetchedAt: fetchedAt,
+                provider: "merged",
+                results: mergedResults,
+                evidencePack: evidencePack,
+                providerErrors: providerErrors
+            )
+        }
+
+        let summary = providerErrors.allSatisfy { $0.contains(": empty") }
+            ? tr(
+                "没有找到可用的实时搜索结果。",
+                "No live search results were available."
+            )
+            : tr(
+                "实时搜索失败。免费搜索来源可能暂时限流或网络超时。",
+                "Live search failed. Free search sources may be rate-limited or timed out."
+            )
+        return webFailure(
+            summary: summary,
+            detail: providerErrors.joined(separator: "\n"),
+            errorCode: "WEB_SEARCH_FAILED",
             extras: [
                 "query": providerQuery,
-                "original_query": query,
+                "original_query": originalQuestion,
+                "query_plan": plan.dictionary,
                 "fetched_at": fetchedAt,
                 "provider": "none",
                 "provider_errors": providerErrors,
                 "results": []
             ]
         )
-        return CanonicalToolResult(success: true, summary: summary, detail: detail)
     }
 
     private static func fetchCanonical(_ args: [String: Any]) async -> CanonicalToolResult {
@@ -166,7 +333,7 @@ enum WebTools {
             )
         }
 
-        guard let url = URL(string: rawURL.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+        guard let parsedURL = URL(string: rawURL.trimmingCharacters(in: .whitespacesAndNewlines)) else {
             return webFailure(
                 summary: tr("这个链接格式不对。", "That URL is not valid."),
                 detail: tr("URL 无效: \(rawURL)", "Invalid URL: \(rawURL)"),
@@ -174,13 +341,15 @@ enum WebTools {
             )
         }
 
-        guard ["http", "https"].contains((url.scheme ?? "").lowercased()) else {
+        guard ["http", "https"].contains((parsedURL.scheme ?? "").lowercased()) else {
             return webFailure(
                 summary: tr("只支持读取 http/https 网页。", "Only http/https webpages are supported."),
-                detail: tr("不支持的 URL scheme: \(url.scheme ?? "")", "Unsupported URL scheme: \(url.scheme ?? "")"),
+                detail: tr("不支持的 URL scheme: \(parsedURL.scheme ?? "")", "Unsupported URL scheme: \(parsedURL.scheme ?? "")"),
                 errorCode: "WEB_FETCH_UNSUPPORTED_SCHEME"
             )
         }
+
+        let url = httpsUpgradedURLIfNeeded(parsedURL)
 
         let maxCharacters = clampedInt(args["max_characters"], defaultValue: 6000, minValue: 500, maxValue: 12_000)
 
@@ -195,9 +364,12 @@ enum WebTools {
             let detail = successPayload(
                 result: summary,
                 extras: [
+                    "phone_ground": webPhoneGroundMetadata(status: "succeeded"),
                     "url": fetched.finalURL,
                     "title": fetched.title,
                     "content": fetched.content,
+                    "has_concrete_data": hasConcreteDataSignal(fetched.content),
+                    "looks_like_boilerplate": looksLikeBoilerplatePage(fetched.content),
                     "truncated": fetched.truncated,
                     "fetched_at": iso8601String(from: Date())
                 ]
@@ -298,7 +470,7 @@ enum WebTools {
 
     private static func fetchData(url: URL, accept: String) async throws -> Data {
         var request = URLRequest(url: url)
-        request.timeoutInterval = 15
+        request.timeoutInterval = 10
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.setValue(accept, forHTTPHeaderField: "Accept")
         request.setValue(acceptLanguageHeader(), forHTTPHeaderField: "Accept-Language")
@@ -437,6 +609,418 @@ enum WebTools {
         return normalizeWhitespace(htmlDecode(noTags))
     }
 
+    // MARK: - Ephemeral Web RAG
+
+    private static func makeSearchPlan(
+        originalQuery: String,
+        normalizedQuery: String,
+        fetchedAt: String,
+        plannedQueries: [String] = []
+    ) -> SearchPlan {
+        let cleanedPlanned = uniqueTerms(plannedQueries.map(normalizeWhitespace))
+            .filter { !$0.isEmpty && $0.count <= 120 }
+        var candidates: [String]
+        let planner: String
+        let strategy: String
+        if !cleanedPlanned.isEmpty {
+            candidates = cleanedPlanned
+            planner = "agent_model"
+            strategy = "web_rag_v2_model_query_plan"
+        } else {
+            candidates = [normalizedQuery, originalQuery]
+
+            let conceptQuery = significantQueryConcepts(originalQuery)
+                .compactMap(\.first)
+                .filter { !$0.isEmpty }
+                .joined(separator: " ")
+            if !conceptQuery.isEmpty {
+                candidates.append(conceptQuery)
+            }
+
+            if queryNeedsFreshness(originalQuery) {
+                candidates.append("\(normalizedQuery) \(currentDateQueryToken())")
+                candidates.append("\(normalizedQuery) \(currentYearQueryToken())")
+            }
+            planner = "tool_default"
+            strategy = "web_rag_v1_generic_query_plan"
+        }
+
+        let queries = uniqueTerms(candidates.map(normalizeWhitespace))
+            .filter { !$0.isEmpty }
+            .prefix(4)
+        return SearchPlan(
+            originalQuery: originalQuery,
+            normalizedQuery: normalizedQuery,
+            queries: Array(queries),
+            freshness: queryNeedsFreshness(originalQuery) ? "current" : "unspecified",
+            locale: LanguageService.shared.current.isChinese ? "zh-CN" : "en-US",
+            generatedAt: fetchedAt,
+            planner: planner,
+            strategy: strategy
+        )
+    }
+
+    private static func buildEvidencePack(
+        userQuestion: String,
+        plan: SearchPlan,
+        fetchedAt: String,
+        results: [SearchResult]
+    ) async -> WebRAGPack {
+        let snippetChunks = searchSnippetEvidenceChunks(
+            results: results,
+            fetchedAt: fetchedAt
+        )
+        let fetchOutcome = await fetchDocuments(
+            results: Array(results.prefix(4)),
+            fetchedAt: fetchedAt
+        )
+        let documentChunks = fetchOutcome.documents.flatMap { document in
+            documentEvidenceChunks(
+                document: document,
+                originalQuery: userQuestion
+            )
+        }
+        let rankedChunks = rankEvidenceChunks(
+            snippetChunks + documentChunks,
+            originalQuery: userQuestion
+        )
+        let topChunks = Array(rankedChunks.prefix(8))
+        return WebRAGPack(
+            sufficiency: evidenceSufficiency(topChunks, originalQuery: userQuestion),
+            chunks: topChunks,
+            fetchedDocumentCount: fetchOutcome.documents.count,
+            failedFetchCount: fetchOutcome.failedCount
+        )
+    }
+
+    private static func searchSnippetEvidenceChunks(
+        results: [SearchResult],
+        fetchedAt: String
+    ) -> [EvidenceChunk] {
+        results.enumerated().compactMap { index, result in
+            let text = result.snippet.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard text.count >= 40 else { return nil }
+            return EvidenceChunk(
+                id: "s\(index + 1)",
+                title: result.title,
+                url: result.url,
+                host: hostName(from: result.url),
+                text: clippedText(text, maxCharacters: 650).text,
+                sourceType: "search_snippet",
+                sourceRank: index + 1,
+                score: 0,
+                matchedConcepts: 0,
+                hasConcreteData: hasConcreteDataSignal(text),
+                publishedAt: result.publishedAt,
+                fetchedAt: fetchedAt
+            )
+        }
+    }
+
+    private static func fetchDocuments(
+        results: [SearchResult],
+        fetchedAt: String
+    ) async -> (documents: [SearchDocument], failedCount: Int) {
+        await withTaskGroup(of: SearchDocument?.self) { group in
+            for (index, result) in results.enumerated() {
+                guard let url = URL(string: result.url) else { continue }
+                group.addTask {
+                    do {
+                        let fetched = try await fetchReadablePage(url: httpsUpgradedURLIfNeeded(url), maxCharacters: 9_000)
+                        let content = fetched.content.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard content.count >= 180,
+                              !looksLikeBoilerplatePage(content) else {
+                            return nil
+                        }
+                        return SearchDocument(
+                            title: fetched.title.isEmpty ? result.title : fetched.title,
+                            url: fetched.finalURL,
+                            host: hostName(from: fetched.finalURL),
+                            content: content,
+                            sourceRank: index + 1,
+                            fetchedAt: fetchedAt,
+                            truncated: fetched.truncated
+                        )
+                    } catch {
+                        return nil
+                    }
+                }
+            }
+
+            var documents: [SearchDocument] = []
+            var completed = 0
+            for await document in group {
+                completed += 1
+                if let document {
+                    documents.append(document)
+                }
+            }
+            return (
+                documents.sorted { $0.sourceRank < $1.sourceRank },
+                max(0, completed - documents.count)
+            )
+        }
+    }
+
+    private static func documentEvidenceChunks(
+        document: SearchDocument,
+        originalQuery: String
+    ) -> [EvidenceChunk] {
+        splitIntoEvidenceWindows(document.content, maxCharacters: 600).enumerated().map { index, text in
+            EvidenceChunk(
+                id: "d\(document.sourceRank)-\(index + 1)",
+                title: document.title,
+                url: document.url,
+                host: document.host,
+                text: text,
+                sourceType: "web_page",
+                sourceRank: document.sourceRank,
+                score: 0,
+                matchedConcepts: 0,
+                hasConcreteData: hasConcreteDataSignal(text),
+                publishedAt: nil,
+                fetchedAt: document.fetchedAt
+            )
+        }
+    }
+
+    private static func splitIntoEvidenceWindows(_ content: String, maxCharacters: Int) -> [String] {
+        let paragraphs = content
+            .components(separatedBy: .newlines)
+            .map { normalizeWhitespace($0) }
+            .filter { $0.count >= 20 }
+        var chunks: [String] = []
+        var current = ""
+
+        for paragraph in paragraphs {
+            if paragraph.count > maxCharacters {
+                if !current.isEmpty {
+                    chunks.append(current)
+                    current = ""
+                }
+                var remaining = paragraph
+                while remaining.count > maxCharacters {
+                    let end = remaining.index(remaining.startIndex, offsetBy: maxCharacters)
+                    chunks.append(String(remaining[..<end]).trimmingCharacters(in: .whitespacesAndNewlines))
+                    remaining = String(remaining[end...])
+                }
+                if !remaining.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    current = remaining.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+                continue
+            }
+
+            let candidate = current.isEmpty ? paragraph : "\(current)\n\(paragraph)"
+            if candidate.count > maxCharacters {
+                chunks.append(current)
+                current = paragraph
+            } else {
+                current = candidate
+            }
+        }
+
+        if !current.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            chunks.append(current)
+        }
+        return chunks
+    }
+
+    private static func rankEvidenceChunks(
+        _ chunks: [EvidenceChunk],
+        originalQuery: String
+    ) -> [EvidenceChunk] {
+        let concepts = significantQueryConcepts(originalQuery)
+        let scored = chunks.compactMap { chunk -> EvidenceChunk? in
+            let haystack = "\(chunk.title)\n\(chunk.text)".lowercased()
+            let matched = matchedConceptCount(in: haystack, concepts: concepts)
+            guard concepts.isEmpty || matched > 0 else { return nil }
+            var score = Double(matched * 100)
+            if chunk.hasConcreteData { score += 35 }
+            score += min(80, Double(concreteDataSignalCount(chunk.text)) * 8)
+            if chunk.sourceType == "web_page" { score += 20 } else { score += 8 }
+            if queryNeedsFreshness(originalQuery),
+               chunk.publishedAt != nil || chunk.fetchedAt != nil {
+                score += 10
+            }
+            if queryNeedsFreshness(originalQuery) {
+                score += freshnessEvidenceScore(chunk: chunk)
+                score -= staleBackgroundPenalty(chunk.text)
+            }
+            score += Double(max(0, 12 - chunk.sourceRank))
+            score += min(20, Double(chunk.text.count) / 80.0)
+            score -= boilerplateChunkPenalty(chunk.text)
+            return EvidenceChunk(
+                id: chunk.id,
+                title: chunk.title,
+                url: chunk.url,
+                host: chunk.host,
+                text: chunk.text,
+                sourceType: chunk.sourceType,
+                sourceRank: chunk.sourceRank,
+                score: score,
+                matchedConcepts: matched,
+                hasConcreteData: chunk.hasConcreteData,
+                publishedAt: chunk.publishedAt,
+                fetchedAt: chunk.fetchedAt
+            )
+        }
+        return scored.sorted { lhs, rhs in
+            if lhs.score != rhs.score { return lhs.score > rhs.score }
+            return lhs.sourceRank < rhs.sourceRank
+        }
+    }
+
+    private static func matchedConceptCount(in haystack: String, concepts: [[String]]) -> Int {
+        concepts.reduce(into: 0) { count, alternatives in
+            if alternatives.contains(where: { haystack.contains($0.lowercased()) }) {
+                count += 1
+            }
+        }
+    }
+
+    private static func freshnessEvidenceScore(chunk: EvidenceChunk) -> Double {
+        let text = "\(chunk.title)\n\(chunk.text)\n\(chunk.publishedAt ?? "")".lowercased()
+        var score = 0.0
+        for token in currentFreshnessTokens() where text.contains(token.lowercased()) {
+            score += token.count >= 8 ? 55 : 35
+        }
+        let updateMarkers = ["更新", "发布时间", "发布于", "updated", "published", "as of"]
+        if updateMarkers.contains(where: { text.contains($0.lowercased()) }) {
+            score += 20
+        }
+        return min(score, 120)
+    }
+
+    private static func staleBackgroundPenalty(_ text: String) -> Double {
+        let lower = text.lowercased()
+        let markers = [
+            "年平均", "平均气温", "历史", "气候", "常年", "季度预测", "趋势预测",
+            "annual", "historical", "climate", "average", "seasonal outlook", "long-term"
+        ]
+        return Double(markers.filter { lower.contains($0) }.count * 35)
+    }
+
+    private static func concreteDataSignalCount(_ text: String) -> Int {
+        let patterns = [
+            #"(?i)\d+(?:\.\d+)?\s?(?:℃|°c|°f|%|元|美元|人民币|港元|克|公斤|千克|盎司|g\b|kg\b|oz\b|usd\b|cny\b|hkd\b|km\b|公里|m/s\b|mm\b|hpa\b|kwh\b)"#,
+            #"[$¥]\s?\d+(?:\.\d+)?"#,
+            #"\d{1,4}\s?[/~-]\s?\d{1,4}\s?(?:℃|°c|°f|元|美元|usd|cny|hkd)"#,
+            #"\d{4}[-/年]\d{1,2}[-/月]\d{1,2}日?"#,
+            #"\d{1,2}月\d{1,2}日"#,
+            #"(?i)\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4}\b"#
+        ]
+        return patterns.reduce(into: 0) { count, pattern in
+            count += regexMatches(pattern: pattern, in: text, options: [.caseInsensitive]).count
+        }
+    }
+
+    private static func boilerplateChunkPenalty(_ text: String) -> Double {
+        let lower = text.lowercased()
+        let markers = [
+            "首页", "热门城市", "当前位置", "网站声明", "联系方式", "copyright",
+            "privacy", "terms", "sign in", "login", "广告", "advertisement"
+        ]
+        var penalty = Double(markers.filter { lower.contains($0) }.count * 18)
+
+        let words = lower
+            .split { !$0.isLetter && !$0.isNumber }
+            .map(String.init)
+        if words.count >= 60 {
+            let uniqueRatio = Double(Set(words).count) / Double(words.count)
+            if uniqueRatio < 0.25 {
+                penalty += 25
+            }
+        }
+
+        let navigationSeparators = text.filter { $0 == "|" || $0 == "｜" || $0 == ">" }.count
+        if navigationSeparators >= 8 {
+            penalty += Double(min(40, navigationSeparators * 2))
+        }
+        return penalty
+    }
+
+    private static func evidenceSufficiency(
+        _ chunks: [EvidenceChunk],
+        originalQuery: String
+    ) -> String {
+        guard let best = chunks.first else { return "empty" }
+        let concepts = significantQueryConcepts(originalQuery)
+        let requiredMatches = concepts.count >= 2 ? 2 : 1
+        if best.matchedConcepts >= requiredMatches,
+           (best.hasConcreteData || chunks.count >= 2 || best.score >= 150) {
+            return "sufficient"
+        }
+        return "thin"
+    }
+
+    private static func evidencePackSummary(_ pack: WebRAGPack) -> String {
+        guard !pack.chunks.isEmpty else {
+            return tr(
+                "evidence_pack: 没有抽取到可用证据片段。",
+                "evidence_pack: no usable evidence snippets were extracted."
+            )
+        }
+        let lines = pack.chunks.prefix(8).map { chunk in
+            let text = clippedText(chunk.text, maxCharacters: 240).text
+            let meta = [
+                "id=\(chunk.id)",
+                "score=\(Int(chunk.score))",
+                "source=\(chunk.sourceType)",
+                "host=\(chunk.host)"
+            ].joined(separator: ", ")
+            return "[\(meta)] \(chunk.title)\nURL: \(chunk.url)\nEvidence: \(text)"
+        }.joined(separator: "\n\n")
+        return tr(
+            "evidence_pack sufficiency=\(pack.sufficiency), chunks=\(pack.chunks.count), fetched_documents=\(pack.fetchedDocumentCount):\n\(lines)",
+            "evidence_pack sufficiency=\(pack.sufficiency), chunks=\(pack.chunks.count), fetched_documents=\(pack.fetchedDocumentCount):\n\(lines)"
+        )
+    }
+
+    private static func queryNeedsFreshness(_ query: String) -> Bool {
+        let lower = query.lowercased()
+        let markers = [
+            "今天", "今日", "现在", "当前", "实时", "最近", "最新", "刚刚", "本周", "本月",
+            "today", "now", "current", "latest", "recent", "this week", "this month"
+        ]
+        return markers.contains { lower.contains($0) }
+    }
+
+    private static func currentDateQueryToken() -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: Date())
+    }
+
+    private static func currentFreshnessTokens() -> [String] {
+        let date = Date()
+        let calendar = Calendar(identifier: .gregorian)
+        let components = calendar.dateComponents([.year, .month, .day], from: date)
+        let year = components.year ?? 0
+        let month = components.month ?? 0
+        let day = components.day ?? 0
+        return [
+            currentDateQueryToken(),
+            String(format: "%04d/%02d/%02d", year, month, day),
+            String(format: "%02d-%02d", month, day),
+            String(format: "%02d/%02d", month, day),
+            "\(month)月\(day)日",
+            "今天",
+            "今日",
+            "today",
+            "current"
+        ]
+    }
+
+    private static func currentYearQueryToken() -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy"
+        return formatter.string(from: Date())
+    }
+
     private static func htmlDecode(_ text: String) -> String {
         var decoded = text
         let named: [String: String] = [
@@ -476,69 +1060,95 @@ enum WebTools {
     // MARK: - Formatting
 
     private static func searchSuccess(
-        query: String,
+        originalQuery: String,
+        userQuestion: String,
+        providerQuery: String,
+        plan: SearchPlan,
         fetchedAt: String,
         provider: String,
         results: [SearchResult],
-        providerErrors: [String],
-        isNewsQuery: Bool
+        evidencePack: WebRAGPack,
+        providerErrors: [String]
     ) -> CanonicalToolResult {
-        let sourceEntryFlags = results.map { isLikelySourceEntry($0) }
-        let unconfirmedFlags = results.map { isLikelyUnconfirmedEntry($0) }
-        let exactTerms = exactQueryTerms(query)
-        let exactMatchFlags = results.map { exactTerms.isEmpty || resultMatchesExactTerms($0, exactTerms: exactTerms) }
-        let hasExactMatches = exactMatchFlags.contains(true)
-        let filteredPairs = results.enumerated().filter { index, _ in
-            !(isNewsQuery && !exactTerms.isEmpty && hasExactMatches && !exactMatchFlags[index])
+        let evidenceResults = results.enumerated().map { index, item in
+            var evidence = item.dictionary(rank: index + 1)
+            evidence["query_relevant"] = searchResultMatchesQuery(item, query: userQuestion)
+            return evidence
         }
-        let resultPairs = filteredPairs.isEmpty ? Array(results.enumerated()) : filteredPairs
-        let onlySourceEntries = isNewsQuery && !resultPairs.isEmpty && resultPairs.allSatisfy { index, _ in sourceEntryFlags[index] }
-        let hasUnconfirmedVisibleResult = resultPairs.contains { index, _ in unconfirmedFlags[index] }
-        let resultLines = resultPairs.map { index, item in
+        let directlyUsableResults = evidenceResults.filter { isDirectlyUsableSearchEvidence($0) }
+        let needsFetchResults = evidenceResults.filter { ($0["needs_fetch"] as? Bool) == true }
+        let directEvidenceSufficient = hasSufficientDirectEvidence(
+            directCount: directlyUsableResults.count,
+            needsFetchCount: needsFetchResults.count,
+            totalCount: evidenceResults.count
+        )
+        let answerability = evidencePack.hasSufficientEvidence || directEvidenceSufficient ? "direct" : "needs_fetch"
+        let resultLines = results.enumerated().map { index, item in
             let title = clippedText(item.title, maxCharacters: 100).text
+            let evidence = evidenceResults[index]
             var labels: [String] = []
-            if isNewsQuery && sourceEntryFlags[index] {
-                labels.append(tr("可查看来源", "source to check"))
+            if let confidence = evidence["confidence"] as? String {
+                labels.append("confidence:\(confidence)")
             }
-            if isNewsQuery && unconfirmedFlags[index] {
-                labels.append(tr("未确认/传闻", "unconfirmed/rumor"))
+            if evidence["directly_usable"] as? Bool == true {
+                labels.append(tr("可直接用于回答", "directly usable"))
             }
-            if isNewsQuery && !exactTerms.isEmpty && !resultMatchesExactTerms(item, exactTerms: exactTerms) {
-                labels.append(tr("相关但非精确匹配", "related, not exact match"))
+            if evidence["needs_fetch"] as? Bool == true {
+                labels.append(tr("建议读取原文", "fetch recommended"))
+            }
+            if evidence["is_homepage_like"] as? Bool == true {
+                labels.append(tr("可能是首页/入口页", "likely homepage/index"))
+            }
+            if evidence["query_relevant"] as? Bool == false {
+                labels.append(tr("主题相关性低", "low query relevance"))
             }
             let labelPrefix = labels.isEmpty
                 ? ""
                 : labels.map { "[\($0)]" }.joined() + " "
-            let exactMismatch = isNewsQuery && !exactTerms.isEmpty && !resultMatchesExactTerms(item, exactTerms: exactTerms)
-            let shouldHideSnippet = isNewsQuery && (sourceEntryFlags[index] || exactMismatch)
-            let snippet = shouldHideSnippet ? "" : clippedText(item.snippet, maxCharacters: 180).text
+            let snippet = clippedText(item.snippet, maxCharacters: 180).text
             let snippetPart = snippet.isEmpty ? "" : "\n   \(snippet)"
             let datePart = (item.publishedAt ?? "").isEmpty ? "" : "\n   \(tr("时间", "Date")): \(item.publishedAt!)"
             return "\(index + 1). \(labelPrefix)\(title)\n   \(tr("来源URL", "Source URL")): \(item.url)\(datePart)\(snippetPart)"
         }.joined(separator: "\n")
 
-        let summary: String
-        if onlySourceEntries {
-            summary = tr(
-                "实时搜索「\(query)」没有返回明确可核验的最新新闻条目（来源: \(provider)，搜索时间: \(fetchedAt)）。以下结果主要是首页、频道页或站点简介，只能当作可查看来源，不能总结成最新新闻事实：\n\(resultLines)",
-                "Live search for \"\(query)\" did not return clearly verifiable latest news items (source: \(provider), fetched at: \(fetchedAt)). The results below are mostly homepages, category pages, or site descriptions; treat them only as sources to check, not as latest news facts:\n\(resultLines)"
+        let ragGuidance = evidencePack.hasSufficientEvidence
+            ? tr(
+                "已抓取并抽取可用证据片段。最终回答必须只基于 evidence_pack.chunks；每个关键结论保留对应来源 URL/host。",
+                "Readable pages were fetched and usable evidence snippets were extracted. The final answer must be grounded only in evidence_pack.chunks, preserving source URLs/hosts for key claims."
             )
-        } else if isNewsQuery && hasUnconfirmedVisibleResult {
-            summary = tr(
-                "实时搜索「\(query)」找到 \(resultPairs.count) 条可用结果（来源: \(provider)，搜索时间: \(fetchedAt)）。注意：带有[未确认/传闻]的条目不是官方确认；回答第一句应说明未找到官方确认或仅有未确认传闻，每条必须保留来源 URL；只能表述为“搜索结果显示有传闻/报道”，不能说成已经发布或确定会发布。带有[相关但非精确匹配]的条目不能当作用户所问对象的消息。首页、频道页或站点简介也不能当作最新新闻事实。\n\(resultLines)",
-                "Live search for \"\(query)\" found \(resultPairs.count) usable result(s) (source: \(provider), fetched at: \(fetchedAt)). Note: entries labeled [unconfirmed/rumor] are not official confirmation; the first sentence should say no official confirmation was found or only unconfirmed rumors were found, and every item must keep its source URL. Describe them only as rumors/reports from search results, not as released or certain. Entries labeled [related, not exact match] must not be treated as news about the object the user asked for. Homepages, category pages, or site descriptions are also not latest news facts.\n\(resultLines)"
+            : tr(
+                "已尝试抓取并抽取证据，但证据仍偏薄；如果搜索结果中还有明显更相关的 URL，可读取原文，否则说明证据不足。",
+                "Page fetch and evidence extraction were attempted, but evidence is still thin; fetch another clearly relevant URL if available, otherwise state that evidence is insufficient."
             )
-        } else {
-            summary = tr(
-                "实时搜索「\(query)」找到 \(resultPairs.count) 条结果（来源: \(provider)，搜索时间: \(fetchedAt)）：\n注意：以下是搜索结果条目，不等于已核实结论；首页、频道页或站点简介只能当作可查看来源，不能当作最新新闻事实。\n\(resultLines)",
-                "Live search for \"\(query)\" found \(resultPairs.count) result(s) (source: \(provider), fetched at: \(fetchedAt)):\nNote: these are search result entries, not verified conclusions; homepages, category pages, or site descriptions are only possible sources, not latest news facts.\n\(resultLines)"
+        let evidenceGuidance = !directEvidenceSufficient && !evidencePack.hasSufficientEvidence
+            ? tr(
+                "当前结果还不足以直接给出结论；请选择最相关的一个来源调用 web-fetch 读取正文。如果无法读取或正文仍不足，再明确说明没有足够可用结果。",
+                "The current results are not enough for a direct conclusion; choose the most relevant source and call web-fetch to read the page. If fetching fails or the page is still insufficient, clearly say there is no sufficiently usable result."
             )
-        }
+            : tr(
+                "其中 \(directlyUsableResults.count) 条结果有可直接使用的摘要/来源。回答时先给结论，保留来源 URL 和搜索时间；如果不同来源不一致，用不确定语气说明。",
+                "\(directlyUsableResults.count) result(s) have directly usable snippets/sources. Start with the conclusion, preserve source URLs and search time, and use uncertain wording if sources disagree."
+            )
+        let summary = tr(
+            "实时搜索「\(originalQuery)」找到 \(results.count) 条结果（来源: \(provider)，搜索词: \(providerQuery)，搜索时间: \(fetchedAt)，answerability=\(answerability)）：\n\(ragGuidance)\n\(evidencePackSummary(evidencePack))\n\n\(evidenceGuidance)\n注意：以下是搜索结果条目，不等于已核实结论；confidence=low 或标为[建议读取原文]/[可能是首页/入口页]的结果不能直接当作事实结论。\n\(resultLines)",
+            "Live search for \"\(originalQuery)\" found \(results.count) result(s) (source: \(provider), query: \(providerQuery), fetched at: \(fetchedAt), answerability=\(answerability)):\n\(ragGuidance)\n\(evidencePackSummary(evidencePack))\n\n\(evidenceGuidance)\nNote: these are search result entries, not verified conclusions; confidence=low or items labeled [fetch recommended]/[likely homepage/index] must not be treated as final facts.\n\(resultLines)"
+        )
         var extras: [String: Any] = [
-            "query": query,
+            "query": providerQuery,
+            "original_query": originalQuery,
+            "user_question": userQuestion,
+            "query_plan": plan.dictionary,
             "fetched_at": fetchedAt,
             "provider": provider,
-            "results": results.map(\.dictionary)
+            "phone_ground": webPhoneGroundMetadata(status: "succeeded"),
+            "rag_version": "web_rag_v1",
+            "evidence_pack": evidencePack.dictionary,
+            "answerability": answerability,
+            "direct_evidence_sufficient": evidencePack.hasSufficientEvidence || directEvidenceSufficient,
+            "search_direct_evidence_sufficient": directEvidenceSufficient,
+            "direct_answer_result_count": directlyUsableResults.count,
+            "needs_fetch_result_count": needsFetchResults.count,
+            "results": evidenceResults
         ]
         if !providerErrors.isEmpty {
             extras["provider_errors"] = providerErrors
@@ -562,10 +1172,18 @@ enum WebTools {
         )
     }
 
-    private static func webFailure(summary: String, detail: String, errorCode: String) -> CanonicalToolResult {
+    private static func webFailure(
+        summary: String,
+        detail: String,
+        errorCode: String,
+        extras: [String: Any] = [:]
+    ) -> CanonicalToolResult {
+        var payloadExtras = extras
+        payloadExtras["error_code"] = errorCode
+        payloadExtras["phone_ground"] = webPhoneGroundMetadata(status: "failed")
         let payload = failurePayload(
             error: detail,
-            extras: ["error_code": errorCode]
+            extras: payloadExtras
         )
         return CanonicalToolResult(
             success: false,
@@ -575,10 +1193,47 @@ enum WebTools {
         )
     }
 
+    private static func webPhoneGroundMetadata(status: String) -> [String: Any] {
+        [
+            "version": "phoneground_v0",
+            "evidence_type": PhoneGroundEvidenceType.web.rawValue,
+            "answer_contract": PhoneGroundAnswerContract.groundedSources.rawValue,
+            "freshness": PhoneGroundFreshnessRequirement.realtime.rawValue,
+            "privacy": "public_web",
+            "status": status
+        ]
+    }
+
     // MARK: - Utilities
 
     private static func stringArgument(_ value: Any?) -> String {
         (value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    private static func stringArrayArgument(_ value: Any?) -> [String] {
+        if let array = value as? [String] {
+            return array.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+        }
+        if let array = value as? [Any] {
+            return array.compactMap { $0 as? String }
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+        }
+        if let string = value as? String {
+            let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return [] }
+            if let data = trimmed.data(using: .utf8),
+               let array = try? JSONSerialization.jsonObject(with: data) as? [String] {
+                return array.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+            }
+            return trimmed
+                .components(separatedBy: "\n")
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+        }
+        return []
     }
 
     private static func clampedInt(_ value: Any?, defaultValue: Int, minValue: Int, maxValue: Int) -> Int {
@@ -615,6 +1270,214 @@ enum WebTools {
         return url.absoluteString
     }
 
+    private static func httpsUpgradedURLIfNeeded(_ url: URL) -> URL {
+        guard (url.scheme ?? "").lowercased() == "http",
+              var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return url
+        }
+        components.scheme = "https"
+        return components.url ?? url
+    }
+
+    private static func hostName(from rawURL: String) -> String {
+        guard let url = URL(string: rawURL),
+              let host = url.host else {
+            return ""
+        }
+        return host
+    }
+
+    private static func isHomepageLikeURL(_ rawURL: String) -> Bool {
+        guard let url = URL(string: rawURL) else { return false }
+        let components = url.path
+            .split(separator: "/")
+            .filter { !$0.isEmpty }
+        return components.count <= 1
+    }
+
+    private static func hasConcreteDataSignal(_ text: String) -> Bool {
+        let patterns = [
+            #"(?i)\d+(?:\.\d+)?\s?(?:℃|°c|°f|%|元|美元|人民币|港元|克|公斤|千克|盎司|g\b|kg\b|oz\b|usd\b|cny\b|hkd\b|km\b|公里|m/s\b|mm\b|hpa\b|kwh\b)"#,
+            #"[$¥]\s?\d+(?:\.\d+)?"#,
+            #"\d{1,4}\s?[/~-]\s?\d{1,4}\s?(?:℃|°c|°f|元|美元|usd|cny|hkd)"#,
+            #"\d{4}[-/年]\d{1,2}[-/月]\d{1,2}日?"#,
+            #"\d{1,2}月\d{1,2}日"#,
+            #"(?i)\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4}\b"#
+        ]
+        return patterns.contains { pattern in
+            text.range(of: pattern, options: .regularExpression) != nil
+        }
+    }
+
+    private static func looksLikeBoilerplatePage(_ text: String) -> Bool {
+        let lower = text.lowercased()
+        let markers = [
+            "please try another search",
+            "popular searches",
+            "get 50% off",
+            "free sign up",
+            "sign in free sign up",
+            "open in app",
+            "enable javascript",
+            "please enable javascript",
+            "access denied",
+            "captcha",
+            "temporarily unavailable",
+            "oops, something went wrong",
+            "something went wrong",
+            "advertisement advertisement advertisement",
+            "loading score",
+            "載入比分中",
+            "加载比分中",
+            "載入中",
+            "加载中",
+            "著作權所有",
+            "服務條款",
+            "服务条款",
+            "會員中心",
+            "会员中心"
+        ]
+        if markers.contains(where: { lower.contains($0) }) {
+            return true
+        }
+
+        let words = lower
+            .split { !$0.isLetter && !$0.isNumber }
+            .map(String.init)
+        guard words.count >= 80 else { return false }
+        let uniqueRatio = Double(Set(words).count) / Double(words.count)
+        let navigationSeparators = text.filter { $0 == "|" || $0 == "｜" }.count
+        return uniqueRatio < 0.18 || navigationSeparators >= 18
+    }
+
+    private static func isDirectlyUsableSearchEvidence(_ evidence: [String: Any]) -> Bool {
+        let snippet = (evidence["snippet"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !snippet.isEmpty else { return false }
+        guard (evidence["is_homepage_like"] as? Bool) != true else { return false }
+        guard (evidence["needs_fetch"] as? Bool) != true else { return false }
+        guard (evidence["confidence"] as? String) != EvidenceConfidence.low.rawValue else { return false }
+        guard (evidence["query_relevant"] as? Bool) != false else { return false }
+        return true
+    }
+
+    private static func hasSufficientDirectEvidence(
+        directCount: Int,
+        needsFetchCount: Int,
+        totalCount: Int
+    ) -> Bool {
+        guard directCount > 0 else { return false }
+
+        // One isolated snippet among mostly fetch-required entries is too weak for current/live facts.
+        // This is a coverage rule, not a domain keyword rule: if search evidence is mixed and thin,
+        // the agent should read a source page before producing the final answer.
+        if directCount == 1 {
+            return needsFetchCount == 0 || totalCount == 1
+        }
+
+        // Direct answer should mean the returned snippets broadly cover the question.
+        // If multiple top results still require reading the page, keep the agent in
+        // evidence-gathering mode instead of letting a thin snippet decide the answer.
+        return needsFetchCount <= 1 && directCount >= max(2, totalCount - 1)
+    }
+
+    private static func searchResultSort(_ lhs: SearchResult, _ rhs: SearchResult, query: String) -> Bool {
+        let lhsRelevant = searchResultMatchesQuery(lhs, query: query)
+        let rhsRelevant = searchResultMatchesQuery(rhs, query: query)
+        if lhsRelevant != rhsRelevant { return lhsRelevant }
+
+        let lhsRank = searchResultPriority(lhs)
+        let rhsRank = searchResultPriority(rhs)
+        if lhsRank != rhsRank { return lhsRank < rhsRank }
+        return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+    }
+
+    private static func searchResultPriority(_ result: SearchResult) -> Int {
+        let evidence = result.dictionary(rank: 0)
+        if evidence["directly_usable"] as? Bool == true { return 0 }
+        if evidence["is_homepage_like"] as? Bool == true { return 4 }
+        if evidence["has_concrete_data"] as? Bool == true { return 1 }
+        if (result.publishedAt?.isEmpty == false) { return 2 }
+        if !result.snippet.isEmpty { return 3 }
+        return 5
+    }
+
+    private static func searchResultMatchesQuery(_ result: SearchResult, query: String) -> Bool {
+        let concepts = significantQueryConcepts(query)
+        guard !concepts.isEmpty else { return true }
+        let haystack = "\(result.title)\n\(result.snippet)".lowercased()
+        let matchCount = concepts.reduce(into: 0) { count, alternatives in
+            if alternatives.contains(where: { haystack.contains($0.lowercased()) }) {
+                count += 1
+            }
+        }
+        let requiredMatches = concepts.count >= 2 ? 2 : 1
+        return matchCount >= requiredMatches
+    }
+
+    private static func significantQueryConcepts(_ query: String) -> [[String]] {
+        var normalized = query.lowercased()
+        let stopPhrases = [
+            "帮我", "请问", "查一下", "搜一下", "搜索", "查询", "一下",
+            "今天", "今日", "现在", "当前", "最近", "最新", "多少", "如何", "怎么样", "怎样",
+            "的是", "的吗", "是吗", "是", "吗", "呢", "么",
+            "the", "and", "for", "with", "to", "from", "what", "whats", "what's", "today", "current", "latest",
+            "search", "look", "lookup", "find", "are", "is", "was", "were", "about", "please"
+        ]
+        for phrase in stopPhrases {
+            normalized = normalized.replacingOccurrences(of: phrase, with: " ")
+        }
+
+        var concepts: [[String]] = []
+        if let regex = try? NSRegularExpression(pattern: #"[\p{Han}]{2,}"#) {
+            let nsRange = NSRange(normalized.startIndex..., in: normalized)
+            for match in regex.matches(in: normalized, range: nsRange) {
+                guard let range = Range(match.range, in: normalized) else { continue }
+                let chunk = String(normalized[range])
+                var alternatives = [chunk]
+                let chars = Array(chunk)
+                if chars.count > 2 {
+                    alternatives.append(String(chars.prefix(2)))
+                    alternatives.append(String(chars.suffix(2)))
+                    for index in 0..<(chars.count - 1) {
+                        alternatives.append(String(chars[index...(index + 1)]))
+                    }
+                }
+                concepts.append(uniqueTerms(alternatives))
+            }
+        }
+
+        concepts.append(contentsOf: normalized
+            .split { !$0.isLetter && !$0.isNumber }
+            .map(String.init)
+            .filter { $0.count >= 2 }
+            .filter { !isAllHan($0) }
+            .map { [$0] })
+
+        var seen = Set<String>()
+        return concepts.compactMap { alternatives in
+            let cleaned = uniqueTerms(alternatives).filter { $0.count >= 2 }
+            guard !cleaned.isEmpty else { return nil }
+            let key = cleaned.joined(separator: "|")
+            guard !seen.contains(key) else { return nil }
+            seen.insert(key)
+            return cleaned
+        }
+    }
+
+    private static func uniqueTerms(_ terms: [String]) -> [String] {
+        var seen = Set<String>()
+        return terms.filter { term in
+            guard !seen.contains(term) else { return false }
+            seen.insert(term)
+            return true
+        }
+    }
+
+    private static func isAllHan(_ text: String) -> Bool {
+        text.range(of: #"^[\p{Han}]+$"#, options: .regularExpression) != nil
+    }
+
     private static func uniqueResults(_ results: [SearchResult]) -> [SearchResult] {
         var seen = Set<String>()
         var output: [SearchResult] = []
@@ -649,17 +1512,7 @@ enum WebTools {
             : "en-US,en;q=0.9"
     }
 
-    private static func isNewsLikeQuery(_ query: String) -> Bool {
-        let lower = query.lowercased()
-        let markers = [
-            "新闻", "最新", "今天", "今日", "消息", "发布", "宣布", "动态", "快讯", "最近", "近况",
-            "news", "latest", "current", "today", "announced", "announcement", "release", "released",
-            "launch", "launched", "update", "recent"
-        ]
-        return markers.contains { lower.contains($0) }
-    }
-
-    private static func normalizedSearchQuery(_ query: String, isNewsQuery: Bool) -> String {
+    private static func normalizedSearchQuery(_ query: String) -> String {
         var value = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let commandPatterns = [
             #"(?i)\bsearch\s+the\s+(web|internet)\s*(for|:)?\s*"#,
@@ -671,99 +1524,12 @@ enum WebTools {
             value = value.replacingOccurrences(of: pattern, with: "", options: .regularExpression)
         }
 
-        if isNewsQuery {
-            let timeModifierPatterns = [
-                #"(?i)\btoday'?s\b"#,
-                #"(?i)\btoday\b"#,
-                #"(?i)\bcurrent\b"#,
-                #"今天|今日"#
-            ]
-            for pattern in timeModifierPatterns {
-                value = value.replacingOccurrences(of: pattern, with: " ", options: .regularExpression)
-            }
-        }
-
         value = normalizeWhitespace(value)
-        guard !value.isEmpty else { return query }
-
-        if isNewsQuery, firstCapture(pattern: #"20\d{2}"#, in: value) == nil {
-            let year = Calendar.current.component(.year, from: Date())
-            value += " \(year)"
-        }
-        return value
-    }
-
-    private static func isLikelySourceEntry(_ result: SearchResult) -> Bool {
-        if let publishedAt = result.publishedAt, !publishedAt.isEmpty {
-            return false
-        }
-
-        let text = "\(result.title) \(result.snippet)".lowercased()
-        let sourcePhrases = [
-            "首页", "主页", "频道", "栏目", "网站", "平台", "门户", "新闻头条", "行业动态",
-            "总览", "提供", "覆盖", "致力于", "内容涵盖", "每日更新", "一站式", "快速播报", "查看", "模型卡", "评测", "参数",
-            "home", "homepage", "category", "channel", "portal", "website", "latest stories",
-            "your online source", "covers", "covering", "provides", "daily updates", "model card", "specs", "columns"
-        ]
-        if sourcePhrases.contains(where: { text.contains($0) }) {
-            return true
-        }
-
-        guard let url = URL(string: result.url) else {
-            return false
-        }
-        let pathComponents = url.path
-            .split(separator: "/")
-            .filter { !$0.isEmpty }
-        let shallowPath = pathComponents.count <= 2
-        let genericTitlePhrases = [
-            "新闻", "资讯", "动态", "科技", "ai", "news", "latest", "updates", "stories"
-        ]
-        return shallowPath && genericTitlePhrases.contains { text.contains($0) }
-    }
-
-    private static func isLikelyUnconfirmedEntry(_ result: SearchResult) -> Bool {
-        let text = "\(result.title) \(result.snippet)".lowercased()
-        let markers = [
-            "未官宣", "被曝", "曝光", "传闻", "据称", "有望", "可能", "爆料", "泄露", "流出",
-            "rumor", "rumour", "leak", "leaked", "reportedly", "unannounced", "expected to", "could",
-            "may already", "may be", "may have", "may soon", "may launch", "may release"
-        ]
-        return markers.contains { text.contains($0) }
-    }
-
-    private static func exactQueryTerms(_ query: String) -> [String] {
-        let matches = regexMatches(
-            pattern: #"[A-Za-z]+[- ]?\d+(?:\.\d+)+"#,
-            in: query,
-            options: [.caseInsensitive]
-        )
-        var seen = Set<String>()
-        var terms: [String] = []
-        for match in matches {
-            let term = substring(query, nsRange: match.range)
-                .lowercased()
-                .replacingOccurrences(of: " ", with: "-")
-            guard !term.isEmpty, !seen.contains(term) else { continue }
-            seen.insert(term)
-            terms.append(term)
-        }
-        return terms
-    }
-
-    private static func resultMatchesExactTerms(_ result: SearchResult, exactTerms: [String]) -> Bool {
-        let text = "\(result.title) \(result.snippet) \(result.url)"
-            .lowercased()
-            .replacingOccurrences(of: " ", with: "-")
-        return exactTerms.allSatisfy { text.contains($0) }
+        return value.isEmpty ? query : value
     }
 
     private static func newsSearchQuery(_ query: String) -> String {
-        if firstCapture(pattern: #"20\d{2}"#, in: query) != nil {
-            return query
-        }
-        let year = Calendar.current.component(.year, from: Date())
-        return "\(query) \(year)"
+        query
     }
 
     private static func regexMatches(

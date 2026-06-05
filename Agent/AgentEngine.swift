@@ -1,5 +1,6 @@
 import CoreImage
 import Foundation
+import Observation
 #if canImport(UIKit)
 import UIKit
 // 跨平台 image 类型别名 —— iOS 真编 UIKit 路径, macOS CLI 自动走 CIImage.
@@ -52,12 +53,19 @@ class AgentEngine {
 
     var messages: [ChatMessage] = [] {
         didSet {
-            sessionStore.scheduleSave(messages: messages)
+            messagesRevision &+= 1
+            sessionStore.scheduleSave { [weak self] in
+                self?.messages ?? []
+            }
         }
     }
+    var messagesRevision = 0
     var isProcessing = false
     var didSetup = false
     var config = ModelConfig()
+
+    @ObservationIgnored private var pendingStreamingContentByMessageID: [UUID: String] = [:]
+    @ObservationIgnored private var streamingUIFlushTask: Task<Void, Never>?
 
     // MARK: - Skill System
 
@@ -71,6 +79,8 @@ class AgentEngine {
     let plannerRevision = "planner-v3-local-selection"
     var lastTurnMatchedSkillIds: [String] = []
     var lastTurnRawModelOutputs: [String] = []
+    var lastTurnPromptDiagnostics: [String] = []
+    var lastTurnStreamingPrompt: String?
     let legacyContextBudgetPlanner: ContextBudgetPlanner
     let hotfixContextBudgetPlanner: ContextBudgetPlanner
     var promptObservationBuffer = HotfixTurnObservationRingBuffer()
@@ -88,6 +98,50 @@ class AgentEngine {
                      samplePrompt: $0.samplePrompt,
                      chipPrompt: $0.chipPrompt,
                      chipLabel: $0.chipLabel)
+        }
+    }
+
+    // MARK: - Streaming UI Commit
+    //
+    // LLM token streams can arrive much faster than the display refresh budget.
+    // Updating `messages` on every token forces SwiftUI to diff/layout the chat list
+    // and reschedule session persistence for every tiny text append. Keep generation
+    // lossless, but commit visible text to the observable array at a bounded cadence.
+
+    func enqueueStreamingMessageContentUpdate(at index: Int, content: String) {
+        guard messages.indices.contains(index),
+              messages[index].role == .assistant else { return }
+
+        let messageID = messages[index].id
+        pendingStreamingContentByMessageID[messageID] = content
+
+        guard streamingUIFlushTask == nil else { return }
+        streamingUIFlushTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(42))
+            self?.flushPendingStreamingMessageContentUpdates()
+        }
+    }
+
+    func setStreamingMessageContent(at index: Int, content: String) {
+        guard messages.indices.contains(index) else { return }
+
+        let messageID = messages[index].id
+        pendingStreamingContentByMessageID.removeValue(forKey: messageID)
+        messages[index].update(content: content)
+    }
+
+    func flushPendingStreamingMessageContentUpdates() {
+        streamingUIFlushTask?.cancel()
+        streamingUIFlushTask = nil
+
+        guard !pendingStreamingContentByMessageID.isEmpty else { return }
+        let pending = pendingStreamingContentByMessageID
+        pendingStreamingContentByMessageID.removeAll(keepingCapacity: true)
+
+        for (messageID, content) in pending {
+            guard let index = messages.firstIndex(where: { $0.id == messageID }),
+                  messages[index].role == .assistant else { continue }
+            messages[index].update(content: content)
         }
     }
 

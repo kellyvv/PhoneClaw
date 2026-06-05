@@ -41,8 +41,8 @@ examples:
     scenario: "Fetch a public webpage"
 
 # Sync anchor (see scripts/check-skill-sync.sh):
-translation-source-commit: e61fd26
-translation-source-sha256: 3696b06cbd9ab32d63fb1549a0e1a2b936d30ffec44cef0331d1093897412325
+translation-source-commit: f68df9b
+translation-source-sha256: 4280bb053488ffa38d74db789a1fdc59f5dc2f259a2fc8025905cc33d5d8156a
 ---
 
 # Web Search
@@ -62,22 +62,21 @@ You retrieve public web information only when the user clearly needs current inf
 
 ## Search Flow
 
-1. Turn the user's need into a concise search query, preserving the primary entity/event, time range, and location; for "latest/today/news" requests, include the current year or date by default. Treat "today", "today's", "latest", and "current" as time modifiers, not search subjects; for "today's AI news", search for "artificial intelligence news 2026" or "AI news June 1 2026", never "today" alone.
+1. Turn the user's need into a concise search query while preserving the user's original subject, location, and time expression. Do not mechanically rewrite "today/latest/current" into a year, and do not remove relative time expressions the user provided; only preserve explicit dates or ranges when the user gives them.
 2. By default call `web-search` with `max_results` = 5.
-3. First decide whether the results actually answer the user's question: usable news/fact entries should have a concrete title, event, source, and preferably a date.
-4. If the user asks to summarize a specific webpage, or one search result is clearly the primary source but the snippet is insufficient, you may call `web-fetch` once for that URL.
-5. If results are only homepages, category pages, search entry points, or site descriptions, do not present them as "latest news"; say no clearly verifiable item was found, and list those links only as sources to check.
-6. If a result is labeled "related, not exact match", do not treat it as news about the object the user asked for.
-7. Fetch at most one webpage in the same turn. Do not repeatedly fetch multiple pages.
+3. First decide whether the results actually answer the user's question: prefer results with `confidence=high/medium` whose snippets directly support the conclusion.
+4. If a result has `needs_fetch=true`, `confidence=low`, `is_homepage_like=true`, or the snippet is insufficient to support a conclusion, do not present it as fact; choose the most relevant result and call `web-fetch` to read the page.
+5. If the user asks to summarize a specific webpage, call `web-fetch` directly.
+6. Fetch at most one webpage in the same turn. Do not repeatedly fetch multiple pages; if evidence is still insufficient, say that no sufficiently verifiable result was found.
 
 ## Answer Requirements
 
 - Answer only from tool-returned titles, snippets, page text, and URLs. Do not invent details the tool did not provide.
 - Keep source links or source names in the answer; for current information, mention the search time or result time when available.
-- Start with the conclusion: either "Found X usable result(s)" or "This search did not return clearly verifiable latest information."
-- For each usable result, use one line with "fact/update + source + date/search time + URL"; news, rumor, and release-related results must include the URL, and you must not repeat media self-descriptions or category blurbs.
-- If free search sources are rate-limited, return no results, or a page cannot be read, clearly say that live search has no usable result right now. Do not use old knowledge while pretending it is current.
-- For a specific product, model, or company release, prioritize official sites, official blogs, release notes, or concrete mainstream-media reports; if no official or dated source appears, say it is unconfirmed. Results using "unannounced/reported/rumor/allegedly/expected/may/could" wording must be treated as rumors or reports, not as released facts.
+- Start with the conclusion when evidence supports it; if evidence is insufficient, say "This search did not return sufficiently verifiable results."
+- For each usable result, use one line with "fact/update + source + date/search time + URL".
+- If free search sources are rate-limited, return no results, a page cannot be read, or only low-confidence results are available, clearly say that live search has no sufficiently usable result right now. Do not use old knowledge while pretending it is current.
+- For a specific product, model, or company release, prioritize original sources, official sources, or page-text evidence returned by the tools; if no verifiable source appears, say it is unconfirmed.
 - For medical, legal, financial, or policy questions, summarize search results and advise the user to verify the original sources.
 
 ## Call Format

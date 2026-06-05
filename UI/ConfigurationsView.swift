@@ -1205,18 +1205,17 @@ struct ConfigurationsView: View {
     ) -> some View {
         let safeTotal = max(totalFiles, 1)
         let metrics = engine.installer.downloadProgress[modelID]
-        let activeFileFraction = metrics?.fractionCompleted.map { min(1, max(0, $0)) } ?? 0
-        let value = min(Double(safeTotal), Double(min(completedFiles, safeTotal)) + activeFileFraction)
+        let fileFraction = Double(min(completedFiles, safeTotal)) / Double(safeTotal)
+        let overallFraction = metrics?.fractionCompleted.map { min(1, max(0, $0)) } ?? fileFraction
 
         return VStack(alignment: .leading, spacing: 5) {
             GeometryReader { proxy in
-                let fraction = min(1, max(0, value / Double(safeTotal)))
                 ZStack(alignment: .leading) {
                     Capsule()
                         .fill(SettingsStyle.hairline)
                     Capsule()
                         .fill(Theme.accentMuted.opacity(0.92))
-                        .frame(width: max(3, proxy.size.width * fraction))
+                        .frame(width: max(3, proxy.size.width * overallFraction))
                 }
             }
             .frame(height: 3)
@@ -1278,6 +1277,8 @@ struct ConfigurationsView: View {
             return tr("提醒事项", "Reminders")
         case .contacts:
             return tr("通讯录", "Contacts")
+        case .health:
+            return tr("健康数据", "Health Data")
         }
     }
 
@@ -1295,6 +1296,8 @@ struct ConfigurationsView: View {
             return tr("允许创建提醒和待办", "Allow creating reminders and tasks")
         case .contacts:
             return tr("允许保存和更新联系人", "Allow saving and updating contacts")
+        case .health:
+            return tr("允许读取步数、心率、睡眠、体重等健康数据", "Allow reading steps, heart rate, sleep, weight, and other Health data")
         }
     }
 
@@ -1726,6 +1729,8 @@ private enum SettingsInfoTopic: Identifiable {
             return tr("提醒事项", "Reminders")
         case .contacts:
             return tr("通讯录", "Contacts")
+        case .health:
+            return tr("健康数据", "Health Data")
         }
     }
 
@@ -1743,6 +1748,8 @@ private enum SettingsInfoTopic: Identifiable {
             return tr("用于创建提醒和待办。", "Used to create reminders and tasks.")
         case .contacts:
             return tr("用于保存和更新联系人。", "Used to save and update contacts.")
+        case .health:
+            return tr("用于读取步数、距离、活动能量、心率、睡眠、运动、体重和心率变异性，并在本地生成摘要。", "Used to read steps, distance, active energy, heart rate, sleep, workouts, weight, and HRV for local summaries.")
         }
     }
 }

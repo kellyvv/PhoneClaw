@@ -135,7 +135,7 @@ struct ConversationMemoryPolicy {
         if let skillResultIndex = priorHistory.firstIndex(where: { $0.role == .skillResult }) {
             var trimmed = priorHistory
             let message = trimmed[skillResultIndex]
-            if let toolName = message.skillName {
+            if message.skillResultKind == .toolExecution, let toolName = message.skillName {
                 let summary = canonicalToolResult(toolName: toolName, toolResult: message.content).summary
                 let normalizedSummary = summary.trimmingCharacters(in: .whitespacesAndNewlines)
                 let normalizedDetail = message.content.trimmingCharacters(in: .whitespacesAndNewlines)

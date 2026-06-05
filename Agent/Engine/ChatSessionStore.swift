@@ -60,13 +60,22 @@ final class ChatSessionStore {
     // MARK: - Save Scheduling
 
     /// 延迟保存 (debounce 350ms)。调用方在 messages.didSet 中触发。
-    func scheduleSave(messages: [ChatMessage]) {
+    /// provider 在 debounce 真正触发时才读取 messages, 避免流式 token
+    /// 每次到来都复制整段历史数组。
+    func scheduleSave(messagesProvider: @escaping @MainActor () -> [ChatMessage]) {
         sessionSaveTask?.cancel()
         let currentID = currentSessionID
-        sessionSaveTask = Task { [weak self] in
+        sessionSaveTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(350))
             guard !Task.isCancelled, let self, self.currentSessionID == currentID else { return }
-            self.saveSession(id: currentID, messages: messages)
+            self.saveSession(id: currentID, messages: messagesProvider())
+        }
+    }
+
+    /// 延迟保存 (debounce 350ms)。调用方在 messages.didSet 中触发。
+    func scheduleSave(messages: [ChatMessage]) {
+        scheduleSave {
+            messages
         }
     }
 

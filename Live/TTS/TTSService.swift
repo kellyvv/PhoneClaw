@@ -197,7 +197,9 @@ class TTSService {
     // MARK: - Synthesize (CPU-heavy, NOT main thread)
 
     func synthesize(_ text: String) -> Data? {
-        guard let tts else { return nil }
+        guard let tts else {
+            return nil
+        }
         let t0 = CFAbsoluteTimeGetCurrent()
         let audio = tts.generate(text: text, sid: defaultSid, speed: 1.0)
         let synthMs = (CFAbsoluteTimeGetCurrent() - t0) * 1000
@@ -213,7 +215,8 @@ class TTSService {
         let duration = Double(count) / Double(sr)
         print("[TTS] Synth: \(String(format: "%.0f", synthMs))ms, \(String(format: "%.1f", duration))s audio, \(sr)Hz")
 
-        return samplesToWAV(samples: audio.samples, count: Int(count), sampleRate: sr)
+        let wav = samplesToWAV(samples: audio.samples, count: Int(count), sampleRate: sr)
+        return wav
     }
 
     // MARK: - Playback (through shared AVAudioEngine)
@@ -249,7 +252,10 @@ class TTSService {
     /// Legacy speak for greeting etc.
     func speak(_ text: String) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, isAvailable else { return }
+        guard !trimmed.isEmpty else { return }
+        guard isAvailable else {
+            return
+        }
 
         state = .speaking
         print("[TTS] 🔊 [\(backend)] \"\(trimmed.prefix(40))\"")
@@ -355,6 +361,15 @@ final class SystemSpeechController: NSObject, @preconcurrency AVSpeechSynthesize
 
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
         print("[TTS] ✅ System TTS done")
+        let c = speechContinuation
+        speechContinuation = nil
+        c?.resume()
+    }
+
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didStart utterance: AVSpeechUtterance) {
+    }
+
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
         let c = speechContinuation
         speechContinuation = nil
         c?.resume()

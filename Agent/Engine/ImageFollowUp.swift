@@ -83,39 +83,11 @@ extension AgentEngine {
             userQuestion: userQuestion
         )
 
-        let savedTopK = inference.samplingTopK
-        let savedTopP = inference.samplingTopP
-        let savedTemperature = inference.samplingTemperature
-        let savedMaxOutputTokens = inference.maxOutputTokens
-
-        inference.samplingTopK = 1
-        inference.samplingTopP = 1.0
-        inference.samplingTemperature = 0
-        inference.maxOutputTokens = min(savedMaxOutputTokens, 8)
-        defer {
-            inference.samplingTopK = savedTopK
-            inference.samplingTopP = savedTopP
-            inference.samplingTemperature = savedTemperature
-            inference.maxOutputTokens = savedMaxOutputTokens
-        }
-
-        let rawDecision = await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
-            inference.generate(
-                prompt: prompt,
-                onToken: { _ in },
-                onComplete: { result in
-                    switch result {
-                    case .success(let text):
-                        continuation.resume(returning: text)
-                    case .failure(let error):
-                        log("[ImageFollowUp] decision failed: \(error.localizedDescription)")
-                        continuation.resume(returning: nil)
-                    }
-                }
-            )
-        }
-
-        await inference.resetKVSession()
+        let rawDecision = await runIsolatedInferenceProbe(
+            prompt: prompt,
+            maxOutputTokens: 8,
+            label: "ImageFollowUp"
+        )
 
         guard let rawDecision else { return .normalText }
         let normalized = rawDecision.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
@@ -206,73 +178,49 @@ extension AgentEngine {
             assistantSummary: assistantSummary,
             partialAnswer: trimmedDraft,
             systemPrompt: config.systemPrompt,
-            enableThinking: config.enableThinking
+            enableThinking: effectiveEnableThinking
         )
         log("[ImageFollowUp] repair=triggered")
 
-        let savedTopK = inference.samplingTopK
-        let savedTopP = inference.samplingTopP
-        let savedTemperature = inference.samplingTemperature
-        let savedMaxOutputTokens = inference.maxOutputTokens
+        var buffer = ""
+        var toolCallDetected = false
+        var bufferFlushed = false
+        let repairedRaw = await runIsolatedInferenceProbe(
+            prompt: repairPrompt,
+            maxOutputTokens: 48,
+            label: "ImageFollowUp",
+            onToken: { [weak self] token in
+                guard let self = self,
+                      self.messages.indices.contains(msgIndex) else { return }
 
-        inference.samplingTopK = 1
-        inference.samplingTopP = 1.0
-        inference.samplingTemperature = 0
-        inference.maxOutputTokens = min(savedMaxOutputTokens, 48)
-        defer {
-            inference.samplingTopK = savedTopK
-            inference.samplingTopP = savedTopP
-            inference.samplingTemperature = savedTemperature
-            inference.maxOutputTokens = savedMaxOutputTokens
-        }
-
-        let repairedRaw = await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
-            var buffer = ""
-            var toolCallDetected = false
-            var bufferFlushed = false
-
-            inference.generate(
-                prompt: repairPrompt,
-                onToken: { [weak self] token in
-                    guard let self = self,
-                          self.messages.indices.contains(msgIndex) else { return }
-
-                    if toolCallDetected {
-                        buffer += token
-                        return
-                    }
-
+                if toolCallDetected {
                     buffer += token
-
-                    if buffer.contains("<tool_call>") {
-                        toolCallDetected = true
-                        return
-                    }
-
-                    if !bufferFlushed {
-                        let trimmed = buffer.trimmingCharacters(in: .whitespacesAndNewlines)
-                        guard !trimmed.isEmpty else { return }
-                        bufferFlushed = true
-                    }
-
-                    let cleaned = self.cleanOutputStreaming(buffer)
-                    if !cleaned.isEmpty {
-                        self.messages[msgIndex].update(content: cleaned)
-                    }
-                },
-                onComplete: { result in
-                    switch result {
-                    case .success(let text):
-                        log("[Agent] LLM raw: \(text.prefix(300))")
-                        continuation.resume(returning: text)
-                    case .failure(let error):
-                        log("[ImageFollowUp] repair failed: \(error.localizedDescription)")
-                        continuation.resume(returning: nil)
-                    }
+                    return
                 }
-            )
+
+                buffer += token
+
+                if buffer.contains("<tool_call>") {
+                    toolCallDetected = true
+                    return
+                }
+
+                if !bufferFlushed {
+                    let trimmed = buffer.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !trimmed.isEmpty else { return }
+                    bufferFlushed = true
+                }
+
+                let cleaned = self.cleanOutputStreaming(buffer)
+                if !cleaned.isEmpty {
+                    self.enqueueStreamingMessageContentUpdate(at: msgIndex, content: cleaned)
+                }
+            }
+        )
+        flushPendingStreamingMessageContentUpdates()
+        if let repairedRaw {
+            log("[Agent] LLM raw: \(repairedRaw.prefix(300))")
         }
-        await inference.resetKVSession()
 
         guard let repairedRaw else {
             log("[ImageFollowUp] repair failed, using fallback")
