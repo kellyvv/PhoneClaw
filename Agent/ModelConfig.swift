@@ -11,9 +11,14 @@ class ModelConfig {
     static let enableSpeculativeDecodingDefaultsKey = "PhoneClaw.enableSpeculativeDecoding"
     static let defaultPreferredBackend = "gpu"
 
-    // 采样参数不再暴露给用户调节 — 跟 KV cache = 2048 的现实对齐:
-    //   maxTokens 1500 留 ~500 给输入; topK/topP/temperature 用 Gemma 4 推荐默认。
-    var maxTokens = 1500
+    // 采样参数不再暴露给用户调节。topK/topP/temperature 用 Gemma 4 推荐默认。
+    // maxTokens = session 总预算 (输入+输出): openSession 拿它当 session maxTokens。
+    // KV cache 现已是 4096 (LiteRTBackend.maxKVTokens, 2026-04-25 从 2048 提上来),
+    // 但 maxTokens 一直停在旧 KV=2048 时代的 1500 — web 综合的大证据输入会把它吃光,
+    // 输出半句截断 (用户实测 "今天的 AI 新闻" 总结被砍)。提到 2048 (CLI 验证过的好值):
+    // 仍在 4096 KV 内, 输出有足够余量; 不增内存 (KV 已按 4096 分配),
+    // 也不影响历史裁剪 (reservedOutputTokens 仍 min 到 700)。
+    var maxTokens = 2048
     var topK = 64
     var topP = 0.95
     var temperature = 1.0

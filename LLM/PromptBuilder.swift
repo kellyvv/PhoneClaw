@@ -644,17 +644,28 @@ struct PromptBuilder {
 
     static func buildDialogueActPrompt(
         userQuestion: String,
-        previousSkillName: String,
-        previousToolName: String,
+        previousContextKind: String = "tool_result",
+        previousSourceName: String,
+        previousToolName: String?,
         previousResultSummary: String
     ) -> String {
         let clippedQuestion = compactToolResultSummary(userQuestion, maxCharacters: 500)
         let clippedSummary = compactToolResultSummary(previousResultSummary, maxCharacters: 1_200)
+        let previousTool = previousToolName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let toolLineZh: String
+        let toolLineEn: String
+        if let previousTool, !previousTool.isEmpty {
+            toolLineZh = "上一轮工具: \(previousTool)\n"
+            toolLineEn = "Previous tool: \(previousTool)\n"
+        } else {
+            toolLineZh = ""
+            toolLineEn = ""
+        }
         if LanguageService.shared.current.isChinese {
             return """
             <|turn>system
             你只做对话行为分类, 不回答用户问题, 不调用工具。
-            判断当前用户消息和上一轮工具结果之间的关系。输出必须是一个 JSON object。
+            判断当前用户消息和上一轮上下文产物之间的关系。输出必须是一个 JSON object。
 
             可选 act:
             - new_task: 用户提出了新的独立任务或新问题
@@ -664,29 +675,34 @@ struct PromptBuilder {
             - verify_last_result: 用户在核对上一轮结果是否可信、是否确定
             - explain_last_result: 用户要解释上一轮结果为什么这样、含义是什么
             - clarify_last_result: 用户要澄清上一轮结果中的某个细节
+            - elaborate_last_result: 用户要展开、补充、举例或继续说明上一轮内容
+            - transform_last_result: 用户要对上一轮内容做结构化、总结、改写、翻译、转格式、列要点、列清单、转表格或类似二次加工
             - cancel_or_reject: 用户取消、否定或拒绝继续
             - chitchat: 闲聊或不需要工具的自然回复
 
             决策原则:
-            - “上一轮工具结果”指最近一次真实工具返回的结果; 即使中间有一轮没有调用工具的确认、解释或澄清回答, 当前消息仍可能是在继续那个工具结果。
+            - “上一轮上下文产物”可以是上一轮助手回答、工具结果、图片回答或生成内容; 当前消息可能是在继续、核对或加工这个产物。
             - 最高优先级: 如果当前消息指出上一轮的范围、对象、时间、数量、地点、实体、条件不对, 并给出替代值或新约束, act 必须是 correct_parameters, target 必须是 previous_result, should_execute_tool 必须是 true。
             - 如果当前消息是省略式追问, 只给出新的时间、范围、对象、地点、实体或条件片段, 并且需要沿用上一轮能力才能回答, act 必须是 correct_parameters 或 continue_task, target 必须是 previous_result, should_execute_tool 必须是 true。
             - 如果最近工具能力本身是查询、读取、搜索、查看或列出信息, 且当前消息用“那/再/换/then/what about”等承接词给出新对象或新范围, 应复用最近工具能力执行。
-            - 如果当前消息只是核对、质疑、解释、澄清上一轮结果, 不要重新执行工具。
+            - 如果当前消息只是核对、质疑、解释、澄清、展开或加工上一轮产物, 不要重新执行工具。
+            - 如果当前消息要求“总结/结构化/整理/改写/翻译/列要点/转表格/转 Markdown/转 JSON”等, 且没有提供新的待处理正文, act 必须是 transform_last_result, target 必须是 previous_result, should_execute_tool 必须是 false。
+            - 如果当前消息自己提供了新的待处理正文、链接、图片、文件或明确新主题, act 必须是 new_task, target 必须是 new_task。
             - 如果当前消息改了范围/对象/条件, 或明确要求重新获取, 才允许继续执行工具。
             - 不要根据某个具体业务词做判断; 只根据对话行为和上一轮结果的关系判断。
             - 占位示例: “不是 <旧值>, 是 <新值>”/“改成 <新值>”/“use <new value> instead” 属于 correct_parameters, 不是 verify_last_result。
             - 占位示例: “那查 <新时间/新范围/新对象> 的”/“换成 <新条件>”/“what about <new scope>?” 属于 correct_parameters 或 continue_task, should_execute_tool=true。
             - 占位示例: “确定吗?”/“是真的吗?”/“why so low?” 属于 verify_last_result 或 explain_last_result, should_execute_tool=false。
+            - 占位示例: “帮我结构化”/“总结三点”/“make it a table” 属于 transform_last_result, should_execute_tool=false。
 
             JSON schema:
             {"act":"...", "target":"previous_result|new_task|none", "should_execute_tool":true|false, "confidence":0.0}
             只输出 JSON, 不要 Markdown、解释、代码块或 `<tool_call>`。
             <turn|>
             <|turn>user
-            上一轮能力: \(previousSkillName)
-            上一轮工具: \(previousToolName)
-            上一轮结果摘要:
+            上一轮产物类型: \(previousContextKind)
+            上一轮来源: \(previousSourceName)
+            \(toolLineZh)上一轮产物摘要:
             \(clippedSummary)
 
             当前用户消息:
@@ -699,7 +715,7 @@ struct PromptBuilder {
             return """
             <|turn>system
             You only classify the dialogue act. Do not answer the user and do not call tools.
-            Decide how the current user message relates to the previous tool result. Output exactly one JSON object.
+            Decide how the current user message relates to the previous context artifact. Output exactly one JSON object.
 
             Allowed act values:
             - new_task: the user asks a new independent task or question
@@ -709,33 +725,151 @@ struct PromptBuilder {
             - verify_last_result: the user is checking whether the previous result is reliable or certain
             - explain_last_result: the user asks why the previous result is that way or what it means
             - clarify_last_result: the user asks for a detail about the previous result
+            - elaborate_last_result: the user wants the previous result expanded, continued, supplemented, or illustrated with an example
+            - transform_last_result: the user wants the previous result summarized, structured, rewritten, translated, converted to another format, turned into bullets, a checklist, a table, Markdown, JSON, or similar
             - cancel_or_reject: the user cancels, rejects, or refuses to continue
             - chitchat: casual conversation or a reply that needs no tool
 
             Decision principles:
-            - "Previous tool result" means the most recent real tool result. Even if there was an intervening no-tool verification, explanation, or clarification reply, the current message may still continue that tool result.
+            - "Previous context artifact" may be the previous assistant answer, tool result, image answer, or generated content. The current message may continue, verify, explain, clarify, expand, or transform it.
             - Highest priority: if the current message says the previous scope, object, time, count, location, entity, or condition was wrong and provides a replacement value or new constraint, act must be correct_parameters, target must be previous_result, and should_execute_tool must be true.
             - If the current message is an elliptical follow-up that only supplies a new time, range, object, location, entity, or condition fragment, and answering requires reusing the previous capability, act must be correct_parameters or continue_task, target must be previous_result, and should_execute_tool must be true.
             - If the recent capability was itself querying, reading, searching, checking, or listing information, and the current message uses a continuation like "then", "again", "switch to", or "what about" plus a new object or scope, reuse the recent capability and execute the tool.
-            - If the message only verifies, challenges, explains, or clarifies the previous result, do not execute a tool again.
+            - If the message only verifies, challenges, explains, clarifies, expands, or transforms the previous artifact, do not execute a tool again.
+            - If the message asks to "summarize / structure / rewrite / translate / list key points / make a table / convert to Markdown or JSON" and does not provide new content to process, act must be transform_last_result, target must be previous_result, and should_execute_tool must be false.
+            - If the message itself provides new content, a link, image, file, or a clearly new topic, act must be new_task, target must be new_task.
             - If the message changes scope/entity/conditions, or explicitly asks to fetch again, allow tool execution.
             - Do not rely on domain-specific keyword lists; judge the dialogue act and relation to the previous result.
             - Placeholder example: “not <old value>, <new value>” / “change it to <new value>” / “use <new value> instead” is correct_parameters, not verify_last_result.
             - Placeholder example: “then check <new time/range/object>” / “switch to <new condition>” / “what about <new scope>?” is correct_parameters or continue_task, should_execute_tool=true.
             - Placeholder example: “are you sure?” / “really?” / “why so low?” is verify_last_result or explain_last_result, should_execute_tool=false.
+            - Placeholder example: “structure this” / “summarize in three points” / “make it a table” is transform_last_result, should_execute_tool=false.
 
             JSON schema:
             {"act":"...", "target":"previous_result|new_task|none", "should_execute_tool":true|false, "confidence":0.0}
             Output only JSON. No Markdown, explanations, code blocks, or `<tool_call>`.
             <turn|>
             <|turn>user
-            Previous capability: \(previousSkillName)
-            Previous tool: \(previousToolName)
-            Previous result summary:
+            Previous artifact type: \(previousContextKind)
+            Previous source: \(previousSourceName)
+            \(toolLineEn)Previous artifact summary:
             \(clippedSummary)
 
             Current user message:
             \(clippedQuestion)
+            <turn|>
+            <|turn>model
+
+            """
+        }
+    }
+
+    static func buildPreviousContextArtifactReplyPrompt(
+        userQuestion: String,
+        dialogueAct: String,
+        contextKind: String,
+        previousSourceName: String,
+        previousToolName: String?,
+        previousVisibleAnswer: String?,
+        previousResultSummary: String,
+        previousResultDetail: String,
+        enableThinking: Bool = false
+    ) -> String {
+        let visibleAnswer = compactToolResultSummary(previousVisibleAnswer ?? "", maxCharacters: 2_400)
+        let summary = compactToolResultSummary(previousResultSummary, maxCharacters: 1_800)
+        let detail = compactToolResultSummary(previousResultDetail, maxCharacters: 3_200)
+        let previousTool = previousToolName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let toolLineZh: String
+        let toolLineEn: String
+        if let previousTool, !previousTool.isEmpty {
+            toolLineZh = "\n上一轮工具:\n\(previousTool)\n"
+            toolLineEn = "\nPrevious tool:\n\(previousTool)\n"
+        } else {
+            toolLineZh = ""
+            toolLineEn = ""
+        }
+        let visibleBlockZh = visibleAnswer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "" : """
+
+            上一轮展示给用户的回答:
+            \(visibleAnswer)
+            """
+        let visibleBlockEn = visibleAnswer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "" : """
+
+            Previous answer shown to the user:
+            \(visibleAnswer)
+            """
+        let thinkingPrefix = enableThinking ? "<|think|>" : ""
+        let thinkingInstruction = enableThinking ? "\n\n\(thinkingLanguageInstruction)" : ""
+        if LanguageService.shared.current.isChinese {
+            return """
+            <|turn>system
+            \(thinkingPrefix)\(defaultSystemPrompt)
+            你正在回答一个针对上一轮上下文产物的追问。
+            不要调用工具, 不要输出 `<tool_call>`, 不要声称已经重新读取、重新搜索、刷新或重新查看数据。
+            只基于下面给出的上一轮上下文产物回答。
+            如果对话行为是 transform_last_result, 直接按用户当前要求对上一轮内容做结构化、总结、改写、翻译、转格式、列要点或制表。
+            如果对话行为是 elaborate_last_result, 直接展开、补充或举例说明上一轮内容。
+            如果用户在核对可信度, 说明这是基于上一轮返回/展示的内容, 并给出必要限制。
+            如果上一轮内容里已有来源链接或引用网址, 整理时保留相关来源；不要编造新来源。
+            只要下面提供了上一轮内容, 就不要回答“请提供文本/信息”。
+            回答要简洁, 不要复读内部字段名。
+            \(thinkingInstruction)
+            <turn|>
+            <|turn>user
+            当前用户追问:
+            \(userQuestion)
+
+            对话行为:
+            \(dialogueAct)
+
+            上一轮产物类型:
+            \(contextKind)
+
+            上一轮来源:
+            \(previousSourceName)\(toolLineZh)\(visibleBlockZh)
+
+            上一轮产物摘要:
+            \(summary)
+
+            上一轮产物原始/补充内容:
+            \(detail)
+            <turn|>
+            <|turn>model
+
+            """
+        } else {
+            return """
+            <|turn>system
+            \(thinkingPrefix)\(defaultSystemPrompt)
+            You are answering a follow-up about the previous context artifact.
+            Do not call tools, do not emit `<tool_call>`, and do not claim that you re-read, re-searched, refreshed, reran, or re-viewed anything.
+            Answer only from the previous context artifact below.
+            If the dialogue act is transform_last_result, directly transform the previous content as requested: structure, summarize, rewrite, translate, convert format, list key points, or make a table.
+            If the dialogue act is elaborate_last_result, directly expand, continue, supplement, or give examples from the previous content.
+            If the user is verifying reliability, say it is based on the previous returned/shown content and mention necessary limitations.
+            If the previous content already has source links, preserve relevant sources while reorganizing; do not invent new sources.
+            As long as previous content is provided below, do not ask the user to provide text or information.
+            Keep the answer concise and do not repeat internal field names.
+            \(thinkingInstruction)
+            <turn|>
+            <|turn>user
+            Current follow-up:
+            \(userQuestion)
+
+            Dialogue act:
+            \(dialogueAct)
+
+            Previous artifact type:
+            \(contextKind)
+
+            Previous source:
+            \(previousSourceName)\(toolLineEn)\(visibleBlockEn)
+
+            Previous artifact summary:
+            \(summary)
+
+            Previous raw/additional content:
+            \(detail)
             <turn|>
             <|turn>model
 
@@ -749,73 +883,20 @@ struct PromptBuilder {
         previousSkillName: String,
         previousToolName: String,
         previousResultSummary: String,
-        previousResultDetail: String
+        previousResultDetail: String,
+        enableThinking: Bool = false
     ) -> String {
-        let summary = compactToolResultSummary(previousResultSummary, maxCharacters: 1_500)
-        let detail = compactToolResultSummary(previousResultDetail, maxCharacters: 2_400)
-        if LanguageService.shared.current.isChinese {
-            return """
-            <|turn>system
-            \(defaultSystemPrompt)
-            你正在回答一个针对上一轮工具结果的追问。
-            不要调用工具, 不要输出 `<tool_call>`, 不要声称已经重新读取、重新搜索或刷新数据。
-            只基于下面给出的上一轮工具结果回答。若用户在核对可信度, 说明“这是上一轮工具返回的结果”, 并给出可能的误差来源或限制。
-            回答要简洁, 不要复读内部字段名。
-            <turn|>
-            <|turn>user
-            当前用户追问:
-            \(userQuestion)
-
-            对话行为:
-            \(dialogueAct)
-
-            上一轮能力:
-            \(previousSkillName)
-
-            上一轮工具:
-            \(previousToolName)
-
-            上一轮结果摘要:
-            \(summary)
-
-            上一轮结果原始内容:
-            \(detail)
-            <turn|>
-            <|turn>model
-
-            """
-        } else {
-            return """
-            <|turn>system
-            \(defaultSystemPrompt)
-            You are answering a follow-up about the previous tool result.
-            Do not call tools, do not emit `<tool_call>`, and do not claim that you re-read, re-searched, refreshed, or reran anything.
-            Answer only from the previous tool result below. If the user is verifying reliability, say it is the previous tool-returned result and mention plausible limitations or error sources.
-            Keep the answer concise and do not repeat internal field names.
-            <turn|>
-            <|turn>user
-            Current follow-up:
-            \(userQuestion)
-
-            Dialogue act:
-            \(dialogueAct)
-
-            Previous capability:
-            \(previousSkillName)
-
-            Previous tool:
-            \(previousToolName)
-
-            Previous result summary:
-            \(summary)
-
-            Previous raw result:
-            \(detail)
-            <turn|>
-            <|turn>model
-
-            """
-        }
+        buildPreviousContextArtifactReplyPrompt(
+            userQuestion: userQuestion,
+            dialogueAct: dialogueAct,
+            contextKind: "tool_result",
+            previousSourceName: previousSkillName,
+            previousToolName: previousToolName,
+            previousVisibleAnswer: nil,
+            previousResultSummary: previousResultSummary,
+            previousResultDetail: previousResultDetail,
+            enableThinking: enableThinking
+        )
     }
 
     static func buildImageFollowUpTextPrompt(
@@ -1149,8 +1230,8 @@ struct PromptBuilder {
             \(thinkingPrefix)\(defaultSystemPrompt)
             \(currentTimeAnchorBlock())
             \(answerOnlyRule)
-            回答必须简洁：优先 3-6 条要点；每条 1 句；总长度尽量控制在 500 字以内。
-            如果是联网工具结果，正文只写结论，来源链接统一放到单独的“引用网址”段；不要把 URL/host 混在正文要点里。不要编造工具结果之外的信息。
+            回答必须简洁且可扫描：不要写成单段长文。简单事实问题先给直接答案，再补 1-2 条依据或限制；新闻、清单类问题逐条列出 3-6 个不同的事件/进展，每条一句话概括一个具体事件并尽量带日期，不要把多条新闻压成一条笼统结论；趋势、对比类才按主题归并；每条以短标签开头；只有在排行、对比、价格、参数、时间线明显适合时才用表格。
+            如果是联网工具结果，证据相关性优先：只使用与用户问题直接相关的证据，忽略标记为“主题相关性低 / low query relevance”、confidence=low、首页/入口页或工具提示不能直接当作事实的条目。时效性用来排序而不是用来拒答：先给最新的相关条目并标注其发布时间（结果里已注明“发布时间”），从新到旧组织；如果没有严格落在用户时间窗口内的结果，如实说明“没有找到更新的，以下是检索到的最新内容”，仍然作答，不要拒答，也不要把旧内容谎称成当天。正文只写结论、关键事实和必要的不确定性，来源链接统一放到单独的“引用网址”段；不要把 URL/host 混在正文要点里。不要编造工具结果之外的信息。
             \(toolSpecificInstructions)\(thinkingInstruction)
             <turn|>
             <|turn>user
@@ -1193,8 +1274,8 @@ struct PromptBuilder {
             \(thinkingPrefix)\(defaultSystemPrompt)
             \(currentTimeAnchorBlock())
             \(answerOnlyRule)
-            Keep the answer concise: prefer 3-6 bullets, one sentence each, and keep it under about 300 words.
-            For web tool results, keep the body focused on the conclusion and put source links in a separate “Sources” section; do not mix URLs/hosts into the body bullets. Do not invent facts beyond the tool result.
+            Keep the answer concise and scannable; do not write one long paragraph. For a simple factual question, give the direct answer first, then 1-2 supporting or caveat bullets. For news or list-style questions, enumerate 3-6 distinct events/items, each a one-line summary of a specific event with its date where available — do not collapse multiple news items into one vague conclusion. Group by theme only for trend or comparison questions. Start each bullet with a short label. Use a table only when ranking, comparison, pricing, specifications, or timeline data clearly benefits from it.
+            For web tool results, relevance gates and recency orders: use only evidence directly relevant to the user's question, ignoring items marked “low query relevance”, confidence=low, homepage/index, or otherwise not directly usable as facts. Use recency to order, not to refuse: lead with the freshest relevant items and state each item's publish date (results already annotate “Published”), organizing newest-first; if nothing strictly inside the requested window was found, say plainly “nothing more recent was found; here is the latest available,” still answer, and never claim stale items are same-day. Keep the body focused on the conclusion, key facts, and necessary uncertainty, and put source links in a separate “Sources” section; do not mix URLs/hosts into the body bullets. Do not invent facts beyond the tool result.
             \(toolSpecificInstructions)\(thinkingInstruction)
             <turn|>
             <|turn>user
@@ -1216,13 +1297,13 @@ struct PromptBuilder {
         switch toolName {
         case "web-search":
             return tr(
-                "对 web-search：优先查看 evidence_pack。若 evidence_pack.sufficiency=sufficient 或 answerability=direct，必须只基于 evidence_pack.chunks / 可直接使用的搜索条目回答。直接回答必须分成两段：先写“总结”，再写“引用网址”。必须全程使用当前会话语言回答，即使来源页面是其他语言。“总结”段只写结论、关键数值和必要的不确定性，不要夹 URL、host、来源括号或搜索时间；“引用网址”段列出 1-5 条支撑结论的 Markdown 链接，优先使用 evidence_pack.chunks 里的真实 URL，同源去重。若用户问具体数值、价格、汇率、比分或“多少”，总结第一句先给证据里的具体数值。若 answerability=needs_fetch 且 evidence_pack 为空或偏薄，才选择最相关 URL 调用一次 web-fetch。无法选择或读取后仍不足时，在总结里说明“这次搜索没有返回足够可用结果”，并在引用网址里列出已查来源。不要把首页、频道页、站点简介或低置信条目当作事实。",
-                "For web-search: inspect evidence_pack first. If evidence_pack.sufficiency=sufficient or answerability=direct, answer only from evidence_pack.chunks / directly usable search entries. Direct answers must use two sections: “Summary” first, then “Sources.” Write the entire answer in the current conversation language, even if sources use another language. The Summary section should contain only the conclusion, key values, and necessary uncertainty; do not include URLs, hosts, inline source parentheses, or search timestamps there. The Sources section must list 1-5 supporting Markdown links, preferring real URLs from evidence_pack.chunks and deduplicating by source. If the user asks for a concrete value, price, exchange rate, score, or “how much/how many,” the first Summary sentence must give the concrete value from evidence. If answerability=needs_fetch and the evidence_pack is empty or thin, choose the most relevant URL and call web-fetch once. Only if no source can be chosen, or the fetched page is still insufficient, say the search did not return sufficiently usable results and list checked sources under Sources. Do not treat homepages, category pages, site descriptions, or low-confidence entries as facts."
+                "对 web-search：优先查看 evidence_pack，并看每条结果的“发布时间 / published_at / age_days”。若 evidence_pack.sufficiency=sufficient 或 answerability=direct，基于 evidence_pack.chunks / 可直接使用的搜索条目回答。可直接使用的条目需满足：query_relevant 不是 false、confidence 不是 low、不是首页/入口页、没有标记“主题相关性低 / low query relevance”。时效性用于排序而不是拒答：按发布时间从新到旧组织，先给最新的相关条目并标注其发布时间；如果最新的也比用户要求的时间窗口旧，如实说明“没有找到严格满足时间约束的，以下是检索到的最新内容”，仍然照常作答，不要拒答，也不要把旧内容谎称成当天。只有在确实没有任何相关结果时，才说明这次搜索没有返回可用结果。直接回答必须分成两段：先写“总结”，再写“引用网址”。必须全程使用当前会话语言回答，即使来源页面是其他语言。“总结”段必须是可扫描的结构化 Markdown，不要写成单段长文；只写结论、关键数值、主题化要点和必要的不确定性，不要夹 URL、host、来源括号或搜索时间；新闻/快讯类要逐条列出 3-6 个不同的事件，每条一句话概括一个具体事件并带上日期，不要把多条新闻压成一条笼统结论；趋势/对比类才按主题归并，优先用 `- 标签：事实/影响` 形式；简单事实问题第一句先给直接答案。“引用网址”段列出 1-5 条支撑结论的 Markdown 链接，优先使用 evidence_pack.chunks 里的真实 URL，同源去重，较新的来源排前面。若用户问具体数值、价格、汇率、比分或“多少”，总结第一句先给证据里的具体数值。若 answerability=needs_fetch 且 evidence_pack 为空或偏薄，才选择最相关 URL 调用一次 web-fetch。不要把首页、频道页、站点简介、低置信或低相关条目当作事实。",
+                "For web-search: inspect evidence_pack first, and check each result's “Published / published_at / age_days.” If evidence_pack.sufficiency=sufficient or answerability=direct, answer from evidence_pack.chunks / directly usable search entries. A directly usable entry must have query_relevant not false, confidence not low, not be homepage/index, and not be marked “low query relevance.” Use recency to order, not to refuse: organize newest-first, lead with the freshest relevant items and state each item's publish date; if even the freshest is older than the user's requested window, say plainly “nothing strictly within the time constraint was found; here is the latest available,” still answer as usual, do not refuse, and never claim stale items are same-day. Only when there is genuinely no relevant result at all, say the search returned no usable results. Direct answers must use two sections: “Summary” first, then “Sources.” Write the entire answer in the current conversation language, even if sources use another language. The Summary section must be scannable structured Markdown, not one long paragraph; include only the conclusion, key values, themed bullets, and necessary uncertainty, with no URLs, hosts, inline source parentheticals, or search timestamps. For news, enumerate 3-6 distinct events, each a one-line summary of a specific event with its date, without collapsing them into one vague conclusion; group by theme only for trends/comparisons, preferring `- Label: fact/implication` bullets. For a simple factual question, put the direct answer first. The Sources section must list 1-5 supporting Markdown links, preferring real URLs from evidence_pack.chunks, deduplicating by source, with fresher sources first. If the user asks for a concrete value, price, exchange rate, score, or “how much/how many,” the first Summary sentence must give the concrete value from evidence. If answerability=needs_fetch and the evidence_pack is empty or thin, choose the most relevant URL and call web-fetch once. Do not treat homepages, category pages, site descriptions, low-confidence, or low-relevance entries as facts."
             )
         case "web-fetch":
             return tr(
-                "对 web-fetch：只使用已读取网页正文回答。必须全程使用当前会话语言回答，即使网页正文是其他语言。若正文包含按时间、排行或列表排列的数据，选最相关/最新的一条直接给结论；不要因为页面没有写“绝对最新”就空泛拒答。直接回答同样分成“总结”和“引用网址”，来源只放在“引用网址”段。只有正文确实没有覆盖用户问题时，才明确说明页面中没有找到对应信息。",
-                "For web-fetch: answer only from the fetched page text. Write the entire answer in the current conversation language, even if the page text uses another language. If the text contains dated, ranked, or listed data, choose the most relevant/latest entry and give the conclusion; do not refuse just because the page does not explicitly label it as “absolute latest.” Direct answers should also use “Summary” and “Sources,” with source links only in Sources. Only say the requested information was not found when the page text truly does not cover the user question."
+                "对 web-fetch：只使用已读取网页正文回答。必须全程使用当前会话语言回答，即使网页正文是其他语言。若正文包含按时间、排行或列表排列的数据，选最相关/最新的一条直接给结论；不要因为页面没有写“绝对最新”就空泛拒答。直接回答同样分成“总结”和“引用网址”，“总结”必须可扫描、结构化，不要写成单段长文；来源只放在“引用网址”段。只有正文确实没有覆盖用户问题时，才明确说明页面中没有找到对应信息。",
+                "For web-fetch: answer only from the fetched page text. Write the entire answer in the current conversation language, even if the page text uses another language. If the text contains dated, ranked, or listed data, choose the most relevant/latest entry and give the conclusion; do not refuse just because the page does not explicitly label it as “absolute latest.” Direct answers should also use “Summary” and “Sources”; the Summary must be scannable and structured, not one long paragraph, with source links only in Sources. Only say the requested information was not found when the page text truly does not cover the user question."
             )
         default:
             return ""
@@ -1244,7 +1325,8 @@ struct PromptBuilder {
             - 只输出 JSON 对象，不要解释、不要 Markdown、不要调用工具。
             - JSON schema: {"queries":["..."],"freshness":"current|recent|static|unspecified"}
             - queries 必须保留用户的主体、地点、时间范围、比较条件和语言偏好。
-            - 如果用户问实时、今天、最近、价格、汇率、天气、新闻、比赛、政策、版本等变化信息，freshness 用 current 或 recent，并让查询词包含必要时间语义。
+            - 时效性问题(实时/今天/最近/价格/汇率/天气/新闻/比赛/政策/版本等变化信息)用 freshness=current 或 recent 表达。
+            - 时效只放进 freshness 字段；查询词保持主题词本身，不要塞入绝对日期或"今天/现在"这类时间词(检索端会按 freshness 自动做时间过滤；查询词里出现"2026年6月6日"这类日期反而会匹配到日历/年份/赛程等无关页)。
             - 不要凭空添加用户没问的实体、城市、品牌、日期或网站名。
             - 每条 query 控制在 6-20 个词或 4-40 个中文字符，避免完整句子。
             <turn|>
@@ -1268,7 +1350,8 @@ struct PromptBuilder {
             - Output only one JSON object. No explanation, Markdown, or tool calls.
             - JSON schema: {"queries":["..."],"freshness":"current|recent|static|unspecified"}
             - queries must preserve the subject, location, time range, comparison constraints, and language preference.
-            - If the user asks for live/current/recent prices, exchange rates, weather, news, sports, policy, versions, or other changing facts, set freshness to current or recent and include necessary time semantics in the queries.
+            - For time-sensitive questions (live/current/recent prices, exchange rates, weather, news, sports, policy, versions, etc.), express recency via the freshness field (current or recent).
+            - Put recency ONLY in the freshness field; keep the queries to the topic itself and do not inject absolute dates or words like "today/now" (the retriever applies a time filter from freshness automatically; a date like "June 6 2026" in the query text matches irrelevant calendar/year/schedule pages).
             - Do not add entities, cities, brands, dates, or websites the user did not ask for.
             - Keep each query concise, about 4-14 words.
             <turn|>
@@ -1342,6 +1425,72 @@ struct PromptBuilder {
         }
     }
 
+    /// Model-driven evidence curation (the SourceCurator step of a mature search
+    /// agent): the model reads the candidate sources and extracts only the facts
+    /// that answer the question, verbatim values preserved, irrelevant sources
+    /// dropped. This replaces hand-tuned heuristic ranking — the model judges
+    /// relevance and pulls the answer, so it generalizes to any domain. Output is
+    /// an intermediate fact digest, not the user-facing answer.
+    static func buildWebCurationPrompt(
+        userQuestion: String,
+        candidates: String,
+        currentImageCount: Int
+    ) -> String {
+        if LanguageService.shared.current.isChinese {
+            return """
+            <|turn>system
+            \(defaultSystemPrompt)
+            \(currentTimeAnchorBlock())
+            你正在从联网搜索返回的多个来源里，抽取能回答用户问题的事实。只依据下面的来源材料，不要补充材料之外的任何信息，也不要现在写最终回答。
+            输出要求：
+            - 逐条列出与用户问题直接相关的具体事实，每条一句话，句末标注来源编号，如 [来源2]。
+            - 必须原样保留具体数值和日期（价格、汇率、比分、温度、百分比、时间等），不要四舍五入或改写成“约/大概”。
+            - 不同来源数值不一致时，分别列出并各自标注来源；同一事实多个来源印证可合并标注。
+            - 跳过与问题无关的来源（如球队名单、导航栏、广告、词条释义、与问题主体无关的旧内容），不要为它们写条目。
+            - 若所有来源都没有能回答问题的事实，只输出一行：无相关事实。
+            - 不要写“总结/引用网址”等小标题，不要客套，只输出事实清单。
+            <turn|>
+            <|turn>user
+            用户问题：
+            \(userQuestion)\(imagePromptSuffix(count: currentImageCount))
+
+            来源材料：
+            \(candidates)
+
+            请只输出相关事实清单。
+            <turn|>
+            <|turn>model
+
+            """
+        } else {
+            return """
+            <|turn>system
+            \(defaultSystemPrompt)
+            \(currentTimeAnchorBlock())
+            You are extracting the facts that answer the user's question from several web sources. Use only the source material below; add nothing beyond it, and do not write the final answer yet.
+            Output rules:
+            - List each fact directly relevant to the question on its own line, one sentence, ending with its source tag, e.g. [source2].
+            - Preserve concrete values and dates verbatim (prices, exchange rates, scores, temperatures, percentages, times); do not round or soften to "about/around".
+            - When sources disagree on a value, list each separately with its own tag; when several sources confirm the same fact, you may merge tags.
+            - Skip sources irrelevant to the question (rosters, nav bars, ads, dictionary definitions, stale content unrelated to the subject); write no line for them.
+            - If no source contains a fact that answers the question, output exactly one line: NO RELEVANT FACTS.
+            - Do not write "Summary/Sources" headings or pleasantries; output only the fact list.
+            <turn|>
+            <|turn>user
+            User question:
+            \(userQuestion)\(imagePromptSuffix(count: currentImageCount))
+
+            Source material:
+            \(candidates)
+
+            Output only the list of relevant facts.
+            <turn|>
+            <|turn>model
+
+            """
+        }
+    }
+
     static func buildWebAnswerRepairPrompt(
         userQuestion: String,
         toolName: String,
@@ -1365,9 +1514,12 @@ struct PromptBuilder {
             输出契约:
             - 必须包含“总结”和“引用网址”两个段落。
             - 必须全程使用中文回答，即使来源页面是英文或其他语言。
-            - “总结”只写结论、关键数值和必要的不确定性；不要放 URL、host、来源括号、搜索时间或内部流程。
-            - “引用网址”只列 Markdown 链接，例如: 1. [站点名](https://example.com)。
-            - 如果证据不足，就在“总结”里明确说证据不足，并在“引用网址”列出已查来源；不要编造。
+            - 相关性优先于格式：忽略 query_relevant=false、标记“主题相关性低”、confidence=low、首页/入口页或不能直接当作事实的条目，不要为了填充结构而总结无关结果。
+            - 时效性用于排序而不是拒答：先给最新的相关条目并标注其发布时间，从新到旧组织。
+            - “总结”必须是可扫描的结构化 Markdown，不要写成单段长文；只写结论、关键数值、主题化要点和必要的不确定性；不要放 URL、host、来源括号、搜索时间或内部流程。
+            - 简单事实问题先给直接答案；新闻、趋势、对比、清单类问题用 3-6 条带短标签的要点；只有排行、对比、价格、参数或时间线明显适合时才用表格。
+            - “引用网址”只列相关来源的 Markdown 链接，例如: 1. [站点名](https://example.com)。
+            - 如果没有严格满足时间窗口的结果，就如实说明“没有找到更新的，以下是检索到的最新内容”，仍然给出最新的相关条目并标注日期；只有完全没有相关结果时才说证据不足。不要编造，也不要把旧内容谎称成当天。
             <turn|>
             <|turn>user
             用户问题：
@@ -1396,9 +1548,12 @@ struct PromptBuilder {
             Output contract:
             - Include exactly two visible sections: “Summary” and “Sources.”
             - Write the entire answer in English, even if some sources are Chinese or another language.
-            - “Summary” contains only the conclusion, key values, and necessary uncertainty; no URLs, hosts, inline source parentheses, search timestamps, or internal process.
-            - “Sources” contains Markdown links only, for example: 1. [site](https://example.com).
-            - If evidence is insufficient, say so in “Summary” and list checked sources in “Sources”; do not invent.
+            - Relevance comes before format: ignore entries with query_relevant=false, low query relevance, confidence=low, homepage/index, or entries that cannot be used directly as facts; do not summarize unrelated results just to fill structure.
+            - Recency orders, it does not refuse: lead with the freshest relevant items and state each item's publish date, organizing newest-first.
+            - “Summary” must be scannable structured Markdown, not one long paragraph; include only the conclusion, key values, themed bullets, and necessary uncertainty; no URLs, hosts, inline source parentheses, search timestamps, or internal process.
+            - For simple factual questions, give the direct answer first. For news, trends, comparisons, or lists, use 3-6 short labeled bullets. Use a table only when ranking, comparison, pricing, specifications, or timeline data clearly benefits from it.
+            - “Sources” contains relevant-source Markdown links only, for example: 1. [site](https://example.com).
+            - If nothing strictly within the time window was found, say plainly “nothing more recent was found; here is the latest available” and still give the freshest relevant items with their dates; only say evidence is insufficient when there is no relevant result at all. Do not invent, and never claim stale items are same-day.
             <turn|>
             <|turn>user
             User question:

@@ -138,6 +138,7 @@
 		AC6F708293B62EF01234AAAA /* ProcessInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC6F708293B62EF01234BBBB /* ProcessInput.swift */; };
 		BD708293B62EF01234CCCCCC /* EngineLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD708293B62EF01234DDDDDD /* EngineLifecycle.swift */; };
 		E04567890ABCDEF012345555 /* PromptTokenEstimator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E04567890ABCDEF012346666 /* PromptTokenEstimator.swift */; };
+		FE54FE54FE54FE54FE540001 /* WebFreshness.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE54FE54FE54FE54FE540002 /* WebFreshness.swift */; };
 		B8A84E4D0DDDE011B5929DA2 /* AgentEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = E18A47114A10132E25E220F8 /* AgentEngine.swift */; };
 		BB2000000000000000000001 /* LLMTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000001 /* LLMTypes.swift */; };
 		BB2000000000000000000002 /* InferenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1000000000000000000002 /* InferenceService.swift */; };
@@ -344,6 +345,7 @@
 		A1B2C3D4E5F607182930D004 /* OrbWebAssets */ = {isa = PBXFileReference; lastKnownFileType = folder; name = OrbWebAssets; path = App/OrbWebAssets; sourceTree = SOURCE_ROOT; };
 		BD708293B62EF01234DDDDDD /* EngineLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineLifecycle.swift; sourceTree = "<group>"; };
 		E04567890ABCDEF012346666 /* PromptTokenEstimator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptTokenEstimator.swift; sourceTree = "<group>"; };
+		FE54FE54FE54FE54FE540002 /* WebFreshness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebFreshness.swift; sourceTree = "<group>"; };
 		E18A47114A10132E25E220F8 /* AgentEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentEngine.swift; sourceTree = "<group>"; };
 		E1E383F793CD103FF368037A /* LiveHistoryMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveHistoryMessage.swift; path = Live/Turn/Types/LiveHistoryMessage.swift; sourceTree = SOURCE_ROOT; };
 		E62C3CEFC7AE63873D751E75 /* ConfigurationsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigurationsView.swift; sourceTree = "<group>"; };
@@ -545,6 +547,7 @@
 				BB1000000000000000000105 /* InstallState.swift */,
 				BB1000000000000000000106 /* GenerationTransaction.swift */,
 				E04567890ABCDEF012346666 /* PromptTokenEstimator.swift */,
+				FE54FE54FE54FE54FE540002 /* WebFreshness.swift */,
 				BB1000000000000000000107 /* ModelRuntimeCoordinator.swift */,
 			);
 			path = Core;
@@ -1043,6 +1046,7 @@
 				BB2000000000000000000105 /* InstallState.swift in Sources */,
 				BB2000000000000000000106 /* GenerationTransaction.swift in Sources */,
 				E04567890ABCDEF012345555 /* PromptTokenEstimator.swift in Sources */,
+				FE54FE54FE54FE54FE540001 /* WebFreshness.swift in Sources */,
 				BB2000000000000000000107 /* ModelRuntimeCoordinator.swift in Sources */,
 				BB2000000000000000000006 /* PredefinedModels.swift in Sources */,
 				BB2000000000000000000007 /* LiteRTBackend.swift in Sources */,

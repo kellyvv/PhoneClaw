@@ -128,6 +128,91 @@ extension AgentEngine {
         return output
     }
 
+    /// Model-driven evidence curation (the SourceCurator step of a mature search
+    /// agent). One headless LLM call reads the candidate sources and extracts only
+    /// the facts that answer the question, preserving verbatim values and dropping
+    /// irrelevant sources. Returns a clean fact digest for synthesis, or nil when
+    /// nothing usable is extracted (synthesis then falls back to the raw evidence).
+    /// This replaces hand-tuned heuristic ranking — the model judges relevance and
+    /// pulls the answer, so it generalizes across domains.
+    private func curateWebEvidence(
+        userQuestion: String,
+        toolResultDetail: String,
+        images: [CIImage]
+    ) async -> String? {
+        let candidates = webEvidenceCandidatesText(fromToolResultDetail: toolResultDetail)
+        guard candidates.count >= 40 else { return nil }
+
+        let prompt = PromptBuilder.buildWebCurationPrompt(
+            userQuestion: userQuestion,
+            candidates: candidates,
+            currentImageCount: images.count
+        )
+        guard let raw = await streamLLM(prompt: prompt, images: images) else { return nil }
+        let digest = cleanOutput(raw).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard digest.count >= 8,
+              !looksLikePromptEcho(digest),
+              !digest.contains("<tool_call>") else {
+            return nil
+        }
+        let lowered = digest.lowercased()
+        if lowered.contains("无相关事实") || lowered.contains("no relevant facts") {
+            log("[Agent] web curation: no relevant facts extracted")
+            return nil
+        }
+        log("[Agent] web curation digest (\(digest.count) chars): \(digest.prefix(100))")
+        return digest
+    }
+
+    /// Build a clean, numbered candidate list for curation from a web tool result.
+    /// Prefers fetched-page passages + snippet chunks (evidence_pack), supplemented
+    /// by the search-result snippets (already query-focused summaries). Deduplicated
+    /// by source; each entry tagged so the curation can cite [source N].
+    private func webEvidenceCandidatesText(fromToolResultDetail detail: String) -> String {
+        guard let data = detail.data(using: .utf8),
+              let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return ""
+        }
+        var lines: [String] = []
+        var seen = Set<String>()
+
+        func append(title: String, host: String, date: String, text: String, url: String) {
+            let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard body.count >= 20, lines.count < 10 else { return }
+            let key = normalizedSourceKey(url) + "|" + String(body.prefix(48))
+            guard !seen.contains(key) else { return }
+            seen.insert(key)
+            let datePart = date.isEmpty ? "" : ", \(tr("发布", "published")) \(date)"
+            let clipped = String(body.prefix(340))
+            lines.append("[\(tr("来源", "source"))\(lines.count + 1)] \(title) (\(host)\(datePart))\n\(clipped)")
+        }
+
+        if let pack = payload["evidence_pack"] as? [String: Any],
+           let chunks = pack["chunks"] as? [[String: Any]] {
+            for chunk in chunks.prefix(8) {
+                append(
+                    title: (chunk["title"] as? String) ?? "",
+                    host: (chunk["host"] as? String) ?? "",
+                    date: (chunk["published_at"] as? String) ?? "",
+                    text: (chunk["text"] as? String) ?? "",
+                    url: (chunk["url"] as? String) ?? ""
+                )
+            }
+        }
+        if let results = payload["results"] as? [[String: Any]] {
+            for result in results.prefix(8) {
+                append(
+                    title: (result["title"] as? String) ?? "",
+                    host: (result["host"] as? String) ?? "",
+                    date: (result["published_at"] as? String) ?? "",
+                    text: (result["snippet"] as? String) ?? "",
+                    url: (result["url"] as? String) ?? ""
+                )
+            }
+        }
+        return lines.joined(separator: "\n\n")
+    }
+
     private func modelReplannedWebQueries(
         userQuestion: String,
         previousSearchDetail: String,
@@ -602,13 +687,13 @@ extension AgentEngine {
         let body: String
         if clippedSummary.isEmpty {
             body = tr(
-                "总结\n这次工具返回了可检查的来源，但没有稳定生成自然语言结论。请优先打开下方来源核对最新信息。",
-                "Summary\nThe tool returned checkable sources, but a natural-language conclusion was not generated reliably. Please verify the latest information from the sources below."
+                "- 结果：这次工具返回了可检查的来源，但没有稳定生成自然语言结论。\n- 建议：请优先打开下方来源核对最新信息。",
+                "- Result: The tool returned checkable sources, but a natural-language conclusion was not generated reliably.\n- Recommendation: Verify the latest information from the sources below."
             )
         } else if LanguageService.shared.current.isChinese {
-            body = "总结\n我找到了可用的搜索证据。最相关证据显示：\(clippedSummary)"
+            body = "- 结论：我找到了可用的搜索证据。\n- 关键证据：\(clippedSummary)"
         } else {
-            body = "Summary\nI found usable search evidence. The most relevant evidence says: \(clippedSummary)"
+            body = "- Conclusion: I found usable search evidence.\n- Key evidence: \(clippedSummary)"
         }
 
         return appendSourceCitationIfNeeded(
@@ -700,6 +785,28 @@ extension AgentEngine {
         }
     }
 
+    /// Drop a leading "总结"/"Summary" heading line from the answer body. The model
+    /// still organizes around it (prompt + structure validation keep the scannable
+    /// shape), but the user does not want the redundant label, so it is removed at
+    /// presentation. Bullets/structure underneath are untouched.
+    private func stripLeadingSummaryHeading(_ text: String) -> String {
+        var lines = text.components(separatedBy: "\n")
+        while let first = lines.first,
+              first.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            lines.removeFirst()
+        }
+        guard let first = lines.first,
+              isSummarySectionHeading(first.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            return text
+        }
+        lines.removeFirst()
+        while let first = lines.first,
+              first.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            lines.removeFirst()
+        }
+        return lines.joined(separator: "\n")
+    }
+
     func appendSourceCitationIfNeeded(
         to answer: String,
         toolName: String,
@@ -708,25 +815,34 @@ extension AgentEngine {
         guard usesGroundedSourcesContract(toolName) else {
             return answer
         }
-        let urls = sourceURLs(fromToolResultDetail: toolResultDetail) + sourceURLs(fromAnswerText: answer)
-        guard !urls.isEmpty else { return answer }
+        let detailURLs = sourceURLs(fromToolResultDetail: toolResultDetail)
+        let detailSourceKeys = Set(detailURLs.map { normalizedSourceKey($0) })
+        let answerURLs = detailSourceKeys.isEmpty
+            ? []
+            : sourceURLs(fromAnswerText: answer).filter { url in
+                detailSourceKeys.contains(normalizedSourceKey(url))
+            }
+        let urls = detailURLs + answerURLs
+        let cleanedAnswer = removeInlineSourceParentheticals(answer)
+        let bodyAnswer = stripLeadingSummaryHeading(removeInlineWebLinks(removeExistingSourceSection(cleanedAnswer)))
+        guard !urls.isEmpty else {
+            let sources = emptySourceSection()
+            return bodyAnswer.isEmpty ? sources : bodyAnswer + "\n\n" + sources
+        }
 
         let uniqueURLs = uniqueSourceURLs(urls)
-        let cleanedAnswer = removeInlineSourceParentheticals(answer)
-        let bodyAnswer = removeInlineWebLinks(removeExistingSourceSection(cleanedAnswer))
         let sources = sourceSection(for: uniqueURLs)
         guard !sources.isEmpty else { return bodyAnswer }
         return bodyAnswer.isEmpty ? sources : bodyAnswer + "\n\n" + sources
     }
 
-    private func finalizeWebAnswer(
+    func finalizeWebAnswer(
         _ answer: String,
         toolName: String,
         toolResultSummary: String,
         toolResultDetail: String,
         userQuestion: String,
-        images: [CIImage],
-        msgIndex: Int
+        images: [CIImage]
     ) async -> String {
         guard usesGroundedSourcesContract(toolName) else {
             return answer
@@ -755,7 +871,11 @@ extension AgentEngine {
             validationIssues: validation.issues,
             currentImageCount: images.count
         )
-        guard let repairedText = await streamLLM(prompt: repairPrompt, msgIndex: msgIndex, images: images) else {
+        // Generate the repair headlessly (no msgIndex) so it does NOT re-stream
+        // over the already-visible answer. The caller writes the returned text to
+        // the message exactly once, so the user sees the answer settle, not a
+        // jarring refresh + re-output.
+        guard let repairedText = await streamLLM(prompt: repairPrompt, images: images) else {
             return normalized
         }
 
@@ -792,6 +912,7 @@ extension AgentEngine {
             urls.append(url)
         }
 
+        let answerability = payload["answerability"] as? String
         if let evidencePack = payload["evidence_pack"] as? [String: Any],
            let chunks = evidencePack["chunks"] as? [[String: Any]] {
             let sortedChunks = chunks.sorted { lhs, rhs in
@@ -807,6 +928,10 @@ extension AgentEngine {
             }
         }
 
+        guard answerability != "insufficient" else {
+            return uniqueSourceURLs(urls)
+        }
+
         if let results = payload["results"] as? [[String: Any]] {
             let sortedResults = results.sorted { lhs, rhs in
                 let lhsRank = sourcePriority(lhs)
@@ -815,6 +940,7 @@ extension AgentEngine {
                 return ((lhs["rank"] as? Int) ?? Int.max) < ((rhs["rank"] as? Int) ?? Int.max)
             }
             for result in sortedResults {
+                guard isUsableSourceResult(result) else { continue }
                 if let url = result["url"] as? String, !url.isEmpty {
                     urls.append(url)
                 }
@@ -878,6 +1004,16 @@ extension AgentEngine {
         return normalized == "https://example.com" || normalized == "http://example.com"
     }
 
+    private func isUsableSourceResult(_ result: [String: Any]) -> Bool {
+        // Relevance, confidence and homepage-likeness still gate a citation;
+        // staleness does NOT — a stale-but-relevant source is allowed in, it just
+        // sorts after fresher ones (see sourcePriority / evidence_pack scoring).
+        if result["query_relevant"] as? Bool == false { return false }
+        if result["confidence"] as? String == "low" { return false }
+        if result["is_homepage_like"] as? Bool == true { return false }
+        return true
+    }
+
     private func sourcePriority(_ result: [String: Any]) -> Int {
         if result["query_relevant"] as? Bool == false { return 10 }
         if result["directly_usable"] as? Bool == true { return 0 }
@@ -925,6 +1061,10 @@ extension AgentEngine {
             "\(index + 1). [\(sourceLabel(for: url))](\(url))"
         }.joined(separator: "\n")
         return tr("引用网址\n\(lines)", "Sources\n\(lines)")
+    }
+
+    private func emptySourceSection() -> String {
+        tr("引用网址\n无可用来源", "Sources\nNo usable sources.")
     }
 
     private func sourceLabel(for rawURL: String) -> String {
@@ -991,17 +1131,25 @@ extension AgentEngine {
     }
 
     private func isSourceSectionHeading(_ text: String) -> Bool {
-        var normalized = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-        while normalized.hasPrefix("#") {
-            normalized.removeFirst()
-            normalized = normalized.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
+        // Strip markdown heading (#) and emphasis (*, _) wrappers so a model-bolded
+        // "**引用网址**" / "**Sources**" is still detected — otherwise the model's own
+        // source section survives removeExistingSourceSection and a second rebuilt
+        // section gets appended (duplicate 引用网址).
+        let normalized = text.lowercased()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "#*_ "))
         return normalized == "引用网址"
+            || normalized == "引用"
             || normalized == "引用链接"
+            || normalized == "参考来源"
+            || normalized == "参考链接"
             || normalized == "sources"
             || normalized == "references"
             || normalized.hasPrefix("引用网址：")
+            || normalized.hasPrefix("引用：")
             || normalized.hasPrefix("引用链接：")
+            || normalized.hasPrefix("参考来源：")
+            || normalized.hasPrefix("参考链接：")
             || normalized.hasPrefix("sources:")
             || normalized.hasPrefix("references:")
     }
@@ -1018,12 +1166,17 @@ extension AgentEngine {
         let sections = splitWebAnswerSections(answer)
         let body = sections.body
         let sources = sections.sources ?? ""
+        // 用户不要"总结"标题: 它在展示层被 stripLeadingSummaryHeading 去掉
+        // (appendSourceCitationIfNeeded), 所以这里只校验正文的可扫描结构(下方),
+        // 不再强制要求"总结"标题本身存在 —— 否则去掉标题后每次都会触发 repair。
         let expectedURLs = sourceURLs(fromToolResultDetail: toolResultDetail)
             .filter { !isLowValueSourceURL($0) }
         var issues: [String] = []
-
         if body.trimmingCharacters(in: .whitespacesAndNewlines).count < 12 {
             issues.append(tr("总结正文为空或过短。", "Summary body is empty or too short."))
+        }
+        if webAnswerLooksUnstructured(body) {
+            issues.append(tr("总结正文是单段长文，缺少可扫描结构。", "Summary body is one long paragraph and lacks scannable structure."))
         }
         if webAnswerContainsPlaceholder(answer) {
             issues.append(tr("回答包含占位符或模板文本。", "Answer contains placeholder or template text."))
@@ -1046,6 +1199,9 @@ extension AgentEngine {
         }
         if bodyContainsInlineSourceMarker(body) {
             issues.append(tr("总结正文仍混入来源括号或来源标记。", "Summary body still contains inline source markers."))
+        }
+        if webAnswerUsesLowRelevanceEvidence(body, toolResultDetail: toolResultDetail) {
+            issues.append(tr("总结正文使用了低相关搜索结果。", "Summary body uses low-relevance search results."))
         }
 
         let hasUsableEvidence = webToolDetailHasUsableEvidence(toolResultDetail)
@@ -1075,6 +1231,94 @@ extension AgentEngine {
         let latinWords = regexMatchCount(pattern: #"\b[A-Za-z][A-Za-z'-]{2,}\b"#, in: cleaned)
         let cjkLimit = max(12, cleaned.count / 20)
         return latinWords < 5 || cjkCount > cjkLimit
+    }
+
+    private func isSummarySectionHeading(_ text: String) -> Bool {
+        // Normalize away markdown heading (#) and emphasis (*, _) wrappers so
+        // "总结", "## 总结", "**总结**", "__Summary__" all match — the model varies
+        // the heading style and any of these should count as the summary heading.
+        let normalized = text.lowercased()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "#*_ "))
+        return normalized == "总结"
+            || normalized == "summary"
+            || normalized.hasPrefix("总结：")
+            || normalized.hasPrefix("summary:")
+    }
+
+    private func webAnswerLooksUnstructured(_ body: String) -> Bool {
+        var lines = body
+            .components(separatedBy: "\n")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        if let first = lines.first, isSummarySectionHeading(first) {
+            lines.removeFirst()
+        }
+        guard lines.count == 1, let onlyLine = lines.first else {
+            return false
+        }
+        guard !onlyLine.hasPrefix("- "),
+              !onlyLine.hasPrefix("* "),
+              !onlyLine.hasPrefix("1."),
+              !onlyLine.contains("|") else {
+            return false
+        }
+        let sentenceCount = regexMatchCount(pattern: #"[。！？.!?]"#, in: onlyLine)
+        return onlyLine.count > 120 || sentenceCount >= 3
+    }
+
+    private func webAnswerUsesLowRelevanceEvidence(_ body: String, toolResultDetail: String) -> Bool {
+        let normalizedBody = normalizedEvidenceMatchText(body)
+        guard !normalizedBody.isEmpty,
+              let data = toolResultDetail.data(using: .utf8),
+              let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let results = payload["results"] as? [[String: Any]] else {
+            return false
+        }
+
+        for result in results where !isUsableSourceResult(result) {
+            for fragment in lowRelevanceEvidenceFragments(result) {
+                if normalizedBody.contains(fragment) {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    private func lowRelevanceEvidenceFragments(_ result: [String: Any]) -> [String] {
+        var fragments: [String] = []
+
+        let fields = [
+            result["title"] as? String,
+            result["host"] as? String
+        ].compactMap { $0 }
+        for field in fields {
+            let normalized = normalizedEvidenceMatchText(field)
+            if normalized.count >= 4 {
+                fragments.append(normalized)
+            }
+        }
+
+        let snippet = (result["snippet"] as? String) ?? ""
+        let segments = snippet.components(separatedBy: CharacterSet(charactersIn: "。！？；;，,、\n\r\t -"))
+        for segment in segments {
+            let normalized = normalizedEvidenceMatchText(segment)
+            guard normalized.count >= 8 else { continue }
+            let maxLength = min(24, normalized.count)
+            let end = normalized.index(normalized.startIndex, offsetBy: maxLength)
+            fragments.append(String(normalized[..<end]))
+        }
+
+        return uniqueStringsPreservingOrder(fragments)
+    }
+
+    private func normalizedEvidenceMatchText(_ text: String) -> String {
+        text
+            .lowercased()
+            .replacingOccurrences(of: #"https?://\S+"#, with: " ", options: .regularExpression)
+            .replacingOccurrences(of: #"\s+"#, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func usesGroundedSourcesContract(_ toolName: String) -> Bool {
@@ -1519,6 +1763,30 @@ extension AgentEngine {
         return nil
     }
 
+    /// Normalize web sources for final-answer exits that bypass the full
+    /// `finalizeWebAnswer` (the duplicate-tool-skip path, load_skill paths, the
+    /// Planner synthesis). Replaces whatever URLs the model wrote — typically raw,
+    /// long URLs — with the deterministic short-host Markdown "引用网址" section
+    /// built from this turn's most recent web tool result. No-op (returns the
+    /// answer unchanged) when the turn ran no web tool, so it is safe to apply at
+    /// generic answer exits. Synchronous + deterministic — never re-streams.
+    func normalizeWebSourcesFromRecentTurn(_ answer: String) -> String {
+        let lastUserIdx = messages.lastIndex(where: { $0.role == .user }) ?? -1
+        let currentTurnSlice = lastUserIdx >= 0 ? Array(messages.suffix(from: lastUserIdx)) : Array(messages)
+        guard let webResult = currentTurnSlice.last(where: {
+            $0.role == .skillResult
+                && $0.skillResultKind == .toolExecution
+                && ($0.skillName == "web-search" || $0.skillName == "web-fetch")
+        }), let toolName = webResult.skillName else {
+            return answer
+        }
+        return appendSourceCitationIfNeeded(
+            to: answer,
+            toolName: toolName,
+            toolResultDetail: webResult.content
+        )
+    }
+
     private func webSearchResultNeedsFetch(_ detail: String) -> Bool {
         guard let data = detail.data(using: .utf8),
               let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
@@ -1552,8 +1820,7 @@ extension AgentEngine {
         followUpToolName: String,
         toolResultDetail: String,
         userQuestion: String,
-        images: [CIImage],
-        msgIndex: Int
+        images: [CIImage]
     ) async -> (answer: String, toolName: String, toolResultSummary: String, toolResultDetail: String)? {
         let validation = validateGroundedWebAnswer(
             appendSourceCitationIfNeeded(to: answer, toolName: followUpToolName, toolResultDetail: toolResultDetail),
@@ -1580,8 +1847,6 @@ extension AgentEngine {
             skillName: "web-fetch",
             skillResultKind: .toolExecution
         ))
-        messages[msgIndex].update(content: "▍")
-
         let retryPrompt = PromptBuilder.buildCompactToolAnswerPrompt(
             userQuestion: userQuestion,
             toolName: "web-fetch",
@@ -1589,7 +1854,10 @@ extension AgentEngine {
             currentImageCount: images.count,
             enableThinking: false
         )
-        guard let retryText = await streamLLM(prompt: retryPrompt, msgIndex: msgIndex, images: images) else {
+        // Headless: generate the fallback re-answer off-screen so the visible
+        // message is not cleared to "▍" and re-streamed. It is written once by
+        // the caller after finalizeWebAnswer.
+        guard let retryText = await streamLLM(prompt: retryPrompt, images: images) else {
             return nil
         }
 
@@ -1776,7 +2044,7 @@ extension AgentEngine {
                         maxRounds: maxRounds
                     )
                 } else {
-                    messages[followUpIndex].update(content: cleanOutput(nextText))
+                    messages[followUpIndex].update(content: normalizeWebSourcesFromRecentTurn(cleanOutput(nextText)))
                     finishTurn()
                 }
                 return
@@ -2014,12 +2282,12 @@ extension AgentEngine {
                             || looksLikePromptEcho(retryCleaned)
                             ? fallbackReplyForEmptySkillFollowUp(skillName: loadedSkillName)
                             : retryCleaned
-                        messages[followUpIndex].update(content: finalReply)
+                        messages[followUpIndex].update(content: normalizeWebSourcesFromRecentTurn(finalReply))
                         markSkillsDone(loadedDisplayNames)
                         finishTurn()
                     }
                 } else {
-                    messages[followUpIndex].update(content: cleaned)
+                    messages[followUpIndex].update(content: normalizeWebSourcesFromRecentTurn(cleaned))
                     markSkillsDone(loadedDisplayNames)
                     finishTurn()
                 }
@@ -2150,20 +2418,36 @@ extension AgentEngine {
                 return
             }
 
+            // Model-driven evidence curation (the SourceCurator step of a mature
+            // search agent): turn the raw multi-source evidence into a clean,
+            // query-focused fact digest before synthesis, so the model summarizes
+            // from extracted facts (verbatim values preserved) rather than raw page
+            // noise. Falls back to the raw summary when curation yields nothing.
+            // Headless — no extra visible re-stream.
+            var synthesisSummary = canonicalResult.summary
+            if usesGroundedSourcesContract(followUpToolName),
+               let digest = await curateWebEvidence(
+                    userQuestion: userQuestion,
+                    toolResultDetail: toolResultDetail,
+                    images: images
+               ) {
+                synthesisSummary = digest
+            }
+
             // F3: R2 prompt = R1 prompt + R1 output + tool_result message.
             // 物理上是 R1 conversation 的延伸 → KV cache 自然命中 R1 全部 token.
             let followUpPrompt = PromptBuilder.appendToolResult(
                 toR1Prompt: prompt,
                 r1Output: fullText,
                 toolName: followUpToolName,
-                toolResultSummary: canonicalResult.summary
+                toolResultSummary: synthesisSummary
             )
 
             let selectedFollowUpPrompt = (effectiveEnableThinking || shouldUseCompactToolFollowUp(followUpPrompt, toolName: followUpToolName))
                 ? PromptBuilder.buildCompactToolAnswerPrompt(
                     userQuestion: userQuestion,
                     toolName: followUpToolName,
-                    toolResultSummary: canonicalResult.summary,
+                    toolResultSummary: synthesisSummary,
                     currentImageCount: images.count,
                     // 工具结果后的 R2/R3 是“基于已得证据输出最终答案/继续必要工具”的阶段。
                     // Gemma 4 在这里重新开启 thinking 时容易输出未闭合 thought 通道, UI 会只显示思考卡片而没有最终答案。
@@ -2175,7 +2459,19 @@ extension AgentEngine {
             messages.append(ChatMessage(role: .assistant, content: "▍"))
             let followUpIndex = messages.count - 1
 
-            guard let nextText = await streamLLM(prompt: selectedFollowUpPrompt, msgIndex: followUpIndex, images: images) else {
+            // Grounded-web answers are post-processed after generation (citation
+            // normalization + contract validation, and sometimes a full repair
+            // regeneration), and that result overwrites this message via
+            // finalizeWebAnswer below. Streaming the draft first and then
+            // overwriting it produces a visible "refresh + re-output". So for the
+            // grounded-sources contract, generate headlessly: the card keeps the
+            // typing placeholder until the finalized answer is written exactly
+            // once. Non-grounded tool follow-ups keep streaming for live feedback.
+            let groundedWebFollowUp = usesGroundedSourcesContract(followUpToolName)
+            let nextTextResult = groundedWebFollowUp
+                ? await streamLLM(prompt: selectedFollowUpPrompt, images: images)
+                : await streamLLM(prompt: selectedFollowUpPrompt, msgIndex: followUpIndex, images: images)
+            guard let nextText = nextTextResult else {
                 messages[followUpIndex].update(role: .assistant, content: fallbackReplyForEmptyToolFollowUp(
                     toolName: followUpToolName,
                     toolResultSummary: canonicalResult.summary,
@@ -2212,8 +2508,7 @@ extension AgentEngine {
                         followUpToolName: followUpToolName,
                         toolResultDetail: toolResultDetail,
                         userQuestion: userQuestion,
-                        images: images,
-                        msgIndex: followUpIndex
+                        images: images
                     ) {
                         finalAnswer = retry.answer
                         finalToolName = retry.toolName
@@ -2231,8 +2526,7 @@ extension AgentEngine {
                         toolResultSummary: finalToolResultSummary,
                         toolResultDetail: finalToolResultDetail,
                         userQuestion: userQuestion,
-                        images: images,
-                        msgIndex: followUpIndex
+                        images: images
                     )
                     messages[followUpIndex].update(content: finalizedAnswer)
                 }

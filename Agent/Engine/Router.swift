@@ -8,6 +8,8 @@ enum DialogueAct: String {
     case verifyLastResult = "verify_last_result"
     case explainLastResult = "explain_last_result"
     case clarifyLastResult = "clarify_last_result"
+    case elaborateLastResult = "elaborate_last_result"
+    case transformLastResult = "transform_last_result"
     case cancelOrReject = "cancel_or_reject"
     case chitchat = "chitchat"
 
@@ -15,7 +17,7 @@ enum DialogueAct: String {
         switch self {
         case .newTask, .continueTask, .correctParameters, .refreshResult:
             return true
-        case .verifyLastResult, .explainLastResult, .clarifyLastResult, .cancelOrReject, .chitchat:
+        case .verifyLastResult, .explainLastResult, .clarifyLastResult, .elaborateLastResult, .transformLastResult, .cancelOrReject, .chitchat:
             return false
         }
     }
@@ -39,6 +41,98 @@ struct RecentToolObservation {
     let skillDisplayName: String
     let summary: String
     let detail: String
+}
+
+enum RecentContextArtifactKind: String {
+    case assistantAnswer = "assistant_answer"
+    case toolResult = "tool_result"
+    case imageAnswer = "image_answer"
+    case generatedContent = "generated_content"
+
+    var displayLabel: String {
+        switch self {
+        case .assistantAnswer:
+            return tr("上一轮回答", "previous answer")
+        case .toolResult:
+            return tr("上一轮工具结果", "previous tool result")
+        case .imageAnswer:
+            return tr("上一轮图片回答", "previous image answer")
+        case .generatedContent:
+            return tr("上一轮生成内容", "previous generated content")
+        }
+    }
+}
+
+struct RecentContextArtifact {
+    let id: UUID
+    let kind: RecentContextArtifactKind
+    let sourceMessageID: UUID
+    let skillId: String?
+    let skillDisplayName: String?
+    let toolName: String?
+    let visibleAnswer: String?
+    let summary: String
+    let detail: String
+    let supportsRefresh: Bool
+    let createdAt: Date
+
+    init(
+        id: UUID,
+        kind: RecentContextArtifactKind,
+        skillId: String?,
+        skillDisplayName: String?,
+        toolName: String?,
+        visibleAnswer: String?,
+        summary: String,
+        detail: String,
+        supportsRefresh: Bool,
+        sourceMessageID: UUID? = nil,
+        createdAt: Date = Date()
+    ) {
+        self.id = id
+        self.kind = kind
+        self.sourceMessageID = sourceMessageID ?? id
+        self.skillId = skillId
+        self.skillDisplayName = skillDisplayName
+        self.toolName = toolName
+        self.visibleAnswer = visibleAnswer
+        self.summary = summary
+        self.detail = detail
+        self.supportsRefresh = supportsRefresh
+        self.createdAt = createdAt
+    }
+
+    var sourceName: String {
+        if let skillDisplayName, !skillDisplayName.isEmpty {
+            return skillDisplayName
+        }
+        if let toolName, !toolName.isEmpty {
+            return toolName
+        }
+        return kind.displayLabel
+    }
+
+    var classifierSummary: String {
+        let normalizedSummary = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !normalizedSummary.isEmpty {
+            return normalizedSummary
+        }
+        return promptSummary
+    }
+
+    var promptSummary: String {
+        let normalizedAnswer = visibleAnswer?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !normalizedAnswer.isEmpty {
+            return normalizedAnswer
+        }
+
+        let normalizedSummary = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !normalizedSummary.isEmpty {
+            return normalizedSummary
+        }
+
+        return detail.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 }
 
 extension AgentEngine {
@@ -186,6 +280,201 @@ extension AgentEngine {
         return nil
     }
 
+    private func sanitizedContextAssistantContent(_ content: String) -> String {
+        let cleaned = cleanOutput(content)
+            .replacingOccurrences(of: "▍", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty,
+              !looksLikeStructuredIntermediateOutput(cleaned),
+              !looksLikePromptEcho(cleaned) else {
+            return ""
+        }
+        return cleaned
+    }
+
+    private func contextSourceMetadata(for skillOrToolName: String?) -> (
+        skillId: String?,
+        skillDisplayName: String?,
+        toolName: String?,
+        supportsRefresh: Bool
+    ) {
+        guard let rawName = skillOrToolName?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !rawName.isEmpty else {
+            return (nil, nil, nil, false)
+        }
+
+        let canonicalSkillId = skillRegistry.canonicalSkillId(for: rawName)
+        if let definition = skillRegistry.getDefinition(canonicalSkillId), definition.isEnabled {
+            return (canonicalSkillId, definition.metadata.displayName, nil, true)
+        }
+
+        if let skillId = skillRegistry.findSkillId(forTool: rawName),
+           let definition = skillRegistry.getDefinition(skillId),
+           definition.isEnabled {
+            return (skillId, definition.metadata.displayName, rawName, true)
+        }
+
+        return (nil, rawName, rawName, false)
+    }
+
+    func latestPriorContextArtifact() -> RecentContextArtifact? {
+        var skippedCurrentUser = false
+        var visibleAnswer: (
+            id: UUID,
+            timestamp: Date,
+            content: String,
+            skillId: String?,
+            skillDisplayName: String?,
+            toolName: String?,
+            supportsRefresh: Bool
+        )?
+        var toolArtifact: RecentContextArtifact?
+        var generatedArtifact: RecentContextArtifact?
+
+        for message in messages.reversed() {
+            if message.role == .user {
+                if !skippedCurrentUser {
+                    skippedCurrentUser = true
+                    continue
+                }
+                break
+            }
+            guard skippedCurrentUser else { continue }
+
+            switch message.role {
+            case .assistant:
+                if visibleAnswer == nil {
+                    let cleaned = sanitizedContextAssistantContent(message.content)
+                    if !cleaned.isEmpty {
+                        let source = contextSourceMetadata(for: message.skillName)
+                        visibleAnswer = (
+                            message.id,
+                            message.timestamp,
+                            cleaned,
+                            source.skillId,
+                            source.skillDisplayName,
+                            source.toolName,
+                            source.supportsRefresh
+                        )
+                    }
+                }
+
+            case .skillResult:
+                guard let kind = message.skillResultKind,
+                      kind != .skillInstructions else {
+                    continue
+                }
+                let normalizedDetail = message.content.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !normalizedDetail.isEmpty else { continue }
+
+                switch kind {
+                case .toolExecution:
+                    guard toolArtifact == nil,
+                          let toolName = message.skillName,
+                          !toolName.isEmpty else {
+                        continue
+                    }
+                    let skillId = skillRegistry.findSkillId(forTool: toolName)
+                        ?? skillRegistry.canonicalSkillId(for: toolName)
+                    let resolvedSkillId = skillRegistry.getDefinition(skillId) == nil ? nil : skillId
+                    let displayName = resolvedSkillId
+                        .flatMap { skillRegistry.getDefinition($0)?.metadata.displayName }
+                        ?? findDisplayName(for: toolName)
+                    let canonical = canonicalToolResult(toolName: toolName, toolResult: message.content)
+                    let normalizedSummary = canonical.summary.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let summary = normalizedSummary.isEmpty ? normalizedDetail : normalizedSummary
+
+                    toolArtifact = RecentContextArtifact(
+                        id: message.id,
+                        kind: .toolResult,
+                        skillId: resolvedSkillId,
+                        skillDisplayName: displayName,
+                        toolName: toolName,
+                        visibleAnswer: visibleAnswer?.content,
+                        summary: summary,
+                        detail: normalizedDetail,
+                        supportsRefresh: resolvedSkillId != nil,
+                        createdAt: message.timestamp
+                    )
+
+                case .generatedContent:
+                    guard generatedArtifact == nil else { continue }
+                    let skillName = message.skillName
+                    let resolvedSkillId = skillName.flatMap { skillRegistry.canonicalSkillId(for: $0) }
+                    let displayName = resolvedSkillId
+                        .flatMap { skillRegistry.getDefinition($0)?.metadata.displayName }
+                    generatedArtifact = RecentContextArtifact(
+                        id: message.id,
+                        kind: .generatedContent,
+                        skillId: resolvedSkillId,
+                        skillDisplayName: displayName,
+                        toolName: nil,
+                        visibleAnswer: visibleAnswer?.content,
+                        summary: normalizedDetail,
+                        detail: normalizedDetail,
+                        supportsRefresh: false,
+                        createdAt: message.timestamp
+                    )
+
+                case .skillInstructions:
+                    continue
+                }
+
+            case .system, .user:
+                continue
+            }
+        }
+
+        if let artifact = toolArtifact {
+            return RecentContextArtifact(
+                id: artifact.id,
+                kind: artifact.kind,
+                skillId: artifact.skillId,
+                skillDisplayName: artifact.skillDisplayName,
+                toolName: artifact.toolName,
+                visibleAnswer: visibleAnswer?.content ?? artifact.visibleAnswer,
+                summary: artifact.summary,
+                detail: artifact.detail,
+                supportsRefresh: artifact.supportsRefresh,
+                sourceMessageID: artifact.sourceMessageID,
+                createdAt: artifact.createdAt
+            )
+        }
+
+        if let artifact = generatedArtifact {
+            return RecentContextArtifact(
+                id: artifact.id,
+                kind: artifact.kind,
+                skillId: artifact.skillId,
+                skillDisplayName: artifact.skillDisplayName,
+                toolName: artifact.toolName,
+                visibleAnswer: visibleAnswer?.content ?? artifact.visibleAnswer,
+                summary: artifact.summary,
+                detail: artifact.detail,
+                supportsRefresh: artifact.supportsRefresh,
+                sourceMessageID: artifact.sourceMessageID,
+                createdAt: artifact.createdAt
+            )
+        }
+
+        if let visibleAnswer {
+            return RecentContextArtifact(
+                id: visibleAnswer.id,
+                kind: .assistantAnswer,
+                skillId: visibleAnswer.skillId,
+                skillDisplayName: visibleAnswer.skillDisplayName,
+                toolName: visibleAnswer.toolName,
+                visibleAnswer: visibleAnswer.content,
+                summary: visibleAnswer.content,
+                detail: visibleAnswer.content,
+                supportsRefresh: visibleAnswer.supportsRefresh,
+                createdAt: visibleAnswer.timestamp
+            )
+        }
+
+        return nil
+    }
+
     func latestPriorToolObservation() -> RecentToolObservation? {
         var skippedCurrentUser = false
         var priorUserTurnsSeen = 0
@@ -236,11 +525,44 @@ extension AgentEngine {
         userQuestion: String,
         observation: RecentToolObservation
     ) async -> DialogueActDecision? {
+        let artifact = RecentContextArtifact(
+            id: UUID(),
+            kind: .toolResult,
+            skillId: observation.skillId,
+            skillDisplayName: observation.skillDisplayName,
+            toolName: observation.toolName,
+            visibleAnswer: nil,
+            summary: observation.summary,
+            detail: observation.detail,
+            supportsRefresh: observation.skillId != nil
+        )
+        return await classifyContextOperation(
+            userQuestion: userQuestion,
+            artifact: artifact,
+            forcedAct: nil
+        )
+    }
+
+    func classifyContextOperation(
+        userQuestion: String,
+        artifact: RecentContextArtifact,
+        forcedAct: DialogueAct?
+    ) async -> DialogueActDecision? {
+        if let forcedAct {
+            return DialogueActDecision(
+                act: forcedAct,
+                shouldExecuteTool: forcedAct.allowsToolExecution && artifact.supportsRefresh,
+                targetPreviousResult: true,
+                confidence: 1.0
+            )
+        }
+
         let prompt = PromptBuilder.buildDialogueActPrompt(
             userQuestion: userQuestion,
-            previousSkillName: observation.skillDisplayName,
-            previousToolName: observation.toolName,
-            previousResultSummary: observation.summary
+            previousContextKind: artifact.kind.rawValue,
+            previousSourceName: artifact.sourceName,
+            previousToolName: artifact.toolName,
+            previousResultSummary: artifact.classifierSummary
         )
 
         let rawDecision = await runIsolatedInferenceProbe(
@@ -304,29 +626,59 @@ extension AgentEngine {
         observation: RecentToolObservation,
         decision: DialogueActDecision
     ) async {
-        let prompt = PromptBuilder.buildPreviousToolObservationReplyPrompt(
+        let artifact = RecentContextArtifact(
+            id: UUID(),
+            kind: .toolResult,
+            skillId: observation.skillId,
+            skillDisplayName: observation.skillDisplayName,
+            toolName: observation.toolName,
+            visibleAnswer: nil,
+            summary: observation.summary,
+            detail: observation.detail,
+            supportsRefresh: observation.skillId != nil
+        )
+        await answerFromPriorContextArtifact(
+            userQuestion: userQuestion,
+            artifact: artifact,
+            decision: decision
+        )
+    }
+
+    func answerFromPriorContextArtifact(
+        userQuestion: String,
+        artifact: RecentContextArtifact,
+        decision: DialogueActDecision
+    ) async {
+        let prompt = PromptBuilder.buildPreviousContextArtifactReplyPrompt(
             userQuestion: userQuestion,
             dialogueAct: decision.act.rawValue,
-            previousSkillName: observation.skillDisplayName,
-            previousToolName: observation.toolName,
-            previousResultSummary: observation.summary,
-            previousResultDetail: observation.detail
+            contextKind: artifact.kind.rawValue,
+            previousSourceName: artifact.sourceName,
+            previousToolName: artifact.toolName,
+            previousVisibleAnswer: artifact.visibleAnswer,
+            previousResultSummary: artifact.promptSummary,
+            previousResultDetail: artifact.detail,
+            enableThinking: effectiveEnableThinking
         )
         let plan = makePromptPlan(
             prompt: prompt,
-            shape: .lightFull,
+            shape: effectiveEnableThinking ? .thinking : .lightFull,
             history: messages,
             historyDepth: 0
         )
         await prepareSessionGroupTransitionIfNeeded(for: plan)
 
-        messages.append(ChatMessage(role: .assistant, content: "▍"))
+        messages.append(ChatMessage(
+            role: .assistant,
+            content: "▍",
+            skillName: artifact.skillId ?? artifact.toolName
+        ))
         let msgIndex = messages.count - 1
 
         markStreamingStarted()
         guard let rawReply = await streamLLM(prompt: prompt, msgIndex: msgIndex, images: []) else {
             if messages.indices.contains(msgIndex) {
-                messages[msgIndex].update(content: fallbackReplyForPriorToolObservation(observation))
+                messages[msgIndex].update(content: fallbackReplyForPriorContextArtifact(artifact))
             }
             recordCompletedObservation(plan: plan)
             finishTurn()
@@ -339,7 +691,7 @@ extension AgentEngine {
             || cleaned.isEmpty
             || looksLikeStructuredIntermediateOutput(cleaned)
             || looksLikePromptEcho(cleaned) {
-            finalReply = fallbackReplyForPriorToolObservation(observation)
+            finalReply = fallbackReplyForPriorContextArtifact(artifact)
         } else {
             finalReply = cleaned
         }
@@ -351,10 +703,25 @@ extension AgentEngine {
     }
 
     private func fallbackReplyForPriorToolObservation(_ observation: RecentToolObservation) -> String {
-        let summary = observation.summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        let artifact = RecentContextArtifact(
+            id: UUID(),
+            kind: .toolResult,
+            skillId: observation.skillId,
+            skillDisplayName: observation.skillDisplayName,
+            toolName: observation.toolName,
+            visibleAnswer: nil,
+            summary: observation.summary,
+            detail: observation.detail,
+            supportsRefresh: observation.skillId != nil
+        )
+        return fallbackReplyForPriorContextArtifact(artifact)
+    }
+
+    private func fallbackReplyForPriorContextArtifact(_ artifact: RecentContextArtifact) -> String {
+        let summary = artifact.promptSummary.trimmingCharacters(in: .whitespacesAndNewlines)
         return tr(
-            "我没有重新读取数据。基于上一轮 \(observation.skillDisplayName) 返回的结果：\(summary)",
-            "I did not run the tool again. Based on the previous \(observation.skillDisplayName) result: \(summary)"
+            "我没有重新读取数据。基于\(artifact.kind.displayLabel)：\(summary)",
+            "I did not run anything again. Based on the \(artifact.kind.displayLabel): \(summary)"
         )
     }
 

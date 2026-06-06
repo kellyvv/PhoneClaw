@@ -54,6 +54,18 @@ struct LocalizationContext: Equatable {
         default: return "en"
         }
     }
+
+    /// DuckDuckGo `kl` region code (region-language). Without it the HTML endpoint
+    /// geolocates by exit IP and returns region-mismatched, foreign-language pages
+    /// (e.g. Indonesian/Vietnamese results for a 中文 query), inconsistently per
+    /// request. Locking to the conversation language's region keeps results stable.
+    var duckDuckGoRegion: String {
+        switch resolved {
+        case .zhHans: return "cn-zh"
+        case .ja: return "jp-jp"
+        default: return "us-en"
+        }
+    }
 }
 
 // MARK: - LanguageService

@@ -686,7 +686,7 @@ extension AgentEngine {
             finalReply = cleaned
         }
 
-        messages[followUpIndex].update(content: finalReply)
+        messages[followUpIndex].update(content: normalizeWebSourcesFromRecentTurn(finalReply))
         markSkillsDone(Array(loadedDisplayNames.values))
         finishTurn()
         return true
