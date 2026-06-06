@@ -76,6 +76,9 @@ struct ContentView: View {
     @State private var engine = AgentEngine()
     @State private var audioCapture = AudioCaptureService()
     @State private var inputText = ""
+    @State private var pendingContextFollowUpAct: DialogueAct?
+    @State private var pendingContextFollowUpDraft: String?
+    @State private var pendingContextFollowUpTargetItemID: UUID?
     @State private var selectedImages: [UIImage] = []
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var showConfigurations = false
@@ -590,7 +593,6 @@ struct ContentView: View {
     private func followUpSuggestions(for item: DisplayItem, block: ResponseBlock) -> [FollowUpSuggestion] {
         guard item.id == displayItems.last?.id else { return [] }
         guard !engine.isProcessing, !block.isThinking else { return [] }
-        guard block.skills.isEmpty else { return [] }
         guard block.responseText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
             return []
         }
@@ -606,17 +608,30 @@ struct ContentView: View {
             FollowUpSuggestion(
                 id: "expand",
                 title: tr("展开说说", "Tell me more"),
-                prompt: tr("继续展开刚才的回答。", "Tell me more about your last answer.")
+                prompt: tr("继续展开刚才的回答。", "Tell me more about your last answer."),
+                contextAct: .elaborateLastResult,
+                targetItemID: item.id
             ),
             FollowUpSuggestion(
                 id: "example",
                 title: tr("举个例子", "Give an example"),
-                prompt: tr("举一个具体例子。", "Give me a concrete example.")
+                prompt: tr("举一个具体例子。", "Give me a concrete example."),
+                contextAct: .elaborateLastResult,
+                targetItemID: item.id
             ),
             FollowUpSuggestion(
                 id: "summary",
                 title: tr("总结三点", "Summarize"),
-                prompt: tr("把刚才的内容总结成三点。", "Summarize that in three points.")
+                prompt: tr("把刚才的内容总结成三点。", "Summarize that in three points."),
+                contextAct: .transformLastResult,
+                targetItemID: item.id
+            ),
+            FollowUpSuggestion(
+                id: "structure",
+                title: tr("帮我结构化", "Structure it"),
+                prompt: tr("把刚才的内容整理成结构化要点。", "Turn the previous answer into structured key points."),
+                contextAct: .transformLastResult,
+                targetItemID: item.id
             )
         ]
     }
@@ -625,6 +640,9 @@ struct ContentView: View {
         showAttachmentTray = false
         isVoiceInputMode = false
         inputText = suggestion.prompt
+        pendingContextFollowUpAct = suggestion.contextAct
+        pendingContextFollowUpDraft = suggestion.prompt
+        pendingContextFollowUpTargetItemID = suggestion.targetItemID
         isInputFocused = true
     }
 
@@ -1024,6 +1042,9 @@ struct ContentView: View {
                 }, id: \.0.name) { skill, chipLabel, chipPrompt in
                     Button {
                         inputText = chipPrompt
+                        pendingContextFollowUpAct = nil
+                        pendingContextFollowUpDraft = nil
+                        pendingContextFollowUpTargetItemID = nil
                         Task { await send() }
                     } label: {
                         HStack(spacing: 5) {
@@ -1106,6 +1127,9 @@ struct ContentView: View {
     private func applyStarterAction(_ action: StarterAction) {
         showAttachmentTray = false
         inputText = action.prompt
+        pendingContextFollowUpAct = nil
+        pendingContextFollowUpDraft = nil
+        pendingContextFollowUpTargetItemID = nil
         isVoiceInputMode = false
         isInputFocused = true
 
@@ -1757,6 +1781,14 @@ struct ContentView: View {
     private func send(includeAudio: Bool = true) async {
         let text = inputText
         let images = selectedImages
+        let lastDisplayItemID = displayItems.last?.id
+        let forcedContextAct = pendingContextFollowUpDraft == text
+            && pendingContextFollowUpTargetItemID == lastDisplayItemID
+            ? pendingContextFollowUpAct
+            : nil
+        pendingContextFollowUpAct = nil
+        pendingContextFollowUpDraft = nil
+        pendingContextFollowUpTargetItemID = nil
         showAttachmentTray = false
         if audioCapture.isCapturing {
             _ = audioCapture.stopCapture()
@@ -1772,7 +1804,7 @@ struct ContentView: View {
         importedAudioSnapshot = nil
         importedAudioFilename = nil
         isInputFocused = false
-        await engine.processInput(text, images: images, audio: audioSnapshot)
+        await engine.processInput(text, images: images, audio: audioSnapshot, forcedContextAct: forcedContextAct)
     }
 
     private func enterLiveMode() {

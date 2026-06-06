@@ -8,6 +8,8 @@ struct FollowUpSuggestion: Identifiable, Equatable {
     let id: String
     let title: String
     let prompt: String
+    let contextAct: DialogueAct?
+    let targetItemID: UUID?
 }
 
 // MARK: - AI 回复

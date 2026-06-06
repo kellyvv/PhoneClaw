@@ -77,6 +77,7 @@ enum WebTools {
         let host: String
         let content: String
         let sourceRank: Int
+        let publishedAt: String?
         let fetchedAt: String
         let truncated: Bool
     }
@@ -242,6 +243,9 @@ enum WebTools {
         }()
         let providerQuery = normalizedSearchQuery(query)
         let plannedQueries = stringArrayArgument(args["planned_queries"])
+        // Temporal intent drives the retrieval-side time filter (and later the
+        // recency weight in ranking). It never gates whether we answer.
+        let freshnessWindow = WebFreshness.window(for: originalQuestion)
         let plan = makeSearchPlan(
             originalQuery: originalQuestion,
             normalizedQuery: providerQuery,
@@ -250,7 +254,7 @@ enum WebTools {
         )
         var providerErrors: [String] = []
 
-        let providers: [(String, (String, Int) async throws -> [SearchResult])] = [
+        let providers: [(String, (String, Int, WebFreshness.Window) async throws -> [SearchResult])] = [
             ("duckduckgo-html", searchDuckDuckGo),
             ("bing-rss", searchBingRSS),
             ("bing-news-rss", searchBingNewsRSS)
@@ -260,7 +264,7 @@ enum WebTools {
         for plannedQuery in plan.queries {
             for (providerName, provider) in providers {
                 do {
-                    let results = uniqueResults(try await provider(plannedQuery, maxResults))
+                    let results = uniqueResults(try await provider(plannedQuery, maxResults, freshnessWindow))
                     if results.isEmpty {
                         providerErrors.append("\(providerName) [\(plannedQuery)]: empty")
                     } else {
@@ -280,10 +284,10 @@ enum WebTools {
             .map { $0 }
         if !mergedResults.isEmpty {
             let evidencePack = await buildEvidencePack(
-                userQuestion: originalQuestion,
                 plan: plan,
                 fetchedAt: fetchedAt,
-                results: mergedResults
+                results: mergedResults,
+                window: freshnessWindow
             )
             return searchSuccess(
                 originalQuery: query,
@@ -294,6 +298,7 @@ enum WebTools {
                 provider: "merged",
                 results: mergedResults,
                 evidencePack: evidencePack,
+                window: freshnessWindow,
                 providerErrors: providerErrors
             )
         }
@@ -371,6 +376,7 @@ enum WebTools {
                     "has_concrete_data": hasConcreteDataSignal(fetched.content),
                     "looks_like_boilerplate": looksLikeBoilerplatePage(fetched.content),
                     "truncated": fetched.truncated,
+                    "published_at": fetched.publishedAt ?? "",
                     "fetched_at": iso8601String(from: Date())
                 ]
             )
@@ -389,13 +395,24 @@ enum WebTools {
 
     // MARK: - Search Providers
 
-    private static func searchDuckDuckGo(query: String, maxResults: Int) async throws -> [SearchResult] {
+    private static func searchDuckDuckGo(query: String, maxResults: Int, window: WebFreshness.Window) async throws -> [SearchResult] {
         guard var components = URLComponents(string: "https://html.duckduckgo.com/html/") else {
             throw WebToolError.invalidURL
         }
-        components.queryItems = [
-            URLQueryItem(name: "q", value: query)
-        ]
+        var items = [URLQueryItem(name: "q", value: query)]
+        // Region/locale lock. Without kl, html.duckduckgo.com geolocates by exit IP
+        // and returns region-mismatched, foreign-language pages (observed: Indonesian
+        // / Vietnamese results for a 中文 "今天的 AI 新闻" query), and differently per
+        // request — the main cause of "搜到的根本不是想要的内容" + run-to-run variance.
+        // Derived from the conversation language, not IP.
+        items.append(URLQueryItem(name: "kl", value: LanguageService.shared.current.duckDuckGoRegion))
+        // Native recency filter: df=d/w/m restricts to the past day/week/month.
+        // This asks the engine for fresh pages instead of trying (and failing) to
+        // detect freshness after the fact with literal date-string matching.
+        if let df = window.duckDuckGoFilter {
+            items.append(URLQueryItem(name: "df", value: df))
+        }
+        components.queryItems = items
         guard let url = components.url else { throw WebToolError.invalidURL }
 
         let html = try await fetchText(url: url, accept: "text/html")
@@ -410,7 +427,7 @@ enum WebTools {
         return results
     }
 
-    private static func searchBingRSS(query: String, maxResults: Int) async throws -> [SearchResult] {
+    private static func searchBingRSS(query: String, maxResults: Int, window: WebFreshness.Window) async throws -> [SearchResult] {
         guard var components = URLComponents(string: "https://www.bing.com/search") else {
             throw WebToolError.invalidURL
         }
@@ -428,7 +445,7 @@ enum WebTools {
         return Array(results.prefix(maxResults))
     }
 
-    private static func searchBingNewsRSS(query: String, maxResults: Int) async throws -> [SearchResult] {
+    private static func searchBingNewsRSS(query: String, maxResults: Int, window: WebFreshness.Window) async throws -> [SearchResult] {
         guard var components = URLComponents(string: "https://www.bing.com/news/search") else {
             throw WebToolError.invalidURL
         }
@@ -451,11 +468,12 @@ enum WebTools {
     private static func fetchReadablePage(
         url: URL,
         maxCharacters: Int
-    ) async throws -> (title: String, finalURL: String, content: String, truncated: Bool) {
+    ) async throws -> (title: String, finalURL: String, content: String, truncated: Bool, publishedAt: String?) {
         let data = try await fetchData(url: url, accept: "text/html, text/plain, application/xhtml+xml")
         let limitedData = data.count > 2_000_000 ? Data(data.prefix(2_000_000)) : data
         let html = String(decoding: limitedData, as: UTF8.self)
         let title = extractTitle(from: html)
+        let publishedAt = extractPublishedAt(from: html)
         let body = readableText(from: html)
         guard !body.isEmpty else { throw WebToolError.emptyResponse }
 
@@ -464,8 +482,29 @@ enum WebTools {
             title: title.isEmpty ? url.host ?? url.absoluteString : title,
             finalURL: url.absoluteString,
             content: clipped.text,
-            truncated: clipped.truncated || data.count > limitedData.count
+            truncated: clipped.truncated || data.count > limitedData.count,
+            publishedAt: publishedAt
         )
+    }
+
+    /// Best-effort publish timestamp from page metadata: Open Graph article time,
+    /// common `<meta name=date>` variants, schema.org `datePublished` (meta or
+    /// JSON-LD), and `<time datetime>`. Returns the raw string for WebFreshness to
+    /// parse; nil when the page exposes no machine-readable date.
+    private static func extractPublishedAt(from html: String) -> String? {
+        let patterns = [
+            #"<meta[^>]+(?:property|name|itemprop)=["'](?:article:published_time|article:modified_time|datePublished|date|pubdate|publishdate|publish-date|DC\.date\.issued|sailthru\.date)["'][^>]+content=["']([^"']+)["']"#,
+            #"<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name|itemprop)=["'](?:article:published_time|datePublished|date|pubdate)["']"#,
+            #"["']datePublished["']\s*:\s*["']([^"']+)["']"#,
+            #"<time[^>]+datetime=["']([^"']+)["']"#
+        ]
+        for pattern in patterns {
+            if let raw = firstCapture(pattern: pattern, in: html) {
+                let value = htmlDecode(raw).trimmingCharacters(in: .whitespacesAndNewlines)
+                if !value.isEmpty { return value }
+            }
+        }
+        return nil
     }
 
     private static func fetchData(url: URL, accept: String) async throws -> Data {
@@ -611,6 +650,23 @@ enum WebTools {
 
     // MARK: - Ephemeral Web RAG
 
+    /// Remove injected absolute-date tokens ("2026-06-06", "2026/6/6", "2026年6月6日")
+    /// from a planned query. These are recency the planner shouldn't put in the query
+    /// text — search engines exact-match them to calendar/year pages. Recency is carried
+    /// by the provider time filter (df) + recency ranking instead. Bare years ("2008")
+    /// and the user's own time range are intentionally left intact (not full Y-M-D dates).
+    private static func stripInjectedDateTokens(_ query: String) -> String {
+        var result = query
+        let datePatterns = [
+            #"\d{4}\s*[-/.]\s*\d{1,2}\s*[-/.]\s*\d{1,2}"#,
+            #"\d{4}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日?"#
+        ]
+        for pattern in datePatterns {
+            result = result.replacingOccurrences(of: pattern, with: " ", options: .regularExpression)
+        }
+        return normalizeWhitespace(result)
+    }
+
     private static func makeSearchPlan(
         originalQuery: String,
         normalizedQuery: String,
@@ -623,7 +679,15 @@ enum WebTools {
         let planner: String
         let strategy: String
         if !cleanedPlanned.isEmpty {
-            candidates = cleanedPlanned
+            // Strip injected absolute-date tokens the model sometimes adds for recency
+            // (e.g. "AI 新闻 2026-06-06"). Search engines treat them as required keywords
+            // and match calendar/year/schedule pages; recency is handled by the provider
+            // time filter (df) + recency ranking. Same philosophy as the tool_default
+            // branch below — the model path just didn't enforce it. Bare years and the
+            // user's own time range survive (only full Y-M-D dates are removed).
+            let stripped = uniqueTerms(cleanedPlanned.map(stripInjectedDateTokens))
+                .filter { !$0.isEmpty }
+            candidates = stripped.isEmpty ? cleanedPlanned : stripped
             planner = "agent_model"
             strategy = "web_rag_v2_model_query_plan"
         } else {
@@ -637,10 +701,10 @@ enum WebTools {
                 candidates.append(conceptQuery)
             }
 
-            if queryNeedsFreshness(originalQuery) {
-                candidates.append("\(normalizedQuery) \(currentDateQueryToken())")
-                candidates.append("\(normalizedQuery) \(currentYearQueryToken())")
-            }
+            // Deliberately do NOT append a literal date token (e.g. "2026-06-06")
+            // to the query. Search engines treat it as a required keyword and it
+            // hurts recall; recency is handled by the provider time filter (df)
+            // and recency-weighted ranking instead.
             planner = "tool_default"
             strategy = "web_rag_v1_generic_query_plan"
         }
@@ -661,11 +725,18 @@ enum WebTools {
     }
 
     private static func buildEvidencePack(
-        userQuestion: String,
         plan: SearchPlan,
         fetchedAt: String,
-        results: [SearchResult]
+        results: [SearchResult],
+        window: WebFreshness.Window
     ) async -> WebRAGPack {
+        // Relevance matches against the cleaned search query (no command words),
+        // not the raw question. Freshness uses the raw question (handled upstream
+        // via `window`), so temporal words like 今天/昨天 are preserved there.
+        let relevanceQuery = plan.normalizedQuery
+        // No freshness pre-filter: stale-for-query items rank lower (recency
+        // weight below), they are never dropped. Dropping them is what made the
+        // pack empty and forced a refusal even when fresh news existed.
         let snippetChunks = searchSnippetEvidenceChunks(
             results: results,
             fetchedAt: fetchedAt
@@ -677,20 +748,52 @@ enum WebTools {
         let documentChunks = fetchOutcome.documents.flatMap { document in
             documentEvidenceChunks(
                 document: document,
-                originalQuery: userQuestion
+                originalQuery: relevanceQuery
             )
         }
         let rankedChunks = rankEvidenceChunks(
             snippetChunks + documentChunks,
-            originalQuery: userQuestion
+            originalQuery: relevanceQuery,
+            window: window
         )
-        let topChunks = Array(rankedChunks.prefix(8))
+        // Diversify across sources so one dense aggregator page can't monopolize
+        // the pack. A small model turns a diverse set of distinct items into
+        // several bullets; 8 near-duplicate chunks from one host collapse into a
+        // single vague point.
+        let topChunks = diversifyEvidenceChunks(rankedChunks, limit: 8, perHostCap: 2)
         return WebRAGPack(
-            sufficiency: evidenceSufficiency(topChunks, originalQuery: userQuestion),
+            sufficiency: evidenceSufficiency(topChunks, originalQuery: relevanceQuery),
             chunks: topChunks,
             fetchedDocumentCount: fetchOutcome.documents.count,
             failedFetchCount: fetchOutcome.failedCount
         )
+    }
+
+    /// Pick the top `limit` chunks but allow at most `perHostCap` from any one
+    /// host on the first pass, so a single aggregator/homepage page can't fill
+    /// the whole pack. Remaining slots are filled from leftovers (cap relaxed).
+    private static func diversifyEvidenceChunks(
+        _ ranked: [EvidenceChunk],
+        limit: Int,
+        perHostCap: Int
+    ) -> [EvidenceChunk] {
+        var picked: [EvidenceChunk] = []
+        var hostCount: [String: Int] = [:]
+        for chunk in ranked {
+            let key = chunk.host.isEmpty ? chunk.url : chunk.host
+            if (hostCount[key] ?? 0) >= perHostCap { continue }
+            picked.append(chunk)
+            hostCount[key, default: 0] += 1
+            if picked.count >= limit { return picked }
+        }
+        if picked.count < limit {
+            let pickedIDs = Set(picked.map(\.id))
+            for chunk in ranked where !pickedIDs.contains(chunk.id) {
+                picked.append(chunk)
+                if picked.count >= limit { break }
+            }
+        }
+        return picked
     }
 
     private static func searchSnippetEvidenceChunks(
@@ -738,6 +841,7 @@ enum WebTools {
                             host: hostName(from: fetched.finalURL),
                             content: content,
                             sourceRank: index + 1,
+                            publishedAt: fetched.publishedAt ?? result.publishedAt,
                             fetchedAt: fetchedAt,
                             truncated: fetched.truncated
                         )
@@ -778,7 +882,7 @@ enum WebTools {
                 score: 0,
                 matchedConcepts: 0,
                 hasConcreteData: hasConcreteDataSignal(text),
-                publishedAt: nil,
+                publishedAt: document.publishedAt,
                 fetchedAt: document.fetchedAt
             )
         }
@@ -827,28 +931,27 @@ enum WebTools {
 
     private static func rankEvidenceChunks(
         _ chunks: [EvidenceChunk],
-        originalQuery: String
+        originalQuery: String,
+        window: WebFreshness.Window
     ) -> [EvidenceChunk] {
         let concepts = significantQueryConcepts(originalQuery)
         let scored = chunks.compactMap { chunk -> EvidenceChunk? in
-            let haystack = "\(chunk.title)\n\(chunk.text)".lowercased()
-            let matched = matchedConceptCount(in: haystack, concepts: concepts)
-            guard concepts.isEmpty || matched > 0 else { return nil }
-            var score = Double(matched * 100)
-            if chunk.hasConcreteData { score += 35 }
-            score += min(80, Double(concreteDataSignalCount(chunk.text)) * 8)
-            if chunk.sourceType == "web_page" { score += 20 } else { score += 8 }
-            if queryNeedsFreshness(originalQuery),
-               chunk.publishedAt != nil || chunk.fetchedAt != nil {
-                score += 10
-            }
-            if queryNeedsFreshness(originalQuery) {
-                score += freshnessEvidenceScore(chunk: chunk)
-                score -= staleBackgroundPenalty(chunk.text)
+            let coverage = relevanceCoverage("\(chunk.title)\n\(chunk.text)", concepts: concepts)
+            // Graded relevance: drop only the truly off-topic (zero coverage).
+            // Ordering here only needs to surface a sensible *candidate set*
+            // (relevance + recency + source order) — the real relevance judgment
+            // and fact extraction are done by the model curation step downstream,
+            // not by hand-tuned weights here.
+            guard concepts.isEmpty || coverage > 0 else { return nil }
+            var score = coverage * 100
+            if window != .none {
+                score += WebFreshness.recencyBoost(
+                    publishedAt: chunk.publishedAt ?? "\(chunk.title)\n\(chunk.text)",
+                    window: window,
+                    maxBoost: 60
+                )
             }
             score += Double(max(0, 12 - chunk.sourceRank))
-            score += min(20, Double(chunk.text.count) / 80.0)
-            score -= boilerplateChunkPenalty(chunk.text)
             return EvidenceChunk(
                 id: chunk.id,
                 title: chunk.title,
@@ -858,7 +961,7 @@ enum WebTools {
                 sourceType: chunk.sourceType,
                 sourceRank: chunk.sourceRank,
                 score: score,
-                matchedConcepts: matched,
+                matchedConcepts: Int((coverage * Double(concepts.count)).rounded()),
                 hasConcreteData: chunk.hasConcreteData,
                 publishedAt: chunk.publishedAt,
                 fetchedAt: chunk.fetchedAt
@@ -870,73 +973,18 @@ enum WebTools {
         }
     }
 
-    private static func matchedConceptCount(in haystack: String, concepts: [[String]]) -> Int {
-        concepts.reduce(into: 0) { count, alternatives in
+    /// Continuous query coverage in [0,1]: the fraction of query concept-groups
+    /// present in `text`. Graded, not a yes/no gate — a partial match ranks lower
+    /// instead of being hard-mislabeled. General: no domain/keyword lists.
+    private static func relevanceCoverage(_ text: String, concepts: [[String]]) -> Double {
+        guard !concepts.isEmpty else { return 1 }
+        let haystack = text.lowercased()
+        let matched = concepts.reduce(into: 0) { count, alternatives in
             if alternatives.contains(where: { haystack.contains($0.lowercased()) }) {
                 count += 1
             }
         }
-    }
-
-    private static func freshnessEvidenceScore(chunk: EvidenceChunk) -> Double {
-        let text = "\(chunk.title)\n\(chunk.text)\n\(chunk.publishedAt ?? "")".lowercased()
-        var score = 0.0
-        for token in currentFreshnessTokens() where text.contains(token.lowercased()) {
-            score += token.count >= 8 ? 55 : 35
-        }
-        let updateMarkers = ["更新", "发布时间", "发布于", "updated", "published", "as of"]
-        if updateMarkers.contains(where: { text.contains($0.lowercased()) }) {
-            score += 20
-        }
-        return min(score, 120)
-    }
-
-    private static func staleBackgroundPenalty(_ text: String) -> Double {
-        let lower = text.lowercased()
-        let markers = [
-            "年平均", "平均气温", "历史", "气候", "常年", "季度预测", "趋势预测",
-            "annual", "historical", "climate", "average", "seasonal outlook", "long-term"
-        ]
-        return Double(markers.filter { lower.contains($0) }.count * 35)
-    }
-
-    private static func concreteDataSignalCount(_ text: String) -> Int {
-        let patterns = [
-            #"(?i)\d+(?:\.\d+)?\s?(?:℃|°c|°f|%|元|美元|人民币|港元|克|公斤|千克|盎司|g\b|kg\b|oz\b|usd\b|cny\b|hkd\b|km\b|公里|m/s\b|mm\b|hpa\b|kwh\b)"#,
-            #"[$¥]\s?\d+(?:\.\d+)?"#,
-            #"\d{1,4}\s?[/~-]\s?\d{1,4}\s?(?:℃|°c|°f|元|美元|usd|cny|hkd)"#,
-            #"\d{4}[-/年]\d{1,2}[-/月]\d{1,2}日?"#,
-            #"\d{1,2}月\d{1,2}日"#,
-            #"(?i)\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4}\b"#
-        ]
-        return patterns.reduce(into: 0) { count, pattern in
-            count += regexMatches(pattern: pattern, in: text, options: [.caseInsensitive]).count
-        }
-    }
-
-    private static func boilerplateChunkPenalty(_ text: String) -> Double {
-        let lower = text.lowercased()
-        let markers = [
-            "首页", "热门城市", "当前位置", "网站声明", "联系方式", "copyright",
-            "privacy", "terms", "sign in", "login", "广告", "advertisement"
-        ]
-        var penalty = Double(markers.filter { lower.contains($0) }.count * 18)
-
-        let words = lower
-            .split { !$0.isLetter && !$0.isNumber }
-            .map(String.init)
-        if words.count >= 60 {
-            let uniqueRatio = Double(Set(words).count) / Double(words.count)
-            if uniqueRatio < 0.25 {
-                penalty += 25
-            }
-        }
-
-        let navigationSeparators = text.filter { $0 == "|" || $0 == "｜" || $0 == ">" }.count
-        if navigationSeparators >= 8 {
-            penalty += Double(min(40, navigationSeparators * 2))
-        }
-        return penalty
+        return Double(matched) / Double(concepts.count)
     }
 
     private static func evidenceSufficiency(
@@ -983,42 +1031,6 @@ enum WebTools {
             "today", "now", "current", "latest", "recent", "this week", "this month"
         ]
         return markers.contains { lower.contains($0) }
-    }
-
-    private static func currentDateQueryToken() -> String {
-        let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: Date())
-    }
-
-    private static func currentFreshnessTokens() -> [String] {
-        let date = Date()
-        let calendar = Calendar(identifier: .gregorian)
-        let components = calendar.dateComponents([.year, .month, .day], from: date)
-        let year = components.year ?? 0
-        let month = components.month ?? 0
-        let day = components.day ?? 0
-        return [
-            currentDateQueryToken(),
-            String(format: "%04d/%02d/%02d", year, month, day),
-            String(format: "%02d-%02d", month, day),
-            String(format: "%02d/%02d", month, day),
-            "\(month)月\(day)日",
-            "今天",
-            "今日",
-            "today",
-            "current"
-        ]
-    }
-
-    private static func currentYearQueryToken() -> String {
-        let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy"
-        return formatter.string(from: Date())
     }
 
     private static func htmlDecode(_ text: String) -> String {
@@ -1068,11 +1080,29 @@ enum WebTools {
         provider: String,
         results: [SearchResult],
         evidencePack: WebRAGPack,
+        window: WebFreshness.Window,
         providerErrors: [String]
     ) -> CanonicalToolResult {
-        let evidenceResults = results.enumerated().map { index, item in
+        let now = Date()
+        let parsedDates: [Date?] = results.map {
+            WebFreshness.parsePublishedDate($0.publishedAt ?? "\($0.title)\n\($0.snippet)", now: now)
+        }
+        let evidenceResults = results.enumerated().map { index, item -> [String: Any] in
             var evidence = item.dictionary(rank: index + 1)
-            evidence["query_relevant"] = searchResultMatchesQuery(item, query: userQuestion)
+            // Relevance matches against the cleaned search query (the model already
+            // stripped "联网搜索" etc.), not the raw question — otherwise the command
+            // word becomes a required concept and mislabels on-topic results.
+            evidence["query_relevant"] = searchResultMatchesQuery(item, query: providerQuery)
+            if let date = parsedDates[index] {
+                evidence["published_at"] = iso8601String(from: date)
+                evidence["age_days"] = Int((now.timeIntervalSince(date) / 86_400).rounded())
+                if window != .none {
+                    evidence["recency_score"] = WebFreshness.recencyScore(
+                        ageSeconds: WebFreshness.ageInSeconds(of: date, now: now),
+                        halfLifeHours: window.halfLifeHours
+                    )
+                }
+            }
             return evidence
         }
         let directlyUsableResults = evidenceResults.filter { isDirectlyUsableSearchEvidence($0) }
@@ -1082,7 +1112,11 @@ enum WebTools {
             needsFetchCount: needsFetchResults.count,
             totalCount: evidenceResults.count
         )
+        // Freshness never turns a non-empty result set into "insufficient".
+        // We answer with the freshest relevant evidence; the model states dates.
         let answerability = evidencePack.hasSufficientEvidence || directEvidenceSufficient ? "direct" : "needs_fetch"
+        let freshestDate = parsedDates.compactMap { $0 }.max()
+        let freshestAgeDays = freshestDate.map { Int((now.timeIntervalSince($0) / 86_400).rounded()) }
         let resultLines = results.enumerated().map { index, item in
             let title = clippedText(item.title, maxCharacters: 100).text
             let evidence = evidenceResults[index]
@@ -1107,7 +1141,9 @@ enum WebTools {
                 : labels.map { "[\($0)]" }.joined() + " "
             let snippet = clippedText(item.snippet, maxCharacters: 180).text
             let snippetPart = snippet.isEmpty ? "" : "\n   \(snippet)"
-            let datePart = (item.publishedAt ?? "").isEmpty ? "" : "\n   \(tr("时间", "Date")): \(item.publishedAt!)"
+            let datePart = parsedDates[index].map {
+                "\n   \(tr("发布时间", "Published")): \(freshnessAnnotation($0, now: now))"
+            } ?? ""
             return "\(index + 1). \(labelPrefix)\(title)\n   \(tr("来源URL", "Source URL")): \(item.url)\(datePart)\(snippetPart)"
         }.joined(separator: "\n")
 
@@ -1117,21 +1153,25 @@ enum WebTools {
                 "Readable pages were fetched and usable evidence snippets were extracted. The final answer must be grounded only in evidence_pack.chunks, preserving source URLs/hosts for key claims."
             )
             : tr(
-                "已尝试抓取并抽取证据，但证据仍偏薄；如果搜索结果中还有明显更相关的 URL，可读取原文，否则说明证据不足。",
-                "Page fetch and evidence extraction were attempted, but evidence is still thin; fetch another clearly relevant URL if available, otherwise state that evidence is insufficient."
+                "已尝试抓取并抽取证据，但证据仍偏薄；如果搜索结果中还有明显更相关的 URL，可读取原文，否则用现有最相关的结果作答。",
+                "Page fetch and evidence extraction were attempted, but evidence is still thin; fetch another clearly relevant URL if available, otherwise answer from the most relevant results at hand."
             )
+        let freshnessGuidance = freshnessGuidanceText(window: window, freshestAgeDays: freshestAgeDays)
         let evidenceGuidance = !directEvidenceSufficient && !evidencePack.hasSufficientEvidence
             ? tr(
-                "当前结果还不足以直接给出结论；请选择最相关的一个来源调用 web-fetch 读取正文。如果无法读取或正文仍不足，再明确说明没有足够可用结果。",
-                "The current results are not enough for a direct conclusion; choose the most relevant source and call web-fetch to read the page. If fetching fails or the page is still insufficient, clearly say there is no sufficiently usable result."
+                "当前结果还不足以直接给出结论；请选择最相关的一个来源调用 web-fetch 读取正文。如果无法读取或正文仍不足，再用现有最相关的结果作答。",
+                "The current results are not enough for a direct conclusion; choose the most relevant source and call web-fetch to read the page. If fetching fails or the page is still insufficient, answer from the most relevant results available."
             )
             : tr(
                 "其中 \(directlyUsableResults.count) 条结果有可直接使用的摘要/来源。回答时先给结论，保留来源 URL 和搜索时间；如果不同来源不一致，用不确定语气说明。",
                 "\(directlyUsableResults.count) result(s) have directly usable snippets/sources. Start with the conclusion, preserve source URLs and search time, and use uncertain wording if sources disagree."
             )
+        let guidanceTail = [freshnessGuidance, evidenceGuidance]
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
         let summary = tr(
-            "实时搜索「\(originalQuery)」找到 \(results.count) 条结果（来源: \(provider)，搜索词: \(providerQuery)，搜索时间: \(fetchedAt)，answerability=\(answerability)）：\n\(ragGuidance)\n\(evidencePackSummary(evidencePack))\n\n\(evidenceGuidance)\n注意：以下是搜索结果条目，不等于已核实结论；confidence=low 或标为[建议读取原文]/[可能是首页/入口页]的结果不能直接当作事实结论。\n\(resultLines)",
-            "Live search for \"\(originalQuery)\" found \(results.count) result(s) (source: \(provider), query: \(providerQuery), fetched at: \(fetchedAt), answerability=\(answerability)):\n\(ragGuidance)\n\(evidencePackSummary(evidencePack))\n\n\(evidenceGuidance)\nNote: these are search result entries, not verified conclusions; confidence=low or items labeled [fetch recommended]/[likely homepage/index] must not be treated as final facts.\n\(resultLines)"
+            "实时搜索「\(originalQuery)」找到 \(results.count) 条结果（来源: \(provider)，搜索词: \(providerQuery)，搜索时间: \(fetchedAt)，answerability=\(answerability)）：\n\(ragGuidance)\n\(evidencePackSummary(evidencePack))\n\n\(guidanceTail)\n注意：以下是搜索结果条目，不等于已核实结论；confidence=low 或标为[建议读取原文]/[可能是首页/入口页]/[主题相关性低]的结果不能直接当作事实结论。\n\(resultLines)",
+            "Live search for \"\(originalQuery)\" found \(results.count) result(s) (source: \(provider), query: \(providerQuery), fetched at: \(fetchedAt), answerability=\(answerability)):\n\(ragGuidance)\n\(evidencePackSummary(evidencePack))\n\n\(guidanceTail)\nNote: these are search result entries, not verified conclusions; confidence=low or items labeled [fetch recommended]/[likely homepage/index]/[low query relevance] must not be treated as final facts.\n\(resultLines)"
         )
         var extras: [String: Any] = [
             "query": providerQuery,
@@ -1141,20 +1181,76 @@ enum WebTools {
             "fetched_at": fetchedAt,
             "provider": provider,
             "phone_ground": webPhoneGroundMetadata(status: "succeeded"),
-            "rag_version": "web_rag_v1",
+            "rag_version": "web_rag_v2",
             "evidence_pack": evidencePack.dictionary,
             "answerability": answerability,
             "direct_evidence_sufficient": evidencePack.hasSufficientEvidence || directEvidenceSufficient,
             "search_direct_evidence_sufficient": directEvidenceSufficient,
+            "recency_window": String(describing: window),
             "direct_answer_result_count": directlyUsableResults.count,
             "needs_fetch_result_count": needsFetchResults.count,
             "results": evidenceResults
         ]
+        if let freshestDate {
+            extras["freshest_published_at"] = iso8601String(from: freshestDate)
+        }
+        if let freshestAgeDays {
+            extras["freshest_age_days"] = freshestAgeDays
+        }
         if !providerErrors.isEmpty {
             extras["provider_errors"] = providerErrors
         }
         let detail = successPayload(result: summary, extras: extras)
         return CanonicalToolResult(success: true, summary: summary, detail: detail)
+    }
+
+    /// Human-readable date + relative age, e.g. "2026-06-06 (今天)" / "2026-06-05 (1天前)".
+    /// Lets the model state when each item was published instead of guessing.
+    private static func freshnessAnnotation(_ date: Date, now: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        formatter.dateFormat = "yyyy-MM-dd"
+        let iso = formatter.string(from: date)
+        let days = Int((now.timeIntervalSince(date) / 86_400).rounded())
+        let rel: String
+        if days <= 0 {
+            rel = tr("今天", "today")
+        } else if days == 1 {
+            rel = tr("1天前", "1 day ago")
+        } else {
+            rel = tr("\(days)天前", "\(days) days ago")
+        }
+        return "\(iso) (\(rel))"
+    }
+
+    /// Retrieval-side guidance about recency. It tells the model to lead with the
+    /// freshest evidence and — crucially — to be honest (not refuse) when nothing
+    /// strictly inside the requested window was found. Empty for non-temporal queries.
+    private static func freshnessGuidanceText(window: WebFreshness.Window, freshestAgeDays: Int?) -> String {
+        guard window != .none else { return "" }
+        if let days = freshestAgeDays, days <= toleranceDays(for: window) {
+            return tr(
+                "这是时效性问题。回答时先给最新的相关条目，并标注其发布时间，按时间从新到旧组织。",
+                "This is a time-sensitive question. Lead with the freshest relevant items, state each item's publish date, and organize newest-first."
+            )
+        }
+        return tr(
+            "这是时效性问题，但没有检索到严格落在时间窗口内的结果。请如实说明“没有找到更新的，以下是检索到的最新内容（注明发布时间）”，然后照常给出最新的相关条目并标注日期——不要拒答，也不要谎称是当天内容。",
+            "This is a time-sensitive question, but nothing strictly inside the requested window was found. Say plainly \"nothing more recent was found; here is the latest available (with its publish date)\", then still give the freshest relevant items with their dates — do not refuse, and do not claim stale items are same-day."
+        )
+    }
+
+    /// Soft window tolerance (days) used only to decide answer *wording*
+    /// (lead-with-freshest vs honest-hedge). It never gates whether we answer.
+    private static func toleranceDays(for window: WebFreshness.Window) -> Int {
+        switch window {
+        case .day: return 2
+        case .week: return 9
+        case .month: return 40
+        case .none: return Int.max
+        }
     }
 
     private static func formattedFetchSummary(
@@ -1386,10 +1482,28 @@ enum WebTools {
         let rhsRelevant = searchResultMatchesQuery(rhs, query: query)
         if lhsRelevant != rhsRelevant { return lhsRelevant }
 
+        // For time-sensitive queries, prefer the fresher result by parsed publish
+        // date (graded), but only when the gap is meaningful — otherwise fall
+        // through to evidence-quality priority.
+        let window = WebFreshness.window(for: query)
+        if window != .none {
+            let lhsRecency = searchResultRecencyBoost(lhs, window: window)
+            let rhsRecency = searchResultRecencyBoost(rhs, window: window)
+            if abs(lhsRecency - rhsRecency) > 0.5 { return lhsRecency > rhsRecency }
+        }
+
         let lhsRank = searchResultPriority(lhs)
         let rhsRank = searchResultPriority(rhs)
         if lhsRank != rhsRank { return lhsRank < rhsRank }
         return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+    }
+
+    private static func searchResultRecencyBoost(_ result: SearchResult, window: WebFreshness.Window) -> Double {
+        WebFreshness.recencyBoost(
+            publishedAt: result.publishedAt ?? "\(result.title)\n\(result.snippet)",
+            window: window,
+            maxBoost: 100
+        )
     }
 
     private static func searchResultPriority(_ result: SearchResult) -> Int {
@@ -1405,14 +1519,10 @@ enum WebTools {
     private static func searchResultMatchesQuery(_ result: SearchResult, query: String) -> Bool {
         let concepts = significantQueryConcepts(query)
         guard !concepts.isEmpty else { return true }
-        let haystack = "\(result.title)\n\(result.snippet)".lowercased()
-        let matchCount = concepts.reduce(into: 0) { count, alternatives in
-            if alternatives.contains(where: { haystack.contains($0.lowercased()) }) {
-                count += 1
-            }
-        }
-        let requiredMatches = concepts.count >= 2 ? 2 : 1
-        return matchCount >= requiredMatches
+        // Graded coverage with a soft floor: any genuine query-term overlap counts
+        // as on-topic. The old "match 2 of N concepts" gate mislabeled real
+        // results whenever a command word ("联网") inflated the concept count.
+        return relevanceCoverage("\(result.title)\n\(result.snippet)", concepts: concepts) > 0
     }
 
     private static func significantQueryConcepts(_ query: String) -> [[String]] {

@@ -15,7 +15,8 @@ extension AgentEngine {
         images: [PlatformImage] = [],
         audio: AudioCaptureSnapshot? = nil,
         replayImageAttachments: [ChatImageAttachment]? = nil,
-        attachReplayImagesToMessage: Bool = true
+        attachReplayImagesToMessage: Bool = true,
+        forcedContextAct: DialogueAct? = nil
     ) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let displayText = trimmed
@@ -96,26 +97,29 @@ extension AgentEngine {
         var allowPreloadedSkillFallbackForTurn = !matchedSkillIdsForTurn.isEmpty
         var suppressStickySkillRoutingForTurn = false
         if !requiresMultimodal,
-           let previousObservation = latestPriorToolObservation() {
-            let previousSkillId = previousObservation.skillId
+           !forceImageFollowUpTextPrompt,
+           let previousArtifact = latestPriorContextArtifact() {
+            let previousSkillId = previousArtifact.skillId
+            let previousToolName = previousArtifact.toolName ?? ""
             let routesToPreviousSkill = previousSkillId.map { matchedSkillIdsForTurn.contains($0) } == true
-                || matchedSkillIdsForTurn.contains(previousObservation.toolName)
+                || (!previousToolName.isEmpty && matchedSkillIdsForTurn.contains(previousToolName))
             let stickySkillId = matchedSkillIdsForTurn.isEmpty ? recentActiveSkillId() : nil
             let shouldClassifyAgainstPrevious =
-                routesToPreviousSkill || stickySkillId != nil || matchedSkillIdsForTurn.isEmpty
+                forcedContextAct != nil || routesToPreviousSkill || stickySkillId != nil || matchedSkillIdsForTurn.isEmpty
             if shouldClassifyAgainstPrevious {
-                let decision = await classifyDialogueActForToolFollowUp(
+                let decision = await classifyContextOperation(
                     userQuestion: normalizedText,
-                    observation: previousObservation
+                    artifact: previousArtifact,
+                    forcedAct: forcedContextAct
                 )
                 if let decision {
                     if decision.blocksToolExecution {
                         switch decision.act {
-                        case .verifyLastResult, .explainLastResult, .clarifyLastResult:
+                        case .verifyLastResult, .explainLastResult, .clarifyLastResult, .elaborateLastResult, .transformLastResult:
                             self.lastTurnMatchedSkillIds = []
-                            await answerFromPriorToolObservation(
+                            await answerFromPriorContextArtifact(
                                 userQuestion: normalizedText,
-                                observation: previousObservation,
+                                artifact: previousArtifact,
                                 decision: decision
                             )
                             return
@@ -129,6 +133,7 @@ extension AgentEngine {
                     if matchedSkillIdsForTurn.isEmpty,
                        decision.targetPreviousResult,
                        decision.act.allowsToolExecution,
+                       previousArtifact.supportsRefresh,
                        let previousSkillId {
                         matchedSkillIdsForTurn = [previousSkillId]
                         allowPreloadedSkillFallbackForTurn = true
