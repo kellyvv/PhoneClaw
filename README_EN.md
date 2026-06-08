@@ -14,7 +14,7 @@ A local AI Agent for iPhone. Offline. Private. Native.
 
 <div align="center">
 
-[Core Features](#core-features) · [Built-in Skills](#built-in-skill-examples) · [Technical Notes](#technical-notes) · [Quick Start](#quick-start) · [Custom Skills](#custom-skills) · [FAQ](#faq) · [Roadmap](#roadmap)
+[Core Features](#core-features) · [Built-in Skills](#built-in-skill-examples) · [Technical Notes](#technical-notes) · [Quick Start](#quick-start) · [Mac Remote](#7-use-the-mac-client-for-remote-inference) · [Custom Skills](#custom-skills) · [FAQ](#faq) · [Roadmap](#roadmap)
 
 </div>
 
@@ -28,6 +28,12 @@ A local AI Agent for iPhone. Offline. Private. Native.
 PhoneClaw is a private local Agent running on iPhone. It ships with multiple on-device models, including Gemma 4 and MiniCPM-V, and performs inference and Skill calls entirely on-device, with no cloud APIs or external model integrations required.
 
 ## Latest Updates
+
+**2026-06-08**
+
+- Added the PhoneClaw Gateway Mac client: keep it running on your Mac, advertise it over Bonjour, then pair from the iPhone to use Mac-side Ollama, Codex CLI, or Antigravity CLI as a remote inference source
+- Added a `Mac Remote` page in iPhone settings: discover Macs on the same LAN, approve pairing on the Mac, choose a Mac-side model, then use it from the normal chat screen
+- Remote models are only used after you explicitly pair a Mac and select one. With Ollama, inference stays on your Mac; with CLI or other upstream providers, data handling follows that provider's behavior
 
 **2026-06-05**
 
@@ -121,6 +127,8 @@ PhoneClaw is a private local Agent running on iPhone. It ships with multiple on-
 
 **Private Local Agent**: Run inference and Skill calls directly on iPhone. Use natural language to work with Calendar, Reminders, Contacts, Clipboard, Health data, and other local tasks.
 
+**Mac Remote Inference**: Optionally pair with a Mac on the same LAN through PhoneClaw Gateway and use Mac-side Ollama, Codex CLI, or Antigravity CLI models while keeping the native iPhone chat and Skill experience.
+
 **Image Understanding and LIVE Vision**: Ask questions about photos from the camera or photo picker, or enable the camera in LIVE mode so the model can understand the scene in real time.
 
 **Personal Data Analysis**: Read local schedules, Health data, contacts, reminders, and clipboard content to generate summaries, availability analysis, and next-step suggestions. Personal data is processed on-device by default.
@@ -135,7 +143,7 @@ PhoneClaw is a private local Agent running on iPhone. It ships with multiple on-
 
 **Model Management and Resumable Downloads**: Gemma main models and LIVE voice models can be downloaded, canceled, resumed, and retried directly on iPhone, or bundled into the app at build time.
 
-**Offline by Default with Clear Privacy Boundaries**: Inference and local Skill calls run on-device by default. The app only accesses the public web when the user explicitly asks for Web Search or webpage reading. Conversations, images, and personal data are not uploaded to PhoneClaw servers.
+**Offline by Default with Clear Privacy Boundaries**: Inference and local Skill calls run on-device by default. Requests only leave the iPhone when the user explicitly asks for Web Search, webpage reading, or paired Mac remote inference. Conversations, images, and personal data are not uploaded to PhoneClaw servers; Mac remote inference sends the current request to your paired Mac, and any further upstream access depends on the provider selected in the Mac client.
 
 **Mobile Memory Optimization**: Includes model switching, system prompt editing, cache cleanup, and history trimming tuned for iPhone on-device inference limits.
 
@@ -328,6 +336,41 @@ Save Wang's phone number 13812345678
 Translate that last line into English
 ```
 
+### 7. Use the Mac client for remote inference
+
+The Mac client turns a Mac on the same LAN into an optional remote inference source for the iPhone app. The iPhone still uses PhoneClaw's chat UI and Skill system, while model inference requests are sent to your paired Mac.
+
+**Start Gateway on the Mac**
+
+```bash
+cd PhoneClawGateway
+bash build-app.sh
+open PhoneClawGateway.app
+```
+
+On first launch, allow the macOS Local Network permission prompt. Gateway listens on port `18080` by default and advertises the `_phoneclaw-llm._tcp` Bonjour service.
+
+**Configure the Mac runtime source**
+
+1. Open `PhoneClawGateway.app`
+2. Choose a runtime source in the main window: Ollama, Codex CLI, or Antigravity CLI
+3. If you use Ollama, install and start Ollama first, then pull a model, for example:
+
+```bash
+ollama pull gemma3:4b
+```
+
+4. Return to Gateway, scan, and confirm that the model appears in the list
+
+**Pair from the iPhone**
+
+1. Make sure the iPhone and Mac are on the same LAN
+2. Open PhoneClaw → top-right slider → `Mac Remote`
+3. Tap the Mac, then approve the request in the Mac client
+4. After pairing, choose a Mac-side model and return to chat
+
+Remote models appear under the `Remote` section in the model picker. If the iPhone cannot find the Mac, check that the Mac client is running, Local Network permission is allowed, both devices are on the same Wi-Fi, and the macOS firewall allows `PhoneClawGateway.app` to accept LAN connections.
+
 ## Default Install Flow and Model Bundling
 
 ### Option A — Shell app + on-device model download
@@ -410,6 +453,9 @@ Verify that the model file name matches `allModels` in `LLM/Models/PredefinedMod
 
 Why does creating a reminder fail?
 The latest code first attempts to reuse an existing writable reminder list. If none is found, it tries to automatically create a PhoneClaw list. If that also fails, the system reminder source itself is likely read-only.
+
+Why can't my iPhone find the Mac client?
+Make sure `PhoneClawGateway.app` is running and macOS has allowed Local Network permission. The iPhone and Mac must be on the same LAN. If discovery still fails, check that the macOS firewall allows the app to accept incoming connections, or rebuild the app with `bash PhoneClawGateway/build-app.sh` and open the generated app again.
 
 ## Roadmap
 
