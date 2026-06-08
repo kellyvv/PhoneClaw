@@ -26,7 +26,7 @@ final class LiteRTBackend: InferenceService {
     private(set) var isLoaded = false
     private(set) var isLoading = false
     private(set) var isGenerating = false
-    var statusMessage = tr("等待加载模型...", "Waiting to load model...")
+    var statusMessage = tr("等待加载模型...", "Waiting to load model...", "モデルの読み込みを待機中...")
     private(set) var stats = InferenceStats()
 
     // MARK: - Sampling Config
@@ -178,15 +178,16 @@ final class LiteRTBackend: InferenceService {
             let name = descriptor?.displayName ?? modelID
             statusMessage = tr(
                 "请先在配置中下载 \(name) 模型",
-                "Please download the \(name) model in Configuration first."
+                "Please download the \(name) model in Configuration first.",
+                "先に設定で \(name) モデルをダウンロードしてください。"
             )
             throw ModelBackendError.modelFileMissing(name)
         }
 
         isLoading = true
         statusMessage = mode == .multimodal
-            ? tr("正在加载多模态模型...", "Loading multimodal model...")
-            : tr("正在加载模型...", "Loading model...")
+            ? tr("正在加载多模态模型...", "Loading multimodal model...", "マルチモーダルモデルを読み込み中...")
+            : tr("正在加载模型...", "Loading model...", "モデルを読み込み中...")
         cancelled = false
 
         let loadStart = CFAbsoluteTimeGetCurrent()
@@ -269,7 +270,8 @@ final class LiteRTBackend: InferenceService {
             let descriptor = ModelDescriptor.allModels.first { $0.id == modelID }
             statusMessage = tr(
                 "已加载 \(descriptor?.displayName ?? modelID)",
-                "Loaded \(descriptor?.displayName ?? modelID)"
+                "Loaded \(descriptor?.displayName ?? modelID)",
+                "\(descriptor?.displayName ?? modelID) を読み込みました"
             )
             PCLog.modelLoaded(modelID: modelID, backend: backendLabel, loadMs: elapsed)
             onModelLoaded?(modelID)
@@ -304,7 +306,8 @@ final class LiteRTBackend: InferenceService {
                 )
                 statusMessage = tr(
                     "❌ \(displayName) 文件损坏，请重新下载",
-                    "❌ \(displayName) file is corrupt. Please download it again."
+                    "❌ \(displayName) file is corrupt. Please download it again.",
+                    "❌ \(displayName) のファイルが破損しています。もう一度ダウンロードしてください。"
                 )
             } else {
                 // 文件完好但引擎加载失败 — 可能是 GPU 不支持、内存不足等运行时问题,
@@ -316,12 +319,14 @@ final class LiteRTBackend: InferenceService {
                     // engine init failing due to memory or shader issues.
                     statusMessage = tr(
                         "❌ \(displayName) GPU 加载失败\nMetal 引擎初始化未成功，可能是设备内存不足。\n请切换到 CPU 模式重试。",
-                        "❌ \(displayName) GPU load failed\nMetal engine init failed — likely insufficient memory.\nPlease switch to CPU mode."
+                        "❌ \(displayName) GPU load failed\nMetal engine init failed — likely insufficient memory.\nPlease switch to CPU mode.",
+                        "❌ \(displayName) のGPU読み込みに失敗しました\nMetalエンジンの初期化に失敗しました。デバイスのメモリ不足の可能性があります。\nCPUモードに切り替えて再試行してください。"
                     )
                 } else {
                     statusMessage = tr(
                         "❌ \(displayName) 加载失败: \(reason)\n模型文件已保留，可尝试切换到 CPU 重试。",
-                        "❌ \(displayName) failed to load: \(reason)\nModel file kept. Try switching to CPU."
+                        "❌ \(displayName) failed to load: \(reason)\nModel file kept. Try switching to CPU.",
+                        "❌ \(displayName) の読み込みに失敗しました: \(reason)\nモデルファイルは保持されています。CPUに切り替えて再試行してください。"
                     )
                 }
             }
@@ -364,7 +369,7 @@ final class LiteRTBackend: InferenceService {
         loadedModelID = nil
         isLoaded = false
         isGenerating = false
-        statusMessage = tr("等待加载模型...", "Waiting to load model...")
+        statusMessage = tr("等待加载模型...", "Waiting to load model...", "モデルの読み込みを待機中...")
         onModelUnloaded?()
         PCLog.modelUnloaded()
     }

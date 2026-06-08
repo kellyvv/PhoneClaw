@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>PhoneClaw Gateway</string>
+    <key>CFBundleDisplayName</key>
+    <string>PhoneClaw Gateway</string>
+    <key>CFBundleIdentifier</key>
+    <string>ai.phoneclaw.gateway</string>
+    <key>CFBundleExecutable</key>
+    <string>PhoneClawGateway</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
+    <!-- 标准 Mac 客户端:有 Dock 图标和主窗口;菜单栏作为辅助入口 -->
+    <key>LSUIElement</key>
+    <false/>
+    <!-- 局域网隐私: 没有这两项, macOS 会挡掉 Bonjour 广播 + 局域网服务, 手机发现不到 -->
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>PhoneClaw Gateway 在局域网内向你的 iPhone 提供本机 LLM 推理。</string>
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_phoneclaw-llm._tcp</string>
+    </array>
+</dict>
+</plist>

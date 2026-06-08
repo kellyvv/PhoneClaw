@@ -148,7 +148,7 @@ extension AgentEngine {
         }
 
         // 结尾补全句号. zh 用 "。", en 用 ".".
-        let terminator = tr("。", ".")
+        let terminator = tr("。", ".", "。")
         if trimmedDraft.hasSuffix("、")
             || trimmedDraft.hasSuffix("，")
             || trimmedDraft.hasSuffix(",")

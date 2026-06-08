@@ -67,7 +67,7 @@ struct SkillsManagerView: View {
 
             Spacer()
 
-            Text(tr("技能", "Skills"))
+            Text(tr("技能", "Skills", "スキル"))
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(SkillsStyle.muted)
 
@@ -97,9 +97,9 @@ struct SkillsManagerView: View {
 
     private var heroSection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            labelWithInfo(tr("已启用", "Enabled"), topic: .enabled)
+            labelWithInfo(tr("已启用", "Enabled", "有効"), topic: .enabled)
 
-            Text(tr("\(enabledCount) 项已启用", "\(enabledCount) enabled"))
+            Text(tr("\(enabledCount) 项已启用", "\(enabledCount) enabled", "\(enabledCount) 件有効"))
                 .font(.system(size: 31, weight: .semibold))
                 .foregroundStyle(SkillsStyle.ink)
                 .monospacedDigit()
@@ -114,30 +114,30 @@ struct SkillsManagerView: View {
     private var skillStateLine: String {
         let total = engine.skillEntries.count
         if total == 0 {
-            return tr("暂无可用技能", "No skills available")
+            return tr("暂无可用技能", "No skills available", "利用できるスキルがありません")
         }
         if enabledCount == total {
-            return tr("全部技能已开启", "All skills are enabled")
+            return tr("全部技能已开启", "All skills are enabled", "すべてのスキルが有効です")
         }
         if enabledCount == 0 {
-            return tr("所有技能已关闭", "All skills are disabled")
+            return tr("所有技能已关闭", "All skills are disabled", "すべてのスキルが無効です")
         }
-        return tr("共 \(total) 项技能", "\(total) skills total")
+        return tr("共 \(total) 项技能", "\(total) skills total", "スキル \(total) 件")
     }
 
     private var skillsList: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .center, spacing: 12) {
-                labelWithInfo(tr("技能", "Skills"), topic: .skills)
+                labelWithInfo(tr("技能", "Skills", "スキル"), topic: .skills)
 
                 Spacer()
 
                 Menu {
-                    Button(tr("全部开启", "Enable All")) {
+                    Button(tr("全部开启", "Enable All", "すべて有効化")) {
                         engine.setAllSkills(enabled: true)
                     }
 
-                    Button(tr("全部关闭", "Disable All")) {
+                    Button(tr("全部关闭", "Disable All", "すべて無効化")) {
                         engine.setAllSkills(enabled: false)
                     }
                 } label: {
@@ -148,7 +148,7 @@ struct SkillsManagerView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(Text(tr("批量操作", "Bulk Actions")))
+                .accessibilityLabel(Text(tr("批量操作", "Bulk Actions", "一括操作")))
             }
 
             VStack(spacing: 0) {
@@ -179,7 +179,7 @@ struct SkillsManagerView: View {
 
     private var bottomBar: some View {
         HStack {
-            Label(tr("技能", "Skills"), systemImage: "puzzlepiece.extension")
+            Label(tr("技能", "Skills", "スキル"), systemImage: "puzzlepiece.extension")
                 .font(.system(size: 15, weight: .medium))
                 .foregroundStyle(SkillsStyle.secondary)
 
@@ -188,7 +188,7 @@ struct SkillsManagerView: View {
             Button {
                 dismiss()
             } label: {
-                Text(tr("完成", "Done"))
+                Text(tr("完成", "Done", "完了"))
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(SkillsStyle.onPrimary)
                     .padding(.horizontal, 24)
@@ -328,7 +328,7 @@ struct SkillDetailCard: View {
                     if !entry.tools.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
                             HStack(spacing: 6) {
-                                Text(tr("工具", "Tools"))
+                                Text(tr("工具", "Tools", "ツール"))
                                     .font(.system(size: 10, weight: .bold))
                                     .foregroundStyle(SkillsStyle.tertiary)
                                     .kerning(1)
@@ -350,7 +350,7 @@ struct SkillDetailCard: View {
                                             Text(tool.name)
                                                 .font(.system(size: 12, weight: .medium, design: .monospaced))
                                                 .foregroundStyle(SkillsStyle.ink)
-                                            Text(ToolRegistry.shared.hasToolNamed(tool.name) ? tr("可用", "Ready") : tr("缺失", "Missing"))
+                                            Text(ToolRegistry.shared.hasToolNamed(tool.name) ? tr("可用", "Ready", "利用可") : tr("缺失", "Missing", "未実装"))
                                                 .font(.system(size: 8, weight: .semibold, design: .monospaced))
                                                 .foregroundStyle(ToolRegistry.shared.hasToolNamed(tool.name) ? SkillsStyle.secondary : SkillsStyle.danger)
                                                 .padding(.horizontal, 5)
@@ -365,9 +365,9 @@ struct SkillDetailCard: View {
                                             .foregroundStyle(SkillsStyle.secondary)
                                         // "no params" 哨兵跨两种 locale 都要识别 — Health/Clipboard
                                         // 的 parameters: tr("无", "None") 两种值都算空
-                                        if tool.parameters != "无" && tool.parameters != "None" {
+                                        if tool.parameters != "无" && tool.parameters != "None" && tool.parameters != "なし" {
                                             HStack(spacing: 4) {
-                                                Text(tr("参数:", "Parameters:"))
+                                                Text(tr("参数:", "Parameters:", "パラメータ:"))
                                                     .foregroundStyle(SkillsStyle.tertiary)
                                                 Text(tool.parameters)
                                                     .foregroundStyle(SkillsStyle.secondary)
@@ -385,7 +385,7 @@ struct SkillDetailCard: View {
 
                     // ━━ EXAMPLE ━━
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(tr("示例", "Example"))
+                        Text(tr("示例", "Example", "例"))
                             .font(.system(size: 10, weight: .bold))
                             .foregroundStyle(SkillsStyle.tertiary)
                             .kerning(1)
@@ -400,7 +400,7 @@ struct SkillDetailCard: View {
                     if let body = skillBody {
                         VStack(alignment: .leading, spacing: 6) {
                             HStack(spacing: 6) {
-                                Text(tr("指令", "Instructions"))
+                                Text(tr("指令", "Instructions", "指示"))
                                     .font(.system(size: 10, weight: .bold))
                                     .foregroundStyle(SkillsStyle.tertiary)
                                     .kerning(1)
@@ -422,7 +422,7 @@ struct SkillDetailCard: View {
                     // ━━ SKILL.MD 源文件（查看 / 编辑 / 保存 / 热重载） ━━
                     VStack(alignment: .leading, spacing: 6) {
                         HStack(spacing: 6) {
-                            Text(tr("源文件", "Source"))
+                            Text(tr("源文件", "Source", "ソース"))
                                 .font(.system(size: 10, weight: .bold))
                                 .foregroundStyle(SkillsStyle.tertiary)
                                 .kerning(1)
@@ -438,7 +438,7 @@ struct SkillDetailCard: View {
                             Spacer()
 
                             if isEditing {
-                                Button(tr("取消", "Cancel")) {
+                                Button(tr("取消", "Cancel", "キャンセル")) {
                                     isEditing = false
                                 }
                                 .font(.system(size: 11, weight: .medium))
@@ -462,7 +462,7 @@ struct SkillDetailCard: View {
                                     HStack(spacing: 3) {
                                         Image(systemName: "arrow.down.doc")
                                             .font(.system(size: 9))
-                                        Text(tr("保存", "Save"))
+                                        Text(tr("保存", "Save", "保存"))
                                             .font(.system(size: 11, weight: .semibold))
                                     }
                                     .foregroundStyle(SkillsStyle.onPrimary)
@@ -479,7 +479,7 @@ struct SkillDetailCard: View {
                                     HStack(spacing: 3) {
                                         Image(systemName: "pencil")
                                             .font(.system(size: 9))
-                                        Text(tr("编辑", "Edit"))
+                                        Text(tr("编辑", "Edit", "編集"))
                                             .font(.system(size: 11, weight: .medium))
                                     }
                                     .foregroundStyle(SkillsStyle.ink)
@@ -492,7 +492,7 @@ struct SkillDetailCard: View {
                                     HStack(spacing: 3) {
                                         Image(systemName: showSource ? "eye.slash" : "eye")
                                             .font(.system(size: 9))
-                                        Text(showSource ? tr("收起", "Hide") : tr("查看", "View"))
+                                        Text(showSource ? tr("收起", "Hide", "閉じる") : tr("查看", "View", "表示"))
                                             .font(.system(size: 11, weight: .medium))
                                     }
                                     .foregroundStyle(SkillsStyle.secondary)
@@ -504,7 +504,7 @@ struct SkillDetailCard: View {
                             HStack(spacing: 4) {
                                 Image(systemName: "checkmark.circle.fill")
                                     .font(.system(size: 10))
-                                Text(tr("已保存", "Saved"))
+                                Text(tr("已保存", "Saved", "保存済み"))
                                     .font(.system(size: 11, weight: .medium))
                             }
                             .foregroundStyle(SkillsStyle.secondary)
@@ -575,18 +575,18 @@ private enum SkillsInfoTopic: Identifiable {
     var title: String {
         switch self {
         case .enabled:
-            return tr("已启用", "Enabled")
+            return tr("已启用", "Enabled", "有効")
         case .skills:
-            return tr("技能", "Skills")
+            return tr("技能", "Skills", "スキル")
         }
     }
 
     var message: String {
         switch self {
         case .enabled:
-            return tr("开启的技能会进入助手可用能力范围。", "Enabled skills are available to the assistant.")
+            return tr("开启的技能会进入助手可用能力范围。", "Enabled skills are available to the assistant.", "有効にしたスキルはアシスタントが利用できる機能になります。")
         case .skills:
-            return tr("按需开启技能，列表越干净，助手越容易聚焦。", "Enable only what you need so the assistant stays focused.")
+            return tr("按需开启技能，列表越干净，助手越容易聚焦。", "Enable only what you need so the assistant stays focused.", "必要なスキルだけを有効にすると、アシスタントが集中しやすくなります。")
         }
     }
 }

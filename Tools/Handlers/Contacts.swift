@@ -10,11 +10,13 @@ enum ContactsTools {
             name: "contacts-upsert",
             description: tr(
                 "创建或更新联系人；若提供手机号则优先按手机号查重再更新",
-                "Create or update a contact; when a phone number is provided, dedupe by phone first and update the matching contact"
+                "Create or update a contact; when a phone number is provided, dedupe by phone first and update the matching contact",
+                "連絡先を作成または更新します。電話番号が指定された場合は、まず電話番号で重複を確認してから更新します"
             ),
             parameters: tr(
                 "name: 联系人姓名, phone: 手机号（可选）, company: 公司（可选）, email: 邮箱（可选）, notes: 备注（可选）",
-                "name: contact name, phone: phone number (optional), company: company (optional), email: email address (optional), notes: notes (optional)"
+                "name: contact name, phone: phone number (optional), company: company (optional), email: email address (optional), notes: notes (optional)",
+                "name: 連絡先の名前, phone: 電話番号（任意）, company: 会社（任意）, email: メールアドレス（任意）, notes: メモ（任意）"
             ),
             requiredParameters: ["name"],
             aliases: ["contacts_upsert"],
@@ -31,11 +33,13 @@ enum ContactsTools {
             name: "contacts-search",
             description: tr(
                 "搜索联系人，可按姓名、手机号、邮箱、identifier 或关键词查询联系方式",
-                "Search contacts; look up contact info by name, phone, email, identifier or a free-text query"
+                "Search contacts; look up contact info by name, phone, email, identifier or a free-text query",
+                "連絡先を検索します。名前、電話番号、メールアドレス、identifier、またはキーワードで連絡先情報を調べられます"
             ),
             parameters: tr(
                 "query: 搜索关键词（可选）, identifier: 联系人标识（可选）, name: 姓名（可选）, phone: 手机号（可选）, email: 邮箱（可选）",
-                "query: search keyword (optional), identifier: contact identifier (optional), name: name (optional), phone: phone number (optional), email: email address (optional)"
+                "query: search keyword (optional), identifier: contact identifier (optional), name: name (optional), phone: phone number (optional), email: email address (optional)",
+                "query: 検索キーワード（任意）, identifier: 連絡先の識別子（任意）, name: 名前（任意）, phone: 電話番号（任意）, email: メールアドレス（任意）"
             ),
             requiredAnyOfParameters: ["query", "identifier", "name", "phone", "email"],
             aliases: ["contacts_search"],
@@ -52,11 +56,13 @@ enum ContactsTools {
             name: "contacts-delete",
             description: tr(
                 "删除联系人，可按姓名、手机号、邮箱、identifier 或关键词匹配后删除；匹配多个时可传 all=true 批量删除",
-                "Delete contacts matched by name, phone, email, identifier or a free-text query; when multiple matches are found, pass all=true to delete every match"
+                "Delete contacts matched by name, phone, email, identifier or a free-text query; when multiple matches are found, pass all=true to delete every match",
+                "連絡先を削除します。名前、電話番号、メールアドレス、identifier、またはキーワードで一致した連絡先を削除します。複数一致した場合は all=true を渡すとまとめて削除できます"
             ),
             parameters: tr(
                 "query: 搜索关键词（可选）, identifier: 联系人标识（可选）, name: 姓名（可选）, phone: 手机号（可选）, email: 邮箱（可选）, all: 多匹配时是否全部删除（可选，默认 false）",
-                "query: search keyword (optional), identifier: contact identifier (optional), name: name (optional), phone: phone number (optional), email: email address (optional), all: whether to delete every match when more than one is found (optional, default false)"
+                "query: search keyword (optional), identifier: contact identifier (optional), name: name (optional), phone: phone number (optional), email: email address (optional), all: whether to delete every match when more than one is found (optional, default false)",
+                "query: 検索キーワード（任意）, identifier: 連絡先の識別子（任意）, name: 名前（任意）, phone: 電話番号（任意）, email: メールアドレス（任意）, all: 複数一致した場合にすべて削除するか（任意、既定値 false）"
             ),
             requiredAnyOfParameters: ["query", "identifier", "name", "phone", "email"],
             aliases: ["contacts_delete", "contacts-delete-contact"],
@@ -127,7 +133,7 @@ enum ContactsTools {
             return organization
         }
 
-        return tr("未命名联系人", "Unnamed contact")
+        return tr("未命名联系人", "Unnamed contact", "名称未設定の連絡先")
     }
 
     private static func contactSearchTexts(_ contact: CNContact) -> [String] {
@@ -195,16 +201,16 @@ enum ContactsTools {
     private static func contactSummaryText(_ contact: CNContact) -> String {
         var parts = [formattedContactName(contact)]
         if let phone = primaryPhone(contact) {
-            parts.append(tr("电话 \(phone)", "phone \(phone)"))
+            parts.append(tr("电话 \(phone)", "phone \(phone)", "電話 \(phone)"))
         }
         if let email = primaryEmail(contact) {
-            parts.append(tr("邮箱 \(email)", "email \(email)"))
+            parts.append(tr("邮箱 \(email)", "email \(email)", "メール \(email)"))
         }
         let company = contact.organizationName.trimmingCharacters(in: .whitespacesAndNewlines)
         if !company.isEmpty {
-            parts.append(tr("公司 \(company)", "company \(company)"))
+            parts.append(tr("公司 \(company)", "company \(company)", "会社 \(company)"))
         }
-        return parts.joined(separator: tr("，", ", "))
+        return parts.joined(separator: tr("，", ", ", "、"))
     }
 
     private static func searchContacts(
@@ -292,16 +298,16 @@ enum ContactsTools {
     private static func upsertCanonical(_ args: [String: Any]) async throws -> CanonicalToolResult {
         guard let rawName = args["name"] as? String else {
             return contactsFailure(
-                summary: tr("联系人叫什么名字?", "What is the contact's name?"),
-                detail: tr("缺少 name 参数", "Missing 'name' parameter"),
+                summary: tr("联系人叫什么名字?", "What is the contact's name?", "連絡先の名前は何ですか?"),
+                detail: tr("缺少 name 参数", "Missing 'name' parameter", "name パラメータがありません"),
                 errorCode: "NAME_MISSING"
             )
         }
         let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else {
             return contactsFailure(
-                summary: tr("联系人叫什么名字?", "What is the contact's name?"),
-                detail: tr("缺少 name 参数", "Missing 'name' parameter"),
+                summary: tr("联系人叫什么名字?", "What is the contact's name?", "連絡先の名前は何ですか?"),
+                detail: tr("缺少 name 参数", "Missing 'name' parameter", "name パラメータがありません"),
                 errorCode: "NAME_MISSING"
             )
         }
@@ -315,9 +321,9 @@ enum ContactsTools {
         let result = MacContactsMock.upsert(name: name, phone: phone, company: company, email: email, notes: notes)
         let summary: String = {
             if result.action == "updated" {
-                return tr("已更新联系人\u{201C}\(name)\u{201D}。", "Updated contact \u{201C}\(name)\u{201D}.")
+                return tr("已更新联系人\u{201C}\(name)\u{201D}。", "Updated contact \u{201C}\(name)\u{201D}.", "連絡先\u{201C}\(name)\u{201D}を更新しました。")
             } else {
-                return tr("已创建联系人\u{201C}\(name)\u{201D}。", "Created contact \u{201C}\(name)\u{201D}.")
+                return tr("已创建联系人\u{201C}\(name)\u{201D}。", "Created contact \u{201C}\(name)\u{201D}.", "連絡先\u{201C}\(name)\u{201D}を作成しました。")
             }
         }()
         let detail = successPayload(
@@ -338,9 +344,10 @@ enum ContactsTools {
             return contactsFailure(
                 summary: tr(
                     "请先在系统设置里允许通讯录权限。",
-                    "Please grant Contacts access in System Settings first."
+                    "Please grant Contacts access in System Settings first.",
+                    "先にシステム設定で連絡先へのアクセスを許可してください。"
                 ),
-                detail: tr("未获得通讯录权限", "Contacts permission not granted"),
+                detail: tr("未获得通讯录权限", "Contacts permission not granted", "連絡先へのアクセス権限がありません"),
                 errorCode: "CONTACTS_PERMISSION_DENIED"
             )
         }
@@ -395,9 +402,9 @@ enum ContactsTools {
 
         let summary: String = {
             if action == "updated" {
-                return tr("已更新联系人\u{201C}\(name)\u{201D}。", "Updated contact \u{201C}\(name)\u{201D}.")
+                return tr("已更新联系人\u{201C}\(name)\u{201D}。", "Updated contact \u{201C}\(name)\u{201D}.", "連絡先\u{201C}\(name)\u{201D}を更新しました。")
             } else {
-                return tr("已创建联系人\u{201C}\(name)\u{201D}。", "Created contact \u{201C}\(name)\u{201D}.")
+                return tr("已创建联系人\u{201C}\(name)\u{201D}。", "Created contact \u{201C}\(name)\u{201D}.", "連絡先\u{201C}\(name)\u{201D}を作成しました。")
             }
         }()
         let detail = successPayload(
@@ -430,11 +437,13 @@ enum ContactsTools {
             return contactsFailure(
                 summary: tr(
                     "您想查谁呢? 请提供姓名、电话、邮箱或关键词。",
-                    "Who are you looking for? Please provide a name, phone, email, or keyword."
+                    "Who are you looking for? Please provide a name, phone, email, or keyword.",
+                    "どなたをお探しですか? 名前、電話番号、メールアドレス、またはキーワードを指定してください。"
                 ),
                 detail: tr(
                     "请至少提供 query、name、phone、email 或 identifier 其中一个参数",
-                    "Please supply at least one of query, name, phone, email, or identifier"
+                    "Please supply at least one of query, name, phone, email, or identifier",
+                    "query、name、phone、email、identifier のうち少なくとも 1 つのパラメータを指定してください"
                 ),
                 errorCode: "CONTACTS_QUERY_MISSING"
             )
@@ -450,7 +459,7 @@ enum ContactsTools {
         ).prefix(5))
         let items = matches.map(MacContactsMock.summaryDict)
         if matches.isEmpty {
-            let summary = tr("未找到匹配的联系人。", "No matching contact was found.")
+            let summary = tr("未找到匹配的联系人。", "No matching contact was found.", "一致する連絡先が見つかりませんでした。")
             let detail = successPayload(
                 result: summary,
                 extras: ["count": 0, "items": items, "_macMock": true]
@@ -460,7 +469,8 @@ enum ContactsTools {
         let lines = matches.map(MacContactsMock.summaryText)
         let summary = tr(
             "找到 \(matches.count) 个联系人：\(lines.joined(separator: "；"))。",
-            "Found \(matches.count) contact\(matches.count == 1 ? "" : "s"): \(lines.joined(separator: "; "))."
+            "Found \(matches.count) contact\(matches.count == 1 ? "" : "s"): \(lines.joined(separator: "; ")).",
+            "\(matches.count) 件の連絡先が見つかりました：\(lines.joined(separator: "、"))。"
         )
         let detail = successPayload(
             result: summary,
@@ -472,9 +482,10 @@ enum ContactsTools {
             return contactsFailure(
                 summary: tr(
                     "请先在系统设置里允许通讯录权限。",
-                    "Please grant Contacts access in System Settings first."
+                    "Please grant Contacts access in System Settings first.",
+                    "先にシステム設定で連絡先へのアクセスを許可してください。"
                 ),
-                detail: tr("未获得通讯录权限", "Contacts permission not granted"),
+                detail: tr("未获得通讯录权限", "Contacts permission not granted", "連絡先へのアクセス権限がありません"),
                 errorCode: "CONTACTS_PERMISSION_DENIED"
             )
         }
@@ -488,7 +499,7 @@ enum ContactsTools {
         ).prefix(5))
         let items = matches.map(contactSummaryDictionary)
         if matches.isEmpty {
-            let summary = tr("未找到匹配的联系人。", "No matching contact was found.")
+            let summary = tr("未找到匹配的联系人。", "No matching contact was found.", "一致する連絡先が見つかりませんでした。")
             let detail = successPayload(
                 result: summary,
                 extras: ["count": 0, "items": items]
@@ -499,7 +510,8 @@ enum ContactsTools {
         let lines = matches.map(contactSummaryText)
         let summary = tr(
             "找到 \(matches.count) 个联系人：\(lines.joined(separator: "；"))。",
-            "Found \(matches.count) contact\(matches.count == 1 ? "" : "s"): \(lines.joined(separator: "; "))."
+            "Found \(matches.count) contact\(matches.count == 1 ? "" : "s"): \(lines.joined(separator: "; ")).",
+            "\(matches.count) 件の連絡先が見つかりました：\(lines.joined(separator: "、"))。"
         )
         let detail = successPayload(
             result: summary,
@@ -530,11 +542,13 @@ enum ContactsTools {
             return contactsFailure(
                 summary: tr(
                     "您想删谁呢? 请提供姓名、电话、邮箱或关键词。",
-                    "Who do you want to delete? Please provide a name, phone, email, or keyword."
+                    "Who do you want to delete? Please provide a name, phone, email, or keyword.",
+                    "どなたを削除しますか? 名前、電話番号、メールアドレス、またはキーワードを指定してください。"
                 ),
                 detail: tr(
                     "请至少提供 query、name、phone、email 或 identifier 其中一个参数",
-                    "Please supply at least one of query, name, phone, email, or identifier"
+                    "Please supply at least one of query, name, phone, email, or identifier",
+                    "query、name、phone、email、identifier のうち少なくとも 1 つのパラメータを指定してください"
                 ),
                 errorCode: "CONTACTS_QUERY_MISSING"
             )
@@ -543,7 +557,7 @@ enum ContactsTools {
         #if !os(iOS)
         let matches = MacContactsMock.search(identifier: identifier, name: name, phone: phone, email: email, query: query)
         if matches.isEmpty {
-            let summary = tr("未找到匹配的联系人。", "No matching contact was found.")
+            let summary = tr("未找到匹配的联系人。", "No matching contact was found.", "一致する連絡先が見つかりませんでした。")
             let detail = successPayload(
                 result: summary,
                 extras: ["count": 0, "deletedCount": "0", "_macMock": true]
@@ -555,11 +569,13 @@ enum ContactsTools {
             return contactsFailure(
                 summary: tr(
                     "匹配到多个联系人，请提供更具体的信息，或明确说全部删除。",
-                    "Multiple contacts matched. Please narrow the query, or explicitly confirm deleting all of them."
+                    "Multiple contacts matched. Please narrow the query, or explicitly confirm deleting all of them.",
+                    "複数の連絡先が一致しました。より具体的な条件を指定するか、すべて削除すると明示してください。"
                 ),
                 detail: tr(
                     "匹配到多个联系人，请提供更具体的信息，或传 all=true 全部删除：\(previews)",
-                    "Multiple contacts matched. Please narrow the query, or pass all=true to delete every match: \(previews)"
+                    "Multiple contacts matched. Please narrow the query, or pass all=true to delete every match: \(previews)",
+                    "複数の連絡先が一致しました。より具体的な条件を指定するか、all=true を渡してすべて削除してください：\(previews)"
                 ),
                 errorCode: "CONTACTS_AMBIGUOUS_MATCH"
             )
@@ -570,7 +586,8 @@ enum ContactsTools {
             let contact = matches[0]
             let summary = tr(
                 "已删除联系人\u{201C}\(contact.name)\u{201D}。",
-                "Deleted contact \u{201C}\(contact.name)\u{201D}."
+                "Deleted contact \u{201C}\(contact.name)\u{201D}.",
+                "連絡先\u{201C}\(contact.name)\u{201D}を削除しました。"
             )
             let detail = successPayload(
                 result: summary,
@@ -589,7 +606,8 @@ enum ContactsTools {
         let names = matches.map(\.name)
         let summary = tr(
             "已删除 \(matches.count) 位联系人：\(names.joined(separator: "、"))。",
-            "Deleted \(matches.count) contacts: \(names.joined(separator: ", "))."
+            "Deleted \(matches.count) contacts: \(names.joined(separator: ", ")).",
+            "\(matches.count) 件の連絡先を削除しました：\(names.joined(separator: "、"))。"
         )
         let detail = successPayload(
             result: summary,
@@ -605,9 +623,10 @@ enum ContactsTools {
             return contactsFailure(
                 summary: tr(
                     "请先在系统设置里允许通讯录权限。",
-                    "Please grant Contacts access in System Settings first."
+                    "Please grant Contacts access in System Settings first.",
+                    "先にシステム設定で連絡先へのアクセスを許可してください。"
                 ),
-                detail: tr("未获得通讯录权限", "Contacts permission not granted"),
+                detail: tr("未获得通讯录权限", "Contacts permission not granted", "連絡先へのアクセス権限がありません"),
                 errorCode: "CONTACTS_PERMISSION_DENIED"
             )
         }
@@ -621,7 +640,7 @@ enum ContactsTools {
         )
 
         if matches.isEmpty {
-            let summary = tr("未找到匹配的联系人。", "No matching contact was found.")
+            let summary = tr("未找到匹配的联系人。", "No matching contact was found.", "一致する連絡先が見つかりませんでした。")
             let detail = successPayload(
                 result: summary,
                 extras: ["count": 0, "deletedCount": "0"]
@@ -634,11 +653,13 @@ enum ContactsTools {
             return contactsFailure(
                 summary: tr(
                     "匹配到多个联系人，请提供更具体的信息，或明确说全部删除。",
-                    "Multiple contacts matched. Please narrow the query, or explicitly confirm deleting all of them."
+                    "Multiple contacts matched. Please narrow the query, or explicitly confirm deleting all of them.",
+                    "複数の連絡先が一致しました。より具体的な条件を指定するか、すべて削除すると明示してください。"
                 ),
                 detail: tr(
                     "匹配到多个联系人，请提供更具体的信息，或传 all=true 全部删除：\(previews)",
-                    "Multiple contacts matched. Please narrow the query, or pass all=true to delete every match: \(previews)"
+                    "Multiple contacts matched. Please narrow the query, or pass all=true to delete every match: \(previews)",
+                    "複数の連絡先が一致しました。より具体的な条件を指定するか、all=true を渡してすべて削除してください：\(previews)"
                 ),
                 errorCode: "CONTACTS_AMBIGUOUS_MATCH"
             )
@@ -657,7 +678,8 @@ enum ContactsTools {
             let contact = matches[0]
             let summary = tr(
                 "已删除联系人\u{201C}\(formattedContactName(contact))\u{201D}。",
-                "Deleted contact \u{201C}\(formattedContactName(contact))\u{201D}."
+                "Deleted contact \u{201C}\(formattedContactName(contact))\u{201D}.",
+                "連絡先\u{201C}\(formattedContactName(contact))\u{201D}を削除しました。"
             )
             let detail = successPayload(
                 result: summary,
@@ -674,7 +696,8 @@ enum ContactsTools {
 
         let summary = tr(
             "已删除 \(matches.count) 位联系人：\(deletedNames.joined(separator: "、"))。",
-            "Deleted \(matches.count) contacts: \(deletedNames.joined(separator: ", "))."
+            "Deleted \(matches.count) contacts: \(deletedNames.joined(separator: ", ")).",
+            "\(matches.count) 件の連絡先を削除しました：\(deletedNames.joined(separator: "、"))。"
         )
         let detail = successPayload(
             result: summary,

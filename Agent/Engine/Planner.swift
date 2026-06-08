@@ -515,7 +515,7 @@ extension AgentEngine {
                     }
 
                     let cleanedOutput = cleanOutput(rawOutput)
-                    let summary = cleanedOutput.isEmpty ? tr("(无输出)", "(no output)") : cleanedOutput
+                    let summary = cleanedOutput.isEmpty ? tr("(无输出)", "(no output)", "(出力なし)") : cleanedOutput
 
                     messages[cardIndex].update(role: .system, content: "done", skillName: displayName)
                     messages.append(ChatMessage(role: .skillResult, content: summary, skillName: step.skill, skillResultKind: .generatedContent))

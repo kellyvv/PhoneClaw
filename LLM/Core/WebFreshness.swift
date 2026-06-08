@@ -10,12 +10,17 @@ import Foundation
 /// LanguageService) and can be unit-tested deterministically by passing an
 /// explicit `now`.
 ///
-/// Design intent (search-agent recency rework): freshness is a *graded
-/// retrieval/ranking signal*, never a yes/no refusal gate. We parse a real
-/// `Date` from the many formats providers emit (RSS RFC822, ISO8601, localized
-/// absolute dates, relative phrases), then score recency with exponential decay.
-/// An unparseable date yields a *neutral* boost of 0 — it is never penalized into
-/// oblivion, which is the bug the old literal-date-string gate created.
+/// Design intent (search-agent recency rework): freshness is a retrieval
+/// contract, not a domain-specific keyword rule. We parse a real `Date` from the
+/// many formats providers emit (RSS RFC822, ISO8601, localized absolute dates,
+/// relative phrases), then use it in two generic ways:
+///   - ranking: fresh evidence wins for time-sensitive questions;
+///   - eligibility: explicitly stale dated fallback results do not enter the
+///     evidence chain for "today/latest/current" questions.
+///
+/// An unparseable date remains neutral because some engines omit dates on
+/// genuinely fresh result pages. A parseable stale date is actionable evidence
+/// that the result does not satisfy the user's temporal constraint.
 enum WebFreshness {
 
     // MARK: - Temporal intent
@@ -49,6 +54,18 @@ enum WebFreshness {
             case .none: return nil
             }
         }
+
+        /// Generic hard window used only for dated results. Undated results are
+        /// handled by callers as neutral, because recency-filtered engines often
+        /// omit explicit dates.
+        var maxAcceptableAgeDays: Int? {
+            switch self {
+            case .day: return 2
+            case .week: return 10
+            case .month: return 45
+            case .none: return nil
+            }
+        }
     }
 
     /// Infer the recency window from a question. Intentionally small — temporal
@@ -70,6 +87,20 @@ enum WebFreshness {
     /// Whether the question carries any recency intent at all.
     static func wantsFreshness(_ query: String) -> Bool {
         window(for: query) != .none
+    }
+
+    static func window(named raw: String?) -> Window {
+        guard let raw = raw?.lowercased() else { return .none }
+        switch raw {
+        case "day":
+            return .day
+        case "week":
+            return .week
+        case "month":
+            return .month
+        default:
+            return .none
+        }
     }
 
     // MARK: - Recency scoring
@@ -101,6 +132,13 @@ enum WebFreshness {
         guard let date = parsePublishedDate(publishedAt, now: now) else { return 0 }
         let score = recencyScore(ageSeconds: ageInSeconds(of: date, now: now), halfLifeHours: window.halfLifeHours)
         return maxBoost * score
+    }
+
+    static func isWithinWindow(date: Date?, window: Window, now: Date = Date()) -> Bool {
+        guard let maxAgeDays = window.maxAcceptableAgeDays else { return true }
+        guard let date else { return true }
+        let ageDays = Int(ceil(max(0, now.timeIntervalSince(date)) / 86_400))
+        return ageDays <= maxAgeDays
     }
 
     /// The newest parseable date among a set of raw strings, if any.

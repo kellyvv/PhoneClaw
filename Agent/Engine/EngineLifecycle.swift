@@ -142,7 +142,8 @@ extension AgentEngine {
             let current = kDefaultSystemPrompt
             let zhDefault = PromptLocale.zhHans.defaultSystemPromptAgent
             let enDefault = PromptLocale.en.defaultSystemPromptAgent
-            let isUnmodifiedDefault = (content == zhDefault) || (content == enDefault)
+            let jaDefault = PromptLocale.ja.defaultSystemPromptAgent
+            let isUnmodifiedDefault = (content == zhDefault) || (content == enDefault) || (content == jaDefault)
             let localeMismatch = isUnmodifiedDefault && (content != current)
 
             if !hasNetworkPlaceholder && hasDeviceOrContentPlaceholders && looksLikeLegacyOfflineDefault {
@@ -215,6 +216,12 @@ extension AgentEngine {
     func reconcileSelectedModelIfUnavailable(refreshInstallStates: Bool = false) -> Bool {
         if refreshInstallStates {
             installer.refreshInstallStates()
+        }
+
+        // 远程模型 (remote::) 无本地资产, 永远视为可用 —— 别 reconcile 切到本地模型。
+        if config.selectedModelID.hasPrefix("remote::") {
+            _ = catalog.select(modelID: config.selectedModelID)
+            return false
         }
 
         if let currentModel = availableModels.first(where: { $0.id == config.selectedModelID }),

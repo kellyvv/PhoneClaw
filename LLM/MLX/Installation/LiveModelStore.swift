@@ -333,18 +333,19 @@ final class LiveModelStore {
         if let failure = error as? DownloadFailure {
             switch failure {
             case .httpStatus(let code):
-                return tr("LIVE 模型下载失败：HTTP \(code)", "LIVE model download failed: HTTP \(code)")
+                return tr("LIVE 模型下载失败：HTTP \(code)", "LIVE model download failed: HTTP \(code)", "LIVE モデルのダウンロードに失敗しました：HTTP \(code)")
             case .insufficientDiskSpace(let required, let available):
                 return tr(
                     "磁盘空间不足：需要 \(formatBytes(required))，可用 \(formatBytes(available))",
-                    "Not enough storage: needs \(formatBytes(required)), available \(formatBytes(available))"
+                    "Not enough storage: needs \(formatBytes(required)), available \(formatBytes(available))",
+                    "ストレージの空き容量が足りません：必要 \(formatBytes(required))、空き \(formatBytes(available))"
                 )
             case .manifestCorrupt:
-                return tr("下载记录损坏，已重新开始下载。", "Download record was corrupt and has been restarted.")
+                return tr("下载记录损坏，已重新开始下载。", "Download record was corrupt and has been restarted.", "ダウンロード記録が破損していたため、ダウンロードを最初からやり直しました。")
             case .cancelled:
-                return tr("下载已取消", "Download cancelled")
+                return tr("下载已取消", "Download cancelled", "ダウンロードをキャンセルしました")
             case .invalidURL, .invalidResponse, .validatorMismatch, .fileSystem:
-                return tr("LIVE 模型下载失败，请检查网络后重试。", "LIVE model download failed. Check your network and retry.")
+                return tr("LIVE 模型下载失败，请检查网络后重试。", "LIVE model download failed. Check your network and retry.", "LIVE モデルのダウンロードに失敗しました。ネットワークを確認してからやり直してください。")
             }
         }
         return error.localizedDescription

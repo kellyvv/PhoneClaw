@@ -228,6 +228,9 @@ public enum ArtifactKind: String, Sendable {
     /// `ModelDescriptor.fileName` 指向 LLM 主权重, 其它兄弟文件由 backend
     /// 的 bundleResolver 按命名约定派生 (见 AgentEngine 里实现)。
     case ggufBundle
+    /// 远程端点 (局域网 Mac 上的 OpenAI 兼容网关)。无本地资产, 不下载不安装,
+    /// 由 RemoteInferenceService 走 HTTP/SSE。
+    case remoteEndpoint
 }
 
 // MARK: - Model Capabilities

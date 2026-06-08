@@ -182,9 +182,9 @@ extension AgentEngine {
             let key = normalizedSourceKey(url) + "|" + String(body.prefix(48))
             guard !seen.contains(key) else { return }
             seen.insert(key)
-            let datePart = date.isEmpty ? "" : ", \(tr("发布", "published")) \(date)"
+            let datePart = date.isEmpty ? "" : ", \(tr("发布", "published", "公開")) \(date)"
             let clipped = String(body.prefix(340))
-            lines.append("[\(tr("来源", "source"))\(lines.count + 1)] \(title) (\(host)\(datePart))\n\(clipped)")
+            lines.append("[\(tr("来源", "source", "ソース"))\(lines.count + 1)] \(title) (\(host)\(datePart))\n\(clipped)")
         }
 
         if let pack = payload["evidence_pack"] as? [String: Any],
@@ -656,7 +656,8 @@ extension AgentEngine {
         if trimmed.isEmpty {
             return tr(
                 "已完成，但没有返回可展示的内容。",
-                "Done, but there was no displayable result."
+                "Done, but there was no displayable result.",
+                "完了しましたが、表示できる内容はありませんでした。"
             )
         }
 
@@ -664,6 +665,12 @@ extension AgentEngine {
             return """
             已完成，不过我没能整理出自然回复。
             结果如下：
+            \(trimmed)
+            """
+        } else if LanguageService.shared.current.isJapanese {
+            return """
+            完了しましたが、自然な返答にまとめられませんでした。
+            結果は以下のとおりです:
             \(trimmed)
             """
         } else {
@@ -688,10 +695,13 @@ extension AgentEngine {
         if clippedSummary.isEmpty {
             body = tr(
                 "- 结果：这次工具返回了可检查的来源，但没有稳定生成自然语言结论。\n- 建议：请优先打开下方来源核对最新信息。",
-                "- Result: The tool returned checkable sources, but a natural-language conclusion was not generated reliably.\n- Recommendation: Verify the latest information from the sources below."
+                "- Result: The tool returned checkable sources, but a natural-language conclusion was not generated reliably.\n- Recommendation: Verify the latest information from the sources below.",
+                "- 結果: 今回のツールは確認可能なソースを返しましたが、自然な文章での結論を安定して生成できませんでした。\n- 推奨: まず下記のソースを開いて最新情報を確認してください。"
             )
         } else if LanguageService.shared.current.isChinese {
             body = "- 结论：我找到了可用的搜索证据。\n- 关键证据：\(clippedSummary)"
+        } else if LanguageService.shared.current.isJapanese {
+            body = "- 結論: 利用できる検索の根拠が見つかりました。\n- 主な根拠: \(clippedSummary)"
         } else {
             body = "- Conclusion: I found usable search evidence.\n- Key evidence: \(clippedSummary)"
         }
@@ -768,7 +778,8 @@ extension AgentEngine {
     func fallbackReplyForEmptySkillFollowUp(skillName: String) -> String {
         tr(
             "我已经准备好这项能力了，但还缺少下一步。请把需求说得更具体一些。",
-            "I'm ready to use this capability, but I need a more specific request."
+            "I'm ready to use this capability, but I need a more specific request.",
+            "この機能を使う準備はできていますが、次のステップが分かりません。ご要望をもう少し具体的に教えてください。"
         )
     }
 
@@ -785,26 +796,30 @@ extension AgentEngine {
         }
     }
 
-    /// Drop a leading "总结"/"Summary" heading line from the answer body. The model
-    /// still organizes around it (prompt + structure validation keep the scannable
-    /// shape), but the user does not want the redundant label, so it is removed at
-    /// presentation. Bullets/structure underneath are untouched.
-    private func stripLeadingSummaryHeading(_ text: String) -> String {
+    /// Ensure grounded web answers have an explicit summary section. The model is
+    /// prompted to emit this, but the post-processor owns the presentation
+    /// contract so search answers stay stable across models and sampling.
+    private func ensureLeadingSummaryHeading(_ text: String) -> String {
         var lines = text.components(separatedBy: "\n")
         while let first = lines.first,
               first.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             lines.removeFirst()
         }
-        guard let first = lines.first,
-              isSummarySectionHeading(first.trimmingCharacters(in: .whitespacesAndNewlines)) else {
-            return text
+        guard let first = lines.first else {
+            return ""
         }
-        lines.removeFirst()
-        while let first = lines.first,
-              first.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            lines.removeFirst()
+        let body = lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !body.isEmpty else {
+            return ""
         }
-        return lines.joined(separator: "\n")
+        if isSummarySectionHeading(first.trimmingCharacters(in: .whitespacesAndNewlines)) {
+            return body
+        }
+        return summarySectionHeading() + "\n" + body
+    }
+
+    private func summarySectionHeading() -> String {
+        tr("总结", "Summary", "総結")
     }
 
     func appendSourceCitationIfNeeded(
@@ -824,7 +839,7 @@ extension AgentEngine {
             }
         let urls = detailURLs + answerURLs
         let cleanedAnswer = removeInlineSourceParentheticals(answer)
-        let bodyAnswer = stripLeadingSummaryHeading(removeInlineWebLinks(removeExistingSourceSection(cleanedAnswer)))
+        let bodyAnswer = ensureLeadingSummaryHeading(removeInlineWebLinks(removeExistingSourceSection(cleanedAnswer)))
         guard !urls.isEmpty else {
             let sources = emptySourceSection()
             return bodyAnswer.isEmpty ? sources : bodyAnswer + "\n\n" + sources
@@ -913,6 +928,7 @@ extension AgentEngine {
         }
 
         let answerability = payload["answerability"] as? String
+        let recencyWindow = WebFreshness.window(named: payload["recency_window"] as? String)
         if let evidencePack = payload["evidence_pack"] as? [String: Any],
            let chunks = evidencePack["chunks"] as? [[String: Any]] {
             let sortedChunks = chunks.sorted { lhs, rhs in
@@ -922,6 +938,7 @@ extension AgentEngine {
                 return ((lhs["source_rank"] as? Int) ?? Int.max) < ((rhs["source_rank"] as? Int) ?? Int.max)
             }
             for chunk in sortedChunks {
+                guard sourceItemFreshEnough(chunk, window: recencyWindow) else { continue }
                 if let url = chunk["url"] as? String, !url.isEmpty {
                     urls.append(url)
                 }
@@ -940,7 +957,7 @@ extension AgentEngine {
                 return ((lhs["rank"] as? Int) ?? Int.max) < ((rhs["rank"] as? Int) ?? Int.max)
             }
             for result in sortedResults {
-                guard isUsableSourceResult(result) else { continue }
+                guard isUsableSourceResult(result, window: recencyWindow) else { continue }
                 if let url = result["url"] as? String, !url.isEmpty {
                     urls.append(url)
                 }
@@ -1004,13 +1021,41 @@ extension AgentEngine {
         return normalized == "https://example.com" || normalized == "http://example.com"
     }
 
-    private func isUsableSourceResult(_ result: [String: Any]) -> Bool {
-        // Relevance, confidence and homepage-likeness still gate a citation;
-        // staleness does NOT — a stale-but-relevant source is allowed in, it just
-        // sorts after fresher ones (see sourcePriority / evidence_pack scoring).
+    private func isUsableSourceResult(_ result: [String: Any], window: WebFreshness.Window) -> Bool {
+        // Relevance, confidence and homepage-likeness gate a citation. For
+        // explicitly time-sensitive queries, stale dated results are gated too:
+        // reading a known-old page is how "today/latest" answers become wrong.
         if result["query_relevant"] as? Bool == false { return false }
         if result["confidence"] as? String == "low" { return false }
         if result["is_homepage_like"] as? Bool == true { return false }
+        if !sourceItemFreshEnough(result, window: window) { return false }
+        return true
+    }
+
+    private func sourceItemFreshEnough(_ item: [String: Any], window: WebFreshness.Window) -> Bool {
+        guard window != .none else { return true }
+        if let maxAgeDays = window.maxAcceptableAgeDays,
+           let ageDays = item["age_days"] as? Int {
+            return ageDays <= maxAgeDays
+        }
+
+        let rawDate = item["published_at"] as? String
+        let sourceText = [
+            item["title"] as? String,
+            item["snippet"] as? String,
+            item["text"] as? String,
+            item["url"] as? String
+        ]
+        .compactMap { $0 }
+        .joined(separator: "\n")
+        let providerDate = WebFreshness.parsePublishedDate(rawDate, now: Date())
+        guard WebFreshness.isWithinWindow(date: providerDate, window: window) else {
+            return false
+        }
+        let sourceDate = WebFreshness.parsePublishedDate(sourceText, now: Date())
+        guard WebFreshness.isWithinWindow(date: sourceDate, window: window) else {
+            return false
+        }
         return true
     }
 
@@ -1060,11 +1105,11 @@ extension AgentEngine {
         let lines = filteredURLs.prefix(5).enumerated().map { index, url in
             "\(index + 1). [\(sourceLabel(for: url))](\(url))"
         }.joined(separator: "\n")
-        return tr("引用网址\n\(lines)", "Sources\n\(lines)")
+        return tr("引用网址\n\(lines)", "Sources\n\(lines)", "出典\n\(lines)")
     }
 
     private func emptySourceSection() -> String {
-        tr("引用网址\n无可用来源", "Sources\nNo usable sources.")
+        tr("引用网址\n无可用来源", "Sources\nNo usable sources.", "出典\n利用できるソースはありません。")
     }
 
     private func sourceLabel(for rawURL: String) -> String {
@@ -1166,48 +1211,56 @@ extension AgentEngine {
         let sections = splitWebAnswerSections(answer)
         let body = sections.body
         let sources = sections.sources ?? ""
-        // 用户不要"总结"标题: 它在展示层被 stripLeadingSummaryHeading 去掉
-        // (appendSourceCitationIfNeeded), 所以这里只校验正文的可扫描结构(下方),
-        // 不再强制要求"总结"标题本身存在 —— 否则去掉标题后每次都会触发 repair。
+        // The deterministic post-processor should add this heading even when the
+        // model omits it. Treat absence as a contract failure so regressions are
+        // visible instead of silently producing free-form web answers.
         let expectedURLs = sourceURLs(fromToolResultDetail: toolResultDetail)
             .filter { !isLowValueSourceURL($0) }
         var issues: [String] = []
+        let bodyLines = body
+            .components(separatedBy: "\n")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        if bodyLines.first.map(isSummarySectionHeading) != true {
+            issues.append(tr("缺少独立的“总结”段。", "Missing separate Summary section.", "独立した「総結」セクションがありません。"))
+        }
         if body.trimmingCharacters(in: .whitespacesAndNewlines).count < 12 {
-            issues.append(tr("总结正文为空或过短。", "Summary body is empty or too short."))
+            issues.append(tr("总结正文为空或过短。", "Summary body is empty or too short.", "要約本文が空か、短すぎます。"))
         }
         if webAnswerLooksUnstructured(body) {
-            issues.append(tr("总结正文是单段长文，缺少可扫描结构。", "Summary body is one long paragraph and lacks scannable structure."))
+            issues.append(tr("总结正文是单段长文，缺少可扫描结构。", "Summary body is one long paragraph and lacks scannable structure.", "要約本文が一段落の長文で、ざっと読める構造がありません。"))
         }
         if webAnswerContainsPlaceholder(answer) {
-            issues.append(tr("回答包含占位符或模板文本。", "Answer contains placeholder or template text."))
+            issues.append(tr("回答包含占位符或模板文本。", "Answer contains placeholder or template text.", "回答にプレースホルダーやテンプレートのテキストが含まれています。"))
         }
         if groundedAnswerLanguageMismatch(body) {
             issues.append(tr(
                 "回答语言与当前会话语言不一致。",
-                "Answer language does not match the current conversation language."
+                "Answer language does not match the current conversation language.",
+                "回答の言語が現在の会話の言語と一致していません。"
             ))
         }
         if !expectedURLs.isEmpty {
             if sections.sources == nil {
-                issues.append(tr("缺少独立的“引用网址”段。", "Missing separate Sources section."))
+                issues.append(tr("缺少独立的“引用网址”段。", "Missing separate Sources section.", "独立した「出典」セクションがありません。"))
             } else if markdownLinkCount(in: sources) == 0 {
-                issues.append(tr("引用网址段没有 Markdown 可点击链接。", "Sources section has no clickable Markdown links."))
+                issues.append(tr("引用网址段没有 Markdown 可点击链接。", "Sources section has no clickable Markdown links.", "出典セクションにクリックできる Markdown リンクがありません。"))
             }
         }
         if !sourceURLs(fromAnswerText: body).isEmpty {
-            issues.append(tr("总结正文仍混入 URL 或来源链接。", "Summary body still contains URLs or source links."))
+            issues.append(tr("总结正文仍混入 URL 或来源链接。", "Summary body still contains URLs or source links.", "要約本文にまだ URL や出典リンクが混ざっています。"))
         }
         if bodyContainsInlineSourceMarker(body) {
-            issues.append(tr("总结正文仍混入来源括号或来源标记。", "Summary body still contains inline source markers."))
+            issues.append(tr("总结正文仍混入来源括号或来源标记。", "Summary body still contains inline source markers.", "要約本文にまだ出典の括弧や出典の表記が混ざっています。"))
         }
         if webAnswerUsesLowRelevanceEvidence(body, toolResultDetail: toolResultDetail) {
-            issues.append(tr("总结正文使用了低相关搜索结果。", "Summary body uses low-relevance search results."))
+            issues.append(tr("总结正文使用了低相关搜索结果。", "Summary body uses low-relevance search results.", "要約本文で関連性の低い検索結果を使っています。"))
         }
 
         let hasUsableEvidence = webToolDetailHasUsableEvidence(toolResultDetail)
         let insufficientAnswer = webAnswerLooksInsufficient(body)
         if hasUsableEvidence && insufficientAnswer {
-            issues.append(tr("工具结果已有可用证据，但回答仍说证据不足。", "Tool result has usable evidence, but the answer still claims insufficient evidence."))
+            issues.append(tr("工具结果已有可用证据，但回答仍说证据不足。", "Tool result has usable evidence, but the answer still claims insufficient evidence.", "ツールの結果には利用できる根拠があるのに、回答ではまだ根拠が不十分だと述べています。"))
         }
 
         return PhoneGroundAnswerValidation(
@@ -1276,7 +1329,8 @@ extension AgentEngine {
             return false
         }
 
-        for result in results where !isUsableSourceResult(result) {
+        let recencyWindow = WebFreshness.window(named: payload["recency_window"] as? String)
+        for result in results where !isUsableSourceResult(result, window: recencyWindow) {
             for fragment in lowRelevanceEvidenceFragments(result) {
                 if normalizedBody.contains(fragment) {
                     return true
@@ -1551,7 +1605,7 @@ extension AgentEngine {
                 [
                     "id": "normalized_summary",
                     "type": evidenceType.rawValue,
-                    "title": tr("工具结果摘要", "Tool result summary"),
+                    "title": tr("工具结果摘要", "Tool result summary", "ツール結果の要約"),
                     "content": content,
                     "confidence": "normalized_tool_result"
                 ] as [String: Any]
@@ -2013,10 +2067,11 @@ extension AgentEngine {
             // (canonical 会把所有 load_skill 归一成同名, 易误判).
             if sameNameCount >= 1, candidateName != "load_skill" {
                 log("[Agent] 检测到 tool \(candidateName) 已在前面跑过, skip 本次重复, 让模型继续")
-                let lastResult = recentResults.last(where: { ($0.skillName ?? "") == candidateName })?.content ?? tr("已完成", "Done")
+                let lastResult = recentResults.last(where: { ($0.skillName ?? "") == candidateName })?.content ?? tr("已完成", "Done", "完了")
                 let pseudoSummary = tr(
                     "[\(candidateName) 已经在前面成功执行, 不需要再调用. 请继续完成用户其他请求, 或给最终中文回复]\n上一次结果: \(lastResult)",
-                    "[\(candidateName) has already executed successfully; do not invoke again. Continue with the user's other requests, or give the final answer in English.]\nLast result: \(lastResult)"
+                    "[\(candidateName) has already executed successfully; do not invoke again. Continue with the user's other requests, or give the final answer in English.]\nLast result: \(lastResult)",
+                    "[\(candidateName) はすでに正常に実行済みです。再度呼び出す必要はありません。ユーザーの他のリクエストを続けて処理するか、最終的な回答を日本語で返してください。]\n前回の結果: \(lastResult)"
                 )
                 let followUpPrompt = PromptBuilder.appendToolResult(
                     toR1Prompt: prompt,
@@ -2079,9 +2134,11 @@ extension AgentEngine {
             let listing = results.map { "\($0.id): \($0.description)" }.joined(separator: "\n")
             let resultText = results.isEmpty
                 ? tr("没有找到匹配「\(query)」的能力。",
-                     "No abilities found matching \"\(query)\".")
+                     "No abilities found matching \"\(query)\".",
+                     "「\(query)」に一致する機能は見つかりませんでした。")
                 : tr("可用能力（\(results.count) 个）：\n\(listing)",
-                     "Available abilities (\(results.count)):\n\(listing)")
+                     "Available abilities (\(results.count)):\n\(listing)",
+                     "利用できる機能（\(results.count) 件）:\n\(listing)")
             log("[Agent] list_skills query=\"\(query)\" results=\(results.count)")
 
             let toolResultSummary = toolResultSummaryForModel(toolName: "list_skills", toolResult: resultText)
@@ -2275,7 +2332,7 @@ extension AgentEngine {
                     } else {
                         let retryCleaned = cleanOutput(retryText)
                         let loadedSkillName = loadedDisplayNames.joined(separator: ", ").isEmpty
-                            ? tr("已加载的能力", "loaded ability")
+                            ? tr("已加载的能力", "loaded ability", "読み込み済みの機能")
                             : loadedDisplayNames.joined(separator: ", ")
                         let finalReply = retryCleaned.isEmpty
                             || looksLikeStructuredIntermediateOutput(retryCleaned)
@@ -2315,7 +2372,8 @@ extension AgentEngine {
             messages[cardIndex].update(role: .system, content: "done", skillName: displayName)
             messages.append(ChatMessage(role: .assistant, content: tr(
                 "⚠️ 未知工具: \(call.name)",
-                "⚠️ Unknown tool: \(call.name)"
+                "⚠️ Unknown tool: \(call.name)",
+                "⚠️ 不明なツール: \(call.name)"
             )))
             finishTurn()
             return
@@ -2326,7 +2384,8 @@ extension AgentEngine {
             messages[cardIndex].update(role: .system, content: "done", skillName: displayName)
             messages.append(ChatMessage(role: .assistant, content: tr(
                 "⚠️ Skill \(displayName) 未启用",
-                "⚠️ Skill \(displayName) is not enabled"
+                "⚠️ Skill \(displayName) is not enabled",
+                "⚠️ Skill \(displayName) は有効になっていません"
             )))
             finishTurn()
             return
@@ -2536,7 +2595,8 @@ extension AgentEngine {
             messages[cardIndex].update(role: .system, content: "done", skillName: displayName)
             messages.append(ChatMessage(role: .system, content: tr(
                 "这项操作没有完成：\(error.localizedDescription)",
-                "This action could not be completed: \(error.localizedDescription)"
+                "This action could not be completed: \(error.localizedDescription)",
+                "この操作は完了できませんでした: \(error.localizedDescription)"
             )))
             finishTurn()
         }

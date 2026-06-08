@@ -148,9 +148,11 @@ func iso8601String(from date: Date) -> String {
 
 func displayDateTimeString(from date: Date) -> String {
     let formatter = DateFormatter()
-    formatter.locale = LanguageService.shared.current.isChinese
-        ? Locale(identifier: "zh_Hans_CN")
-        : Locale(identifier: "en_US")
+    formatter.locale = LanguageService.shared.current.isJapanese
+        ? Locale(identifier: "ja_JP")
+        : (LanguageService.shared.current.isChinese
+            ? Locale(identifier: "zh_Hans_CN")
+            : Locale(identifier: "en_US"))
     formatter.timeZone = .current
     formatter.dateStyle = .medium
     formatter.timeStyle = .short

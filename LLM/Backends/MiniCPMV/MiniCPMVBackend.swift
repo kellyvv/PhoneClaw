@@ -57,7 +57,7 @@ final class MiniCPMVBackend: InferenceService {
     private(set) var isLoaded = false
     private(set) var isLoading = false
     private(set) var isGenerating = false
-    var statusMessage = tr("等待加载模型...", "Waiting to load model...")
+    var statusMessage = tr("等待加载模型...", "Waiting to load model...", "モデルの読み込み待ち...")
     private(set) var stats = InferenceStats()
 
     // MARK: Sampling (per InferenceService)
@@ -170,7 +170,7 @@ final class MiniCPMVBackend: InferenceService {
 
         await MainActor.run {
             self.isLoading = true
-            self.statusMessage = tr("加载 MiniCPM-V...", "Loading MiniCPM-V...")
+            self.statusMessage = tr("加载 MiniCPM-V...", "Loading MiniCPM-V...", "MiniCPM-V を読み込み中...")
         }
 
         // 如果之前有其它模型, 先清掉
@@ -221,7 +221,8 @@ final class MiniCPMVBackend: InferenceService {
             await MainActor.run {
                 self.isLoading = false
                 self.statusMessage = tr("加载失败: \(error.localizedDescription)",
-                                        "Load failed: \(error.localizedDescription)")
+                                        "Load failed: \(error.localizedDescription)",
+                                        "読み込みに失敗しました: \(error.localizedDescription)")
             }
             throw error
         }
@@ -239,7 +240,8 @@ final class MiniCPMVBackend: InferenceService {
             // 所以这里跟 vision 状态无关.
             self.stats.backend = self.preferGPU ? "llama.cpp-metal" : "llama.cpp-cpu"
             self.statusMessage = tr("MiniCPM-V 已就绪",
-                                    "MiniCPM-V ready")
+                                    "MiniCPM-V ready",
+                                    "MiniCPM-V 準備完了")
         }
         onModelLoaded?(modelID)
     }
@@ -249,7 +251,7 @@ final class MiniCPMVBackend: InferenceService {
         // 同步状态先翻掉, 后台异步执行 wrapper 清理 — 跟 LiteRTBackend 同款套路。
         isLoaded = false
         loadedModelID = nil
-        statusMessage = tr("已卸载", "Unloaded")
+        statusMessage = tr("已卸载", "Unloaded", "アンロード済み")
         prefilledSegments = []  // KV reuse 跟踪状态归零
         onModelUnloaded?()
 
@@ -1277,17 +1279,20 @@ public enum MiniCPMVBackendError: LocalizedError {
         case .notImplemented(let what):
             return tr(
                 "MiniCPM-V 后端尚未实现: \(what)",
-                "MiniCPM-V backend not implemented yet: \(what)"
+                "MiniCPM-V backend not implemented yet: \(what)",
+                "MiniCPM-V バックエンドは未実装です: \(what)"
             )
         case .bundleResolutionFailed(let modelID):
             return tr(
                 "找不到 MiniCPM-V 模型 \(modelID) 的文件路径",
-                "Cannot resolve MiniCPM-V model \(modelID) file paths"
+                "Cannot resolve MiniCPM-V model \(modelID) file paths",
+                "MiniCPM-V モデル \(modelID) のファイルパスが見つかりません"
             )
         case .imageEncodeFailed(let reason):
             return tr(
                 "图像编码失败 (CIImage → PNG): \(reason)",
-                "Image encode failed (CIImage → PNG): \(reason)"
+                "Image encode failed (CIImage → PNG): \(reason)",
+                "画像のエンコードに失敗しました (CIImage → PNG): \(reason)"
             )
         }
     }

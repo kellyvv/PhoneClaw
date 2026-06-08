@@ -94,7 +94,7 @@ struct AIResponseView: View, Equatable {
                         HStack(spacing: 5) {
                             Image(systemName: "arrow.counterclockwise")
                                 .font(.system(size: 10, weight: .regular))
-                            Text(tr("重新生成", "Regenerate"))
+                            Text(tr("重新生成", "Regenerate", "再生成"))
                                 .font(.system(size: 11))
                         }
                         .foregroundStyle(Theme.quietAction)
@@ -1261,7 +1261,7 @@ struct ThinkingCardView: View {
             .replacingOccurrences(of: "\n", with: " ")
             .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !compact.isEmpty else { return tr("已捕获思考内容", "Captured thinking content") }
+        guard !compact.isEmpty else { return tr("已捕获思考内容", "Captured thinking content", "思考内容を取得しました") }
         return String(compact.prefix(72)) + (compact.count > 72 ? "…" : "")
     }
 
@@ -1277,7 +1277,7 @@ struct ThinkingCardView: View {
                     .background(Theme.accentSubtle, in: RoundedRectangle(cornerRadius: 7))
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(tr("思考", "Think"))
+                    Text(tr("思考", "Think", "思考"))
                         .font(.system(size: 13, weight: .semibold, design: .rounded))
                         .foregroundStyle(Theme.textPrimary)
                     if !isExpanded {
@@ -1290,7 +1290,7 @@ struct ThinkingCardView: View {
 
                 Spacer()
 
-                Text(tr("\(lineCount) 行", "\(lineCount) lines"))
+                Text(tr("\(lineCount) 行", "\(lineCount) lines", "\(lineCount) 行"))
                     .font(.system(size: 10, weight: .medium, design: .monospaced))
                     .foregroundStyle(Theme.textTertiary)
 
@@ -1417,119 +1417,119 @@ struct SkillCardView: View {
     private var statusTitle: String {
         if isSkillDone {
             if toolNameContains("calendar-create") {
-                return tr("创建了日程", "Created Event")
+                return tr("创建了日程", "Created Event", "予定を作成しました")
             }
             if toolNameContains("reminders-create") {
-                return tr("创建了提醒", "Created Reminder")
+                return tr("创建了提醒", "Created Reminder", "リマインダーを作成しました")
             }
             if toolNameContains("contacts-search") {
-                return tr("查找了联系人", "Searched Contacts")
+                return tr("查找了联系人", "Searched Contacts", "連絡先を検索しました")
             }
             if toolNameContains("contacts-upsert") {
-                return tr("保存了联系人", "Saved Contact")
+                return tr("保存了联系人", "Saved Contact", "連絡先を保存しました")
             }
             if toolNameContains("contacts-delete") {
-                return tr("删除了联系人", "Deleted Contact")
+                return tr("删除了联系人", "Deleted Contact", "連絡先を削除しました")
             }
             if toolNameContains("clipboard-write") {
-                return tr("写入了剪贴板", "Updated Clipboard")
+                return tr("写入了剪贴板", "Updated Clipboard", "クリップボードを更新しました")
             }
             if toolNameContains("clipboard-read") {
-                return tr("读取了剪贴板", "Read Clipboard")
+                return tr("读取了剪贴板", "Read Clipboard", "クリップボードを読み取りました")
             }
             if toolNameContains("health-report") {
-                return tr("生成了健康报告", "Generated Health Report")
+                return tr("生成了健康报告", "Generated Health Report", "ヘルスレポートを作成しました")
             }
             if toolNameContains("health-sleep") {
-                return tr("读取了睡眠", "Read Sleep")
+                return tr("读取了睡眠", "Read Sleep", "睡眠データを読み取りました")
             }
             if toolNameContains("health-workout") {
-                return tr("读取了运动记录", "Read Workouts")
+                return tr("读取了运动记录", "Read Workouts", "ワークアウトを読み取りました")
             }
             if toolNameContains("health-weight") {
-                return tr("读取了体重", "Read Weight")
+                return tr("读取了体重", "Read Weight", "体重を読み取りました")
             }
             if toolNameContains("health-distance") {
-                return tr("读取了距离", "Read Distance")
+                return tr("读取了距离", "Read Distance", "距離を読み取りました")
             }
             if toolNameContains("health-active-energy") {
-                return tr("读取了活动消耗", "Read Active Energy")
+                return tr("读取了活动消耗", "Read Active Energy", "アクティブエネルギーを読み取りました")
             }
             if toolNameContains("health-heart") {
-                return tr("读取了心率", "Read Heart Rate")
+                return tr("读取了心率", "Read Heart Rate", "心拍数を読み取りました")
             }
             if toolNameContains("health-steps") {
-                return tr("读取了步数", "Read Steps")
+                return tr("读取了步数", "Read Steps", "歩数を読み取りました")
             }
             if skillKind == .translate {
-                return tr("翻译完成", "Translation Ready")
+                return tr("翻译完成", "Translation Ready", "翻訳が完了しました")
             }
 
             switch skillKind {
-            case .calendar: return tr("处理了日程", "Used Calendar")
-            case .reminders: return tr("处理了提醒", "Used Reminders")
-            case .contacts: return tr("处理了联系人", "Used Contacts")
-            case .health: return tr("读取了健康数据", "Read Health Data")
-            case .clipboard: return tr("读取了剪贴板", "Read Clipboard")
-            case .translate: return tr("翻译完成", "Translation Ready")
-            case .generic: return tr("使用了\(card.skillName)", "Used \(card.skillName)")
+            case .calendar: return tr("处理了日程", "Used Calendar", "カレンダーを操作しました")
+            case .reminders: return tr("处理了提醒", "Used Reminders", "リマインダーを操作しました")
+            case .contacts: return tr("处理了联系人", "Used Contacts", "連絡先を操作しました")
+            case .health: return tr("读取了健康数据", "Read Health Data", "ヘルスデータを読み取りました")
+            case .clipboard: return tr("读取了剪贴板", "Read Clipboard", "クリップボードを読み取りました")
+            case .translate: return tr("翻译完成", "Translation Ready", "翻訳が完了しました")
+            case .generic: return tr("使用了\(card.skillName)", "Used \(card.skillName)", "\(card.skillName) を使用しました")
             }
         }
 
         if toolNameContains("calendar-create") {
-            return tr("正在创建日程…", "Creating Event…")
+            return tr("正在创建日程…", "Creating Event…", "予定を作成中…")
         }
         if toolNameContains("reminders-create") {
-            return tr("正在创建提醒…", "Creating Reminder…")
+            return tr("正在创建提醒…", "Creating Reminder…", "リマインダーを作成中…")
         }
         if toolNameContains("contacts-search") {
-            return tr("正在查找联系人…", "Searching Contacts…")
+            return tr("正在查找联系人…", "Searching Contacts…", "連絡先を検索中…")
         }
         if toolNameContains("contacts-upsert") {
-            return tr("正在保存联系人…", "Saving Contact…")
+            return tr("正在保存联系人…", "Saving Contact…", "連絡先を保存中…")
         }
         if toolNameContains("contacts-delete") {
-            return tr("正在删除联系人…", "Deleting Contact…")
+            return tr("正在删除联系人…", "Deleting Contact…", "連絡先を削除中…")
         }
         if toolNameContains("clipboard-write") {
-            return tr("正在写入剪贴板…", "Updating Clipboard…")
+            return tr("正在写入剪贴板…", "Updating Clipboard…", "クリップボードを更新中…")
         }
         if toolNameContains("clipboard-read") {
-            return tr("正在读取剪贴板…", "Reading Clipboard…")
+            return tr("正在读取剪贴板…", "Reading Clipboard…", "クリップボードを読み取り中…")
         }
         if toolNameContains("health-report") {
-            return tr("正在生成健康报告…", "Generating Health Report…")
+            return tr("正在生成健康报告…", "Generating Health Report…", "ヘルスレポートを作成中…")
         }
         if toolNameContains("health-sleep") {
-            return tr("正在读取睡眠…", "Reading Sleep…")
+            return tr("正在读取睡眠…", "Reading Sleep…", "睡眠データを読み取り中…")
         }
         if toolNameContains("health-workout") {
-            return tr("正在读取运动记录…", "Reading Workouts…")
+            return tr("正在读取运动记录…", "Reading Workouts…", "ワークアウトを読み取り中…")
         }
         if toolNameContains("health-weight") {
-            return tr("正在读取体重…", "Reading Weight…")
+            return tr("正在读取体重…", "Reading Weight…", "体重を読み取り中…")
         }
         if toolNameContains("health-distance") {
-            return tr("正在读取距离…", "Reading Distance…")
+            return tr("正在读取距离…", "Reading Distance…", "距離を読み取り中…")
         }
         if toolNameContains("health-active-energy") {
-            return tr("正在读取活动消耗…", "Reading Active Energy…")
+            return tr("正在读取活动消耗…", "Reading Active Energy…", "アクティブエネルギーを読み取り中…")
         }
         if toolNameContains("health-heart") {
-            return tr("正在读取心率…", "Reading Heart Rate…")
+            return tr("正在读取心率…", "Reading Heart Rate…", "心拍数を読み取り中…")
         }
         if toolNameContains("health-steps") {
-            return tr("正在读取步数…", "Reading Steps…")
+            return tr("正在读取步数…", "Reading Steps…", "歩数を読み取り中…")
         }
 
         switch skillKind {
-        case .calendar: return tr("正在处理日程…", "Using Calendar…")
-        case .reminders: return tr("正在处理提醒…", "Using Reminders…")
-        case .contacts: return tr("正在处理联系人…", "Using Contacts…")
-        case .health: return tr("正在读取健康数据…", "Reading Health Data…")
-        case .clipboard: return tr("正在读取剪贴板…", "Reading Clipboard…")
-        case .translate: return tr("正在翻译…", "Translating…")
-        case .generic: return tr("正在使用\(card.skillName)…", "Using \(card.skillName)…")
+        case .calendar: return tr("正在处理日程…", "Using Calendar…", "カレンダーを操作中…")
+        case .reminders: return tr("正在处理提醒…", "Using Reminders…", "リマインダーを操作中…")
+        case .contacts: return tr("正在处理联系人…", "Using Contacts…", "連絡先を操作中…")
+        case .health: return tr("正在读取健康数据…", "Reading Health Data…", "ヘルスデータを読み取り中…")
+        case .clipboard: return tr("正在读取剪贴板…", "Reading Clipboard…", "クリップボードを読み取り中…")
+        case .translate: return tr("正在翻译…", "Translating…", "翻訳中…")
+        case .generic: return tr("正在使用\(card.skillName)…", "Using \(card.skillName)…", "\(card.skillName) を使用中…")
         }
     }
 
@@ -1566,7 +1566,7 @@ struct SkillCardView: View {
                     .contentTransition(.opacity)
                     .animation(.easeInOut(duration: 0.2), value: isSkillDone)
 
-                Text(isExpanded ? tr("收起", "Hide") : tr("查看", "View"))
+                Text(isExpanded ? tr("收起", "Hide", "閉じる") : tr("查看", "View", "表示"))
                     .font(.system(size: 11, weight: .regular, design: .rounded))
                     .foregroundStyle(Theme.textTertiary.opacity(0.52))
                     .lineLimit(1)
@@ -1586,16 +1586,16 @@ struct SkillCardView: View {
                 Rectangle().fill(Theme.borderSubtle).frame(height: 1)
 
                 VStack(alignment: .leading, spacing: 6) {
-                    stepRow(label: tr("理解需求", "Understand request"),
+                    stepRow(label: tr("理解需求", "Understand request", "要望を理解"),
                             done: currentStep > 0,
                             active: currentStep == 0)
-                    stepRow(label: tr("准备能力", "Prepare skill"),
+                    stepRow(label: tr("准备能力", "Prepare skill", "スキルを準備"),
                             done: currentStep > 1,
                             active: currentStep == 1)
-                    stepRow(label: tr("执行能力", "Run skill"),
+                    stepRow(label: tr("执行能力", "Run skill", "スキルを実行"),
                             done: currentStep > 2,
                             active: currentStep == 2)
-                    stepRow(label: tr("整理回复", "Compose reply"),
+                    stepRow(label: tr("整理回复", "Compose reply", "返信をまとめる"),
                             done: isSkillDone,
                             active: false)
                 }

@@ -34,11 +34,16 @@ public protocol ModelCatalog: AnyObject {
 
     /// 后端卸载后调用，清除 loadedModel 状态
     func markUnloaded()
+
+    /// 注入远程模型 (来自已绑定 Mac);默认 no-op (本地-only catalog 不实现)。
+    func setRemoteModels(_ models: [ModelDescriptor])
 }
 
 // MARK: - Convenience
 
 public extension ModelCatalog {
+    func setRemoteModels(_ models: [ModelDescriptor]) { /* 默认 no-op */ }
+
     /// 当前选中模型的能力
     var selectedCapabilities: ModelCapabilities {
         capabilities(for: selectedModel.id)

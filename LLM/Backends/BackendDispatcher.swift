@@ -9,9 +9,10 @@ import CoreImage
 // 转发给 active backend。
 //
 // 路由表:
-//   ArtifactKind.litertlmFile  → LiteRTBackend   (Gemma 4 / .litertlm)
-//   ArtifactKind.ggufBundle    → MiniCPMVBackend (MiniCPM-V / GGUF + ANE)
-//   ArtifactKind.mlxDirectory  → 错误 (MLX backend 当前未集成, 保留 case 占位)
+//   ArtifactKind.litertlmFile   → LiteRTBackend         (Gemma 4 / .litertlm)
+//   ArtifactKind.ggufBundle     → MiniCPMVBackend       (MiniCPM-V / GGUF + ANE)
+//   ArtifactKind.remoteEndpoint → RemoteInferenceService (局域网 Mac / OpenAI 兼容网关)
+//   ArtifactKind.mlxDirectory   → 错误 (MLX backend 当前未集成, 保留 case 占位)
 //
 // 为什么是 dispatcher 而不是"换 inference 实例":
 //   AgentEngine.inference 字段是 `let inference: InferenceService`, 改成 var 要
@@ -32,6 +33,8 @@ final class BackendDispatcher: InferenceService {
 
     let liteRT: LiteRTBackend
     let miniCPMV: MiniCPMVBackend
+    /// 局域网 Mac 远程推理 (OpenAI 兼容网关)。纯 URLSession, 跨平台。
+    let remote: RemoteInferenceService
 
     /// 当前 active 的后端。`load` 时按 ModelDescriptor 路由切换。
     /// 协议要求的所有方法/属性都转发到这里。
@@ -47,10 +50,12 @@ final class BackendDispatcher: InferenceService {
     init(
         liteRT: LiteRTBackend,
         miniCPMV: MiniCPMVBackend,
+        remote: RemoteInferenceService,
         modelLookup: @escaping (String) -> ModelDescriptor?
     ) {
         self.liteRT = liteRT
         self.miniCPMV = miniCPMV
+        self.remote = remote
         self.modelLookup = modelLookup
         // 默认 active 走 LiteRT — 保持现有路径行为不变 (app 启动时如果还没
         // 选 MiniCPM-V, 任何对 inference 的访问都是 LiteRT)。
@@ -189,22 +194,31 @@ final class BackendDispatcher: InferenceService {
     /// 按 modelID 查 descriptor.artifactKind, 切换 `active`。
     /// 切换时把旧 active 上的模型 unload, 防止内存重叠。
     private func switchActive(forModelID modelID: String) async throws {
-        guard let descriptor = modelLookup(modelID) else {
-            // 上层 (catalog) 没有这个 modelID。让 active.load 自己抛
-            // ModelBackendError.modelNotLoaded / modelFileMissing。
-            return
-        }
-
         let target: any InferenceService
-        switch descriptor.artifactKind {
-        case .litertlmFile:
-            target = liteRT
-        case .ggufBundle:
-            target = miniCPMV
-        case .mlxDirectory:
-            // 当前 PhoneClaw 不集成 MLX backend, descriptor 也不应该出现 mlxDirectory,
-            // 但 enum case 存在所以这里给个明确错误而不是 silent fallback。
-            throw BackendDispatcherError.unsupportedArtifactKind(modelID: modelID, kind: ".mlxDirectory")
+
+        // 远程模型按 ID 前缀直接路由, 不依赖 catalog 描述符:启动时 refreshRemoteModels
+        // 可能还没把远程描述符灌进来, modelLookup 返回 nil 就会 fallthrough 到默认
+        // LiteRT 后端、对着不存在的本地文件误报"模型文件不存在"。
+        if modelID.hasPrefix("remote::") {
+            target = remote
+        } else {
+            guard let descriptor = modelLookup(modelID) else {
+                // 上层 (catalog) 没有这个 modelID。让 active.load 自己抛
+                // ModelBackendError.modelNotLoaded / modelFileMissing。
+                return
+            }
+            switch descriptor.artifactKind {
+            case .litertlmFile:
+                target = liteRT
+            case .ggufBundle:
+                target = miniCPMV
+            case .remoteEndpoint:
+                target = remote
+            case .mlxDirectory:
+                // 当前 PhoneClaw 不集成 MLX backend, descriptor 也不应该出现 mlxDirectory,
+                // 但 enum case 存在所以这里给个明确错误而不是 silent fallback。
+                throw BackendDispatcherError.unsupportedArtifactKind(modelID: modelID, kind: ".mlxDirectory")
+            }
         }
 
         // 同一后端继续用, 没什么要切的。

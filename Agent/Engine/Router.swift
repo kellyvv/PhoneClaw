@@ -52,13 +52,13 @@ enum RecentContextArtifactKind: String {
     var displayLabel: String {
         switch self {
         case .assistantAnswer:
-            return tr("上一轮回答", "previous answer")
+            return tr("上一轮回答", "previous answer", "前回の回答")
         case .toolResult:
-            return tr("上一轮工具结果", "previous tool result")
+            return tr("上一轮工具结果", "previous tool result", "前回のツール結果")
         case .imageAnswer:
-            return tr("上一轮图片回答", "previous image answer")
+            return tr("上一轮图片回答", "previous image answer", "前回の画像回答")
         case .generatedContent:
-            return tr("上一轮生成内容", "previous generated content")
+            return tr("上一轮生成内容", "previous generated content", "前回の生成内容")
         }
     }
 }
@@ -721,7 +721,8 @@ extension AgentEngine {
         let summary = artifact.promptSummary.trimmingCharacters(in: .whitespacesAndNewlines)
         return tr(
             "我没有重新读取数据。基于\(artifact.kind.displayLabel)：\(summary)",
-            "I did not run anything again. Based on the \(artifact.kind.displayLabel): \(summary)"
+            "I did not run anything again. Based on the \(artifact.kind.displayLabel): \(summary)",
+            "データを取得し直していません。\(artifact.kind.displayLabel)に基づくと：\(summary)"
         )
     }
 

@@ -116,6 +116,20 @@ final class WebFreshnessTests: XCTestCase {
         XCTAssertGreaterThan(fresh, 50) // 2h with 18h half-life stays high
     }
 
+    func testWindowEligibilityRejectsExplicitlyStaleDatedSignals() {
+        XCTAssertTrue(WebFreshness.isWithinWindow(
+            date: WebFreshness.parsePublishedDate("2026-06-07", now: now),
+            window: .day,
+            now: now
+        ))
+        XCTAssertFalse(WebFreshness.isWithinWindow(
+            date: WebFreshness.parsePublishedDate("2025-09-05", now: now),
+            window: .day,
+            now: now
+        ))
+        XCTAssertTrue(WebFreshness.isWithinWindow(date: nil, window: .day, now: now))
+    }
+
     func testNewestDatePicksMostRecent() {
         let newest = WebFreshness.newestDate(
             among: ["2026-06-01", "2026-06-06", nil, "2026-06-03", "garbage"],

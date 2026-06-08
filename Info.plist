@@ -63,5 +63,11 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>PhoneClaw 在局域网内发现并连接你的 Mac,把推理交给 Mac 上更强的大模型运行。</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_phoneclaw-llm._tcp</string>
+	</array>
 </dict>
 </plist>

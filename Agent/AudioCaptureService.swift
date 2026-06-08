@@ -80,7 +80,8 @@ final class AudioCaptureService: NSObject, @preconcurrency AVAudioRecorderDelega
             guard granted else {
                 lastErrorMessage = tr(
                     "麦克风权限未授予，无法开始录音。",
-                    "Microphone permission was not granted; cannot start recording."
+                    "Microphone permission was not granted; cannot start recording.",
+                    "マイクの許可が得られていないため、録音を開始できません。"
                 )
                 return false
             }
@@ -89,7 +90,8 @@ final class AudioCaptureService: NSObject, @preconcurrency AVAudioRecorderDelega
         guard permissionStatus.isGranted else {
             lastErrorMessage = tr(
                 "麦克风权限不可用，请到系统设置中开启。",
-                "Microphone permission is unavailable. Please enable it in System Settings."
+                "Microphone permission is unavailable. Please enable it in System Settings.",
+                "マイクの権限を利用できません。システム設定から有効にしてください。"
             )
             return false
         }
@@ -97,7 +99,7 @@ final class AudioCaptureService: NSObject, @preconcurrency AVAudioRecorderDelega
         guard !isCapturing else { return true }
 
         lastErrorMessage = nil
-        statusText = tr("准备录音...", "Preparing to record...")
+        statusText = tr("准备录音...", "Preparing to record...", "録音の準備中...")
         decodedSnapshot = nil
 
         // 录音文件路径
@@ -129,7 +131,8 @@ final class AudioCaptureService: NSObject, @preconcurrency AVAudioRecorderDelega
             guard rec.record() else {
                 lastErrorMessage = tr(
                     "AVAudioRecorder.record() 返回 false",
-                    "AVAudioRecorder.record() returned false"
+                    "AVAudioRecorder.record() returned false",
+                    "AVAudioRecorder.record() が false を返しました"
                 )
                 return false
             }
@@ -143,7 +146,8 @@ final class AudioCaptureService: NSObject, @preconcurrency AVAudioRecorderDelega
             stopCapture(deactivateSession: false)
             lastErrorMessage = tr(
                 "启动录音失败：\(error.localizedDescription)",
-                "Failed to start recording: \(error.localizedDescription)"
+                "Failed to start recording: \(error.localizedDescription)",
+                "録音の開始に失敗しました：\(error.localizedDescription)"
             )
             statusText = lastErrorMessage ?? ""
             return false
@@ -181,14 +185,16 @@ final class AudioCaptureService: NSObject, @preconcurrency AVAudioRecorderDelega
                 statusText = String(
                     format: tr(
                         "已录制 %.1f 秒音频，可以直接发送给模型。",
-                        "Recorded %.1f seconds of audio, ready to send to the model."
+                        "Recorded %.1f seconds of audio, ready to send to the model.",
+                        "%.1f 秒の音声を録音しました。そのままモデルに送信できます。"
                     ),
                     snapshot.duration
                 )
             } catch {
                 lastErrorMessage = tr(
                     "读取录音文件失败: \(error.localizedDescription)",
-                    "Failed to read recording file: \(error.localizedDescription)"
+                    "Failed to read recording file: \(error.localizedDescription)",
+                    "録音ファイルの読み込みに失敗しました: \(error.localizedDescription)"
                 )
                 statusText = lastErrorMessage ?? ""
                 print("[AudioCapture] Failed to read recording: \(error)")
@@ -313,7 +319,7 @@ final class AudioCaptureService: NSObject, @preconcurrency AVAudioRecorderDelega
     private func updateStatusText() {
         guard isCapturing else { return }
         statusText = String(
-            format: tr("录音中 %.1f 秒", "Recording %.1f s"),
+            format: tr("录音中 %.1f 秒", "Recording %.1f s", "録音中 %.1f 秒"),
             duration
         )
     }
@@ -323,17 +329,18 @@ final class AudioCaptureService: NSObject, @preconcurrency AVAudioRecorderDelega
     nonisolated func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
         if !flag {
             Task { @MainActor in
-                self.lastErrorMessage = tr("录音意外终止", "Recording ended unexpectedly")
+                self.lastErrorMessage = tr("录音意外终止", "Recording ended unexpectedly", "録音が予期せず終了しました")
             }
         }
     }
 
     nonisolated func audioRecorderEncodeErrorDidOccur(_ recorder: AVAudioRecorder, error: Error?) {
         Task { @MainActor in
-            let reason = error?.localizedDescription ?? tr("未知", "unknown")
+            let reason = error?.localizedDescription ?? tr("未知", "unknown", "不明")
             self.lastErrorMessage = tr(
                 "录音编码错误: \(reason)",
-                "Recording encoding error: \(reason)"
+                "Recording encoding error: \(reason)",
+                "録音のエンコードエラー: \(reason)"
             )
         }
     }

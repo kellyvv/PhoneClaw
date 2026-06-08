@@ -79,11 +79,13 @@ public final class ModelRuntimeCoordinator {
             assertionFailure("LiteRTBootstrap.bootstrap() must be called in @main init() before any load()")
         }
 
-        // Guard: 模型必须已安装
-        let state = installer.installState(for: modelID)
-        guard state == .downloaded || state == .bundled else {
-            log.error("load(\(modelID, privacy: .public)) rejected: not installed (state=\(String(describing: state), privacy: .public))")
-            throw CoordinatorError.modelNotInstalled(modelID)
+        // Guard: 模型必须已安装 (远程模型无本地资产, 跳过此门禁)。
+        if !modelID.hasPrefix("remote::") {
+            let state = installer.installState(for: modelID)
+            guard state == .downloaded || state == .bundled else {
+                log.error("load(\(modelID, privacy: .public)) rejected: not installed (state=\(String(describing: state), privacy: .public))")
+                throw CoordinatorError.modelNotInstalled(modelID)
+            }
         }
 
         // Guard: 如果有 active session，先 unload

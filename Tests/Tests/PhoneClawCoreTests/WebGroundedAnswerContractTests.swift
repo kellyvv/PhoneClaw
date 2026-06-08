@@ -3,9 +3,10 @@ import XCTest
 /// Source-contract guards for the web-grounded answer path.
 ///
 /// These assert the *shape* of the prompt/validator contract (a stable, scannable
-/// two-section answer) and — for the recency rework — that freshness is treated as
-/// recency-ordering + honesty rather than a refusal gate. The actual recency
-/// math/behavior is covered deterministically by `WebFreshnessTests`.
+/// two-section answer) and — for the recency rework — that explicitly stale
+/// dated results do not enter the grounded evidence chain for time-sensitive
+/// questions. The actual recency math/behavior is covered deterministically by
+/// `WebFreshnessTests`.
 final class WebGroundedAnswerContractTests: XCTestCase {
     private var repoRoot: URL {
         URL(fileURLWithPath: #filePath)
@@ -35,12 +36,13 @@ final class WebGroundedAnswerContractTests: XCTestCase {
         XCTAssertFalse(promptBuilder.contains("多条新闻/趋势按主题合并"))
     }
 
-    // MARK: Freshness is recency-ordering + honesty, never a refusal gate
+    // MARK: Freshness is a retrieval contract, with honest answer synthesis
 
     func testWebSearchAnswerPromptTreatsRecencyAsOrderingNotRefusal() throws {
         let promptBuilder = try source("LLM/PromptBuilder.swift")
 
-        // New contract: order newest-first, state publish dates, hedge honestly, never refuse on freshness.
+        // Synthesis contract: order newest-first, state publish dates, and never
+        // claim stale items are same-day.
         XCTAssertTrue(promptBuilder.contains("时效性用于排序而不是拒答"))
         XCTAssertTrue(promptBuilder.contains("先给最新的相关条目并标注其发布时间"))
         XCTAssertTrue(promptBuilder.contains("没有找到严格满足时间约束的，以下是检索到的最新内容"))
@@ -62,27 +64,26 @@ final class WebGroundedAnswerContractTests: XCTestCase {
         XCTAssertFalse(promptBuilder.contains("freshness_relevant=false"))
     }
 
-    // MARK: Grounded validator enforces scannable structure; the "总结" heading is
-    // stripped at presentation (user preference), not required by the validator.
+    // MARK: Grounded validator enforces scannable two-section structure
 
-    func testGroundedAnswerValidatorEnforcesStructureAndStripsSummaryHeading() throws {
+    func testGroundedAnswerValidatorEnforcesStructureAndSummaryHeading() throws {
         let toolChain = try source("Agent/Engine/ToolChain.swift")
 
         // Structure is still enforced.
         XCTAssertTrue(toolChain.contains("webAnswerLooksUnstructured"))
         XCTAssertTrue(toolChain.contains("总结正文是单段长文，缺少可扫描结构。"))
         XCTAssertTrue(toolChain.contains("lacks scannable structure"))
-        // The literal "总结"/"Summary" heading is dropped at presentation; the
-        // validator no longer rejects its absence.
-        XCTAssertTrue(toolChain.contains("stripLeadingSummaryHeading"))
+        // The deterministic post-processor adds "总结"/"Summary" if the model
+        // omits it, and the validator rejects answers that still lack it.
+        XCTAssertTrue(toolChain.contains("ensureLeadingSummaryHeading"))
         XCTAssertTrue(toolChain.contains("isSummarySectionHeading"))
-        XCTAssertFalse(toolChain.contains("缺少独立的“总结”段。"))
-        XCTAssertFalse(toolChain.contains("Missing separate Summary section."))
+        XCTAssertTrue(toolChain.contains("缺少独立的“总结”段。"))
+        XCTAssertTrue(toolChain.contains("Missing separate Summary section."))
     }
 
-    // MARK: Citations filter on relevance/quality — staleness only re-orders
+    // MARK: Citations filter on relevance, quality, and stale dated evidence
 
-    func testGroundedSourcesFilterLowRelevanceNotStaleness() throws {
+    func testGroundedSourcesFilterLowRelevanceAndStaleDatedResults() throws {
         let toolChain = try source("Agent/Engine/ToolChain.swift")
 
         XCTAssertTrue(toolChain.contains("detailSourceKeys"))
@@ -90,22 +91,29 @@ final class WebGroundedAnswerContractTests: XCTestCase {
         XCTAssertTrue(toolChain.contains("result[\"query_relevant\"] as? Bool == false"))
         XCTAssertTrue(toolChain.contains("result[\"confidence\"] as? String == \"low\""))
         XCTAssertTrue(toolChain.contains("result[\"is_homepage_like\"] as? Bool == true"))
+        XCTAssertTrue(toolChain.contains("sourceItemFreshEnough"))
+        XCTAssertTrue(toolChain.contains("WebFreshness.isWithinWindow(date: sourceDate"))
         XCTAssertTrue(toolChain.contains("emptySourceSection"))
 
-        // Regression: a stale-for-query source is no longer vetoed out of citations.
+        // Old literal freshness flags should not exist; the generic window/date
+        // contract replaces them.
         XCTAssertFalse(toolChain.contains("result[\"freshness_relevant\"] as? Bool == false"))
     }
 
-    // MARK: Web handler does graded recency, not a literal-date gate
+    // MARK: Web handler does generic stale-date filtering, not a literal-date gate
 
-    func testWebHandlerUsesGradedRecencyNotLiteralDateGate() throws {
+    func testWebHandlerUsesGenericFreshnessFilteringNotLiteralDateGate() throws {
         let webHandler = try source("Tools/Handlers/Web.swift")
 
-        // New: time-filter at retrieval, parse publish dates, recency-weighted ranking, expose freshness.
+        // New: time-filter at retrieval, parse provider/source-visible dates,
+        // freshness-filter stale dated results, and expose freshness metadata.
         XCTAssertTrue(webHandler.contains("WebFreshness.window(for: originalQuestion)"))
         XCTAssertTrue(webHandler.contains("duckDuckGoFilter"))
         XCTAssertTrue(webHandler.contains("WebFreshness.recencyBoost"))
         XCTAssertTrue(webHandler.contains("WebFreshness.parsePublishedDate"))
+        XCTAssertTrue(webHandler.contains("freshnessFilteredSearchResults"))
+        XCTAssertTrue(webHandler.contains("searchResultSourceDate"))
+        XCTAssertTrue(webHandler.contains("\"freshness_ok\""))
         XCTAssertTrue(webHandler.contains("extractPublishedAt"))
         XCTAssertTrue(webHandler.contains("\"freshest_published_at\""))
         XCTAssertTrue(webHandler.contains("\"published_at\""))
@@ -118,18 +126,34 @@ final class WebGroundedAnswerContractTests: XCTestCase {
         XCTAssertFalse(webHandler.contains("textContainsCurrentDayEvidence"))
     }
 
+    func testWebHandlerAvoidsRepeatedDuckDuckGoTimeouts() throws {
+        let webHandler = try source("Tools/Handlers/Web.swift")
+
+        XCTAssertTrue(webHandler.contains("SearchProviderCircuitBreaker"))
+        XCTAssertTrue(webHandler.contains("provider cooling down after repeated timeouts"))
+        XCTAssertTrue(webHandler.contains("skipped: enough results from RSS providers"))
+        XCTAssertTrue(webHandler.contains("fetchText(url: url, accept: \"text/html\", timeout: 4)"))
+
+        let bingIndex = webHandler.range(of: "(\"bing-rss\", searchBingRSS)")?.lowerBound
+        let newsIndex = webHandler.range(of: "(\"bing-news-rss\", searchBingNewsRSS)")?.lowerBound
+        let ddgIndex = webHandler.range(of: "(\"duckduckgo-html\", searchDuckDuckGo)")?.lowerBound
+        XCTAssertNotNil(bingIndex)
+        XCTAssertNotNil(newsIndex)
+        XCTAssertNotNil(ddgIndex)
+        XCTAssertLessThan(bingIndex!, ddgIndex!)
+        XCTAssertLessThan(newsIndex!, ddgIndex!)
+    }
+
     // MARK: Structured fallback reply unchanged
 
     func testGroundedFallbackReplyIsStructured() throws {
         let toolChain = try source("Agent/Engine/ToolChain.swift")
 
-        // Fallback stays scannable (bulleted) but no longer carries a "总结"/"Summary"
-        // heading — the user does not want that label, so it is dropped here too.
+        // Fallback stays scannable (bulleted); final web answer post-processing
+        // owns the visible "总结"/"Summary" heading.
         XCTAssertTrue(toolChain.contains("- 结果：这次工具返回了可检查的来源"))
         XCTAssertTrue(toolChain.contains("- 结论：我找到了可用的搜索证据"))
         XCTAssertTrue(toolChain.contains("- Result: The tool returned checkable sources"))
         XCTAssertTrue(toolChain.contains("- Conclusion: I found usable search evidence"))
-        XCTAssertFalse(toolChain.contains("总结\\n- 结果："))
-        XCTAssertFalse(toolChain.contains("Summary\\n- Result:"))
     }
 }

@@ -13,7 +13,11 @@ final class LiteRTCatalog: ModelCatalog {
     private(set) var selectedModel: ModelDescriptor = .defaultModel
     private(set) var loadedModel: ModelDescriptor?
 
-    let availableModels: [ModelDescriptor] = ModelDescriptor.allModels
+    /// 远程模型 (来自已绑定 Mac 的 /v1/models),由 AgentEngine 刷新注入。
+    private(set) var remoteModels: [ModelDescriptor] = []
+    var availableModels: [ModelDescriptor] { ModelDescriptor.allModels + remoteModels }
+
+    func setRemoteModels(_ models: [ModelDescriptor]) { remoteModels = models }
 
     // MARK: - ModelCatalog
 

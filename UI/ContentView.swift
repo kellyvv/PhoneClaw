@@ -84,6 +84,7 @@ struct ContentView: View {
     @State private var showConfigurations = false
     @State private var showHistory = false
     @State private var showLiveMode = false
+    @State private var showModelSwitcher = false
     /// 记录每个 skill 卡片的展开状态（key = SkillCard.id）
     @State private var expandedSkills: Set<UUID> = []
     /// 记录每个 THINK 卡片的展开状态（key = ResponseBlock.id）
@@ -142,7 +143,7 @@ struct ContentView: View {
 
         let unique = prompts.filter { seen.insert($0).inserted }
         if unique.isEmpty {
-            return [tr("问点什么…", "Ask anything...")]
+            return [tr("问点什么…", "Ask anything...", "なんでも聞いてください…")]
         }
         return Array(unique.prefix(8))
     }
@@ -150,17 +151,17 @@ struct ContentView: View {
     private func composerPrompt(for skill: SkillInfo) -> String? {
         switch skill.name {
         case "calendar":
-            return tr("创建明天下午会议", "Create tomorrow's meeting")
+            return tr("创建明天下午会议", "Create tomorrow's meeting", "明日午後の会議を作成")
         case "reminders":
-            return tr("今晚八点提醒我", "Remind me at 8pm")
+            return tr("今晚八点提醒我", "Remind me at 8pm", "今夜8時にリマインド")
         case "contacts":
-            return tr("添加一个联系人", "Add a contact")
+            return tr("添加一个联系人", "Add a contact", "連絡先を追加")
         case "clipboard":
-            return tr("读取剪贴板内容", "Read my clipboard")
+            return tr("读取剪贴板内容", "Read my clipboard", "クリップボードを読む")
         case "health":
-            return tr("查看今天步数", "Show today's steps")
+            return tr("查看今天步数", "Show today's steps", "今日の歩数を見る")
         case "translate":
-            return tr("翻译这句话", "Translate this sentence")
+            return tr("翻译这句话", "Translate this sentence", "この文を翻訳")
         default:
             let fallback = skill.chipLabel?.isEmpty == false
                 ? skill.chipLabel
@@ -173,50 +174,55 @@ struct ContentView: View {
         [
             StarterAction(
                 id: "write-article",
-                title: tr("帮我写文章", "Write an article"),
+                title: tr("帮我写文章", "Write an article", "記事を書いて"),
                 prompt: tr(
                     "请帮我写一篇 800 字左右的文章，主题是：为什么本地 AI 会成为手机上的重要能力。要求结构清晰、语气自然、有小标题，最后给出三个要点总结。",
-                    "Please write an article of about 800 words on the topic: why local AI will become an important capability on phones. Make it clearly structured, natural in tone, include section headings, and end with three key takeaways."
+                    "Please write an article of about 800 words on the topic: why local AI will become an important capability on phones. Make it clearly structured, natural in tone, include section headings, and end with three key takeaways.",
+                    "「なぜローカル AI がスマホで重要な能力になるのか」をテーマに、800 字程度の記事を書いてください。構成を明確に、自然な語り口で、小見出しを付け、最後に 3 つの要点でまとめてください。"
                 ),
                 symbolName: "doc.text",
                 opensPhotoPicker: false
             ),
             StarterAction(
                 id: "schedule",
-                title: tr("安排日程", "Schedule"),
+                title: tr("安排日程", "Schedule", "予定を入れる"),
                 prompt: tr(
                     "帮我预定下明天下午两点的产品会议。",
-                    "Schedule a product meeting for tomorrow at 2 PM."
+                    "Schedule a product meeting for tomorrow at 2 PM.",
+                    "明日午後2時にプロダクト会議を予定に入れてください。"
                 ),
                 symbolName: "calendar.badge.plus",
                 opensPhotoPicker: false
             ),
             StarterAction(
                 id: "activity",
-                title: tr("今天的运动量", "Today's activity"),
+                title: tr("今天的运动量", "Today's activity", "今日の運動量"),
                 prompt: tr(
                     "今天的运动量怎么样？",
-                    "How is my activity today?"
+                    "How is my activity today?",
+                    "今日の運動量はどう？"
                 ),
                 symbolName: "figure.walk",
                 opensPhotoPicker: false
             ),
             StarterAction(
                 id: "web-search",
-                title: tr("联网搜索", "Web search"),
+                title: tr("联网搜索", "Web search", "ウェブ検索"),
                 prompt: tr(
                     "联网搜索今天的 AI 新闻",
-                    "Search the web: latest artificial intelligence news"
+                    "Search the web: latest artificial intelligence news",
+                    "ウェブで最新の AI ニュースを検索"
                 ),
                 symbolName: "magnifyingglass",
                 opensPhotoPicker: false
             ),
             StarterAction(
                 id: "analyze-image",
-                title: tr("分析图片", "Analyze image"),
+                title: tr("分析图片", "Analyze image", "画像を分析"),
                 prompt: tr(
                     "请分析这张图片，告诉我关键内容、可能的问题和下一步建议。",
-                    "Please analyze this image and tell me the key content, possible issues, and next-step suggestions."
+                    "Please analyze this image and tell me the key content, possible issues, and next-step suggestions.",
+                    "この画像を分析して、重要な内容、考えられる問題、次のステップの提案を教えてください。"
                 ),
                 symbolName: "photo",
                 opensPhotoPicker: true
@@ -329,6 +335,11 @@ struct ContentView: View {
         .fullScreenCover(isPresented: $showConfigurations) {
             ConfigurationsView(engine: engine)
         }
+        .sheet(isPresented: $showModelSwitcher) {
+            ModelSwitcherSheet(engine: engine)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
     }
 
     private func refreshDisplayItems() {
@@ -372,7 +383,7 @@ struct ContentView: View {
 
                 VStack(alignment: .leading, spacing: 18) {
                     VStack(alignment: .leading, spacing: 7) {
-                        Text(tr("语音模型未就绪", "Voice models not ready"))
+                        Text(tr("语音模型未就绪", "Voice models not ready", "音声モデルが未準備"))
                             .font(.system(size: 17, weight: .semibold))
                             .foregroundStyle(Theme.textPrimary)
 
@@ -380,7 +391,8 @@ struct ContentView: View {
                             let mb = LiveModelDefinition.estimatedSizeMB
                             return tr(
                                 "首次使用语音输入或 LIVE 需要下载语音模型，约 \(mb) MB。",
-                                "Voice input and LIVE need a voice model download, about \(mb) MB."
+                                "Voice input and LIVE need a voice model download, about \(mb) MB.",
+                                "音声入力や LIVE を初めて使うには音声モデルのダウンロードが必要です（約 \(mb) MB）。"
                             )
                         }())
                         .font(.system(size: 14, weight: .regular))
@@ -391,14 +403,14 @@ struct ContentView: View {
 
                     HStack(spacing: 10) {
                         voicePromptButton(
-                            title: tr("稍后", "Not now"),
+                            title: tr("稍后", "Not now", "あとで"),
                             isPrimary: false
                         ) {
                             dismissVoiceModelPrompt()
                         }
 
                         voicePromptButton(
-                            title: tr("下载", "Download"),
+                            title: tr("下载", "Download", "ダウンロード"),
                             isPrimary: true
                         ) {
                             dismissVoiceModelPrompt()
@@ -607,29 +619,29 @@ struct ContentView: View {
         return [
             FollowUpSuggestion(
                 id: "expand",
-                title: tr("展开说说", "Tell me more"),
-                prompt: tr("继续展开刚才的回答。", "Tell me more about your last answer."),
+                title: tr("展开说说", "Tell me more", "もっと詳しく"),
+                prompt: tr("继续展开刚才的回答。", "Tell me more about your last answer.", "さっきの回答をもっと詳しく続けて。"),
                 contextAct: .elaborateLastResult,
                 targetItemID: item.id
             ),
             FollowUpSuggestion(
                 id: "example",
-                title: tr("举个例子", "Give an example"),
-                prompt: tr("举一个具体例子。", "Give me a concrete example."),
+                title: tr("举个例子", "Give an example", "例を挙げて"),
+                prompt: tr("举一个具体例子。", "Give me a concrete example.", "具体的な例を一つ挙げて。"),
                 contextAct: .elaborateLastResult,
                 targetItemID: item.id
             ),
             FollowUpSuggestion(
                 id: "summary",
-                title: tr("总结三点", "Summarize"),
-                prompt: tr("把刚才的内容总结成三点。", "Summarize that in three points."),
+                title: tr("总结三点", "Summarize", "3点に要約"),
+                prompt: tr("把刚才的内容总结成三点。", "Summarize that in three points.", "さっきの内容を3点にまとめて。"),
                 contextAct: .transformLastResult,
                 targetItemID: item.id
             ),
             FollowUpSuggestion(
                 id: "structure",
-                title: tr("帮我结构化", "Structure it"),
-                prompt: tr("把刚才的内容整理成结构化要点。", "Turn the previous answer into structured key points."),
+                title: tr("帮我结构化", "Structure it", "構造化して"),
+                prompt: tr("把刚才的内容整理成结构化要点。", "Turn the previous answer into structured key points.", "さっきの内容を構造化した要点に整理して。"),
                 contextAct: .transformLastResult,
                 targetItemID: item.id
             )
@@ -647,15 +659,23 @@ struct ContentView: View {
     }
 
     private func toggleThinkingMode() {
+        guard engine.isModelLoaded else {
+            showTransientTopNotice(
+                hasNoUsableModel
+                    ? tr("请先下载模型", "Download a model first", "モデルをダウンロードしてください")
+                    : tr("模型加载中，请稍候", "Model is loading, please wait", "モデルを読み込み中です")
+            )
+            return
+        }
         guard currentModelSupportsThinking else {
-            showTransientTopNotice(tr("当前模型不支持思考模式", "Current model does not support Thinking mode"))
+            showTransientTopNotice(tr("当前模型不支持思考模式", "Current model does not support Thinking mode", "現在のモデルは思考モードに非対応"))
             return
         }
 
         engine.config.enableThinking.toggle()
         engine.applySamplingConfig()
         showTransientTopNotice(
-            engine.config.enableThinking ? tr("思考模式已开启", "Thinking mode on") : tr("思考模式已关闭", "Thinking mode off")
+            engine.config.enableThinking ? tr("思考模式已开启", "Thinking mode on", "思考モードをオン") : tr("思考模式已关闭", "Thinking mode off", "思考モードをオフ")
         )
         // 切换 Think 需要清 KV cache: system prompt 的 <|think|> 段变化后,
         // 若当前会话已有 context, 下一轮走 delta prompt 路径会**复用**旧
@@ -692,15 +712,23 @@ struct ContentView: View {
             Spacer(minLength: 12)
 
             if let hint = activeTopStatusHint {
-                topStatusHintView(hint)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                Group {
+                    if hint.id == "no-model-download" {
+                        // "请先下载模型" 可点 → 跳设置(默认落在「模型」分组下载)
+                        Button { showConfigurations = true } label: { topStatusHintView(hint) }
+                            .buttonStyle(.plain)
+                    } else {
+                        topStatusHintView(hint)
+                    }
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
 
             Spacer(minLength: 12)
 
             HStack(spacing: 8) {
                 thinkingModeButton
-                settingsTopBarButton
+                modelSwitchTopBarButton
             }
         }
         .padding(.horizontal, Theme.inputPadH)
@@ -735,7 +763,7 @@ struct ContentView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(Text(tr("新会话", "New chat")))
+        .accessibilityLabel(Text(tr("新会话", "New chat", "新しいチャット")))
     }
 
     private var historyStatusButton: some View {
@@ -763,19 +791,20 @@ struct ContentView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(Text(tr("历史记录", "History")))
+        .accessibilityLabel(Text(tr("历史记录", "History", "履歴")))
     }
 
     private var thinkingModeButton: some View {
-        let isSupported = currentModelSupportsThinking
-        let isActive = isSupported && engine.config.enableThinking
+        // 没模型(没加载)时 T 也置灰、看着不可点;点了由 toggleThinkingMode 提示"请先下载模型"。
+        let isUsable = currentModelSupportsThinking && engine.isModelLoaded
+        let isActive = isUsable && engine.config.enableThinking
 
         // 字母 T 包在圆角方块里 — 零噪点的字母, 跟 gear/pencil 同属"低细节"一家;
         // 壳呼应 app 内「思考」块的 accentSubtle 圆角方块 (ResponseUI). 品牌色只在开启时点亮。
-        let tint: Color = isSupported
+        let tint: Color = isUsable
             ? (isActive ? Theme.accentMuted : Theme.textSecondary)
             : Theme.textTertiary
-        let glyphOpacity: Double = isSupported ? (isActive ? 0.96 : UIScale.gearIconOpacity) : 0.36
+        let glyphOpacity: Double = isUsable ? (isActive ? 0.96 : UIScale.gearIconOpacity) : 0.36
 
         return Button(action: toggleThinkingMode) {
             Text("T")
@@ -790,7 +819,7 @@ struct ContentView: View {
                 .overlay(
                     RoundedRectangle(cornerRadius: 7, style: .continuous)
                         .strokeBorder(
-                            isActive ? Color.clear : tint.opacity(isSupported ? 0.42 : 0.24),
+                            isActive ? Color.clear : tint.opacity(isUsable ? 0.42 : 0.24),
                             lineWidth: 1
                         )
                 )
@@ -801,16 +830,31 @@ struct ContentView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(Text(tr("思考模式", "Thinking mode")))
-        .accessibilityValue(Text(isActive ? tr("已开启", "On") : tr("已关闭", "Off")))
+        .accessibilityLabel(Text(tr("思考模式", "Thinking mode", "思考モード")))
+        .accessibilityValue(Text(isActive ? tr("已开启", "On", "オン") : tr("已关闭", "Off", "オフ")))
     }
 
-    private var settingsTopBarButton: some View {
-        Button(action: { showConfigurations = true }) {
-            Image(systemName: "gearshape")
-                .font(.system(size: UIScale.gearIconSize, weight: .regular))
-                .foregroundStyle(Theme.textSecondary)
-                .opacity(UIScale.gearIconOpacity)
+    private var modelSwitchTopBarButton: some View {
+        // M chip 两态完全对齐 Think 的 T:有模型 = 点亮(accentMuted 字 + accentSubtle 底、无边),
+        // 没模型 = 未点亮(textSecondary 字 + 描边)。
+        let hasModel = engine.isModelLoaded
+        let tint: Color = hasModel ? Theme.accentMuted : Theme.textSecondary
+        let glyphOpacity: Double = hasModel ? 0.96 : UIScale.gearIconOpacity
+
+        return Button(action: { showModelSwitcher = true }) {
+            Text("M")
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundStyle(tint)
+                .opacity(glyphOpacity)
+                .frame(width: 22, height: 22)
+                .background(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(hasModel ? Theme.accentSubtle : Color.clear)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .strokeBorder(hasModel ? Color.clear : tint.opacity(0.42), lineWidth: 1)
+                )
                 .frame(
                     width: UIScale.topStatusChipDiameter,
                     height: UIScale.topStatusChipDiameter
@@ -818,7 +862,8 @@ struct ContentView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(Text(tr("设置", "Settings")))
+        .accessibilityLabel(Text(tr("切换模型", "Switch model", "モデル切替")))
+        .accessibilityValue(Text(hasModel ? tr("已选择模型", "Model selected", "モデル選択済み") : tr("未选择模型", "No model", "モデル未選択")))
     }
 
     private var activeTopStatusHint: TopStatusHint? {
@@ -842,7 +887,7 @@ struct ContentView: View {
         case .switching:
             return .init(
                 id: "runtime-switching",
-                text: tr("正在切换模型", "Switching model"),
+                text: tr("正在切换模型", "Switching model", "モデルを切り替え中"),
                 symbolName: nil,
                 showsProgress: true,
                 isWarning: false
@@ -850,14 +895,33 @@ struct ContentView: View {
         case .unloading:
             return .init(
                 id: "runtime-unloading",
-                text: tr("正在释放模型", "Unloading model"),
+                text: tr("正在释放模型", "Unloading model", "モデルを解放中"),
                 symbolName: nil,
                 showsProgress: true,
                 isWarning: false
             )
         default:
+            // 首次进来 / 没有可用模型 (选中的本地模型没装、也没配对远程) → 提示下载
+            if hasNoUsableModel {
+                return .init(
+                    id: "no-model-download",
+                    text: tr("请先下载模型", "Download a model first", "モデルをダウンロードしてください"),
+                    symbolName: "arrow.down.circle",
+                    showsProgress: false,
+                    isWarning: false
+                )
+            }
             return nil
         }
+    }
+
+    /// 没有任何可用模型:没加载、且当前选中的不是已装本地、也不是已配对远程模型。
+    private var hasNoUsableModel: Bool {
+        if engine.isModelLoaded { return false }
+        let id = engine.config.selectedModelID
+        if id.hasPrefix("remote::") { return false }   // 远程模型:配对即可用
+        let state = engine.installer.installState(for: id)
+        return state != .downloaded && state != .bundled
     }
 
     private var activeModelDownloadHint: TopStatusHint? {
@@ -871,7 +935,7 @@ struct ContentView: View {
         case .checkingSource:
             return .init(
                 id: "download-checking-\(model.id)",
-                text: tr("正在准备下载模型", "Preparing model download"),
+                text: tr("正在准备下载模型", "Preparing model download", "モデルのダウンロードを準備中"),
                 symbolName: nil,
                 showsProgress: true,
                 isWarning: false
@@ -900,22 +964,22 @@ struct ContentView: View {
     ) -> String {
         if let fraction = progress?.fractionCompleted {
             let percent = max(0, min(99, Int((fraction * 100).rounded(.down))))
-            return tr("正在下载模型 \(percent)%", "Downloading model \(percent)%")
+            return tr("正在下载模型 \(percent)%", "Downloading model \(percent)%", "モデルをダウンロード中 \(percent)%")
         }
         if totalFiles > 1 {
-            return tr("正在下载模型 \(completedFiles)/\(totalFiles)", "Downloading model \(completedFiles)/\(totalFiles)")
+            return tr("正在下载模型 \(completedFiles)/\(totalFiles)", "Downloading model \(completedFiles)/\(totalFiles)", "モデルをダウンロード中 \(completedFiles)/\(totalFiles)")
         }
-        return tr("正在下载模型", "Downloading model")
+        return tr("正在下载模型", "Downloading model", "モデルをダウンロード中")
     }
 
     private func runtimeLoadingText(for phase: LoadPhase) -> String {
         switch phase {
         case .preparingAccelerator:
-            return tr("正在准备模型", "Preparing model")
+            return tr("正在准备模型", "Preparing model", "モデルを準備中")
         case .loadingWeights:
-            return tr("正在加载模型", "Loading model")
+            return tr("正在加载模型", "Loading model", "モデルを読み込み中")
         case .openingSession:
-            return tr("正在打开会话", "Opening session")
+            return tr("正在打开会话", "Opening session", "セッションを開いています")
         }
     }
 
@@ -959,7 +1023,7 @@ struct ContentView: View {
             guard !newState.isTransientInstallState else { continue }
             if case .failed = newState {
                 showTransientTopNotice(
-                    tr("模型下载失败", "Model download failed"),
+                    tr("模型下载失败", "Model download failed", "モデルのダウンロードに失敗"),
                     symbolName: "exclamationmark.circle",
                     isWarning: true
                 )
@@ -970,7 +1034,7 @@ struct ContentView: View {
     private func handleRuntimeStateChange(_ state: RuntimeSessionState) {
         if case .failed = state {
             showTransientTopNotice(
-                tr("模型加载失败", "Model load failed"),
+                tr("模型加载失败", "Model load failed", "モデルの読み込みに失敗"),
                 symbolName: "exclamationmark.circle",
                 isWarning: true
             )
@@ -1151,7 +1215,7 @@ struct ContentView: View {
         HStack(spacing: 6) {
             #if canImport(PhotosUI)
             attachmentTrayButton(
-                title: tr("照片", "Photo"),
+                title: tr("照片", "Photo", "写真"),
                 systemImage: "photo"
             ) {
                 showAttachmentTray = false
@@ -1161,8 +1225,8 @@ struct ContentView: View {
 
             attachmentTrayButton(
                 title: audioCapture.isCapturing && captureOrigin == .menu
-                    ? tr("停止", "Stop")
-                    : tr("录音", "Record"),
+                    ? tr("停止", "Stop", "停止")
+                    : tr("录音", "Record", "録音"),
                 systemImage: audioCapture.isCapturing && captureOrigin == .menu
                     ? "stop.fill"
                     : "waveform"
@@ -1173,7 +1237,7 @@ struct ContentView: View {
             }
 
             attachmentTrayButton(
-                title: tr("文件", "File"),
+                title: tr("文件", "File", "ファイル"),
                 systemImage: "doc"
             ) {
                 showAttachmentTray = false
@@ -1317,7 +1381,7 @@ struct ContentView: View {
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)
             } else if inputText.isEmpty {
-                Text(composerSkillPrompts.first ?? tr("问点什么…", "Ask anything..."))
+                Text(composerSkillPrompts.first ?? tr("问点什么…", "Ask anything...", "なんでも聞いてください…"))
                     .font(.system(size: UIScale.pillTextSize, weight: .regular, design: .rounded))
                     .foregroundStyle(Theme.textTertiary.opacity(0.62))
                     .lineLimit(1)
@@ -1392,7 +1456,7 @@ struct ContentView: View {
                 fgColor: Theme.textSecondary,
                 action: {
                     guard canSend else {
-                        let message = tr("请先下载模型", "Download a model first")
+                        let message = tr("请先下载模型", "Download a model first", "先にモデルをダウンロード")
                         showTransientTopNotice(message)
                         return
                     }
@@ -1514,8 +1578,8 @@ struct ContentView: View {
         // 灰显: 整体 .opacity(0.4) 一刀切, 比之前局部改 fg/bg 颜色对比明显得多。
         let isDisabled = asrIsWarming
         let label = isDisabled
-            ? tr("正在准备...", "Preparing...")
-            : (isHoldRecording ? tr("松开 结束", "Release to Stop") : tr("按住 说话", "Hold to Talk"))
+            ? tr("正在准备...", "Preparing...", "準備中...")
+            : (isHoldRecording ? tr("松开 结束", "Release to Stop", "離して終了") : tr("按住 说话", "Hold to Talk", "押して話す"))
         return Text(label)
             .font(.system(size: 15, weight: .medium))
             .foregroundStyle(isHoldRecording ? Theme.bg : Theme.textSecondary)
@@ -1661,11 +1725,11 @@ struct ContentView: View {
             }
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(importedAudioFilename ?? tr("音频文件", "Audio File"))
+                Text(importedAudioFilename ?? tr("音频文件", "Audio File", "音声ファイル"))
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Theme.textPrimary)
                     .lineLimit(1)
-                Text(String(format: tr("%.1f 秒 · %d kHz", "%.1f s · %d kHz"), snapshot.duration, Int(snapshot.sampleRate / 1000)))
+                Text(String(format: tr("%.1f 秒 · %d kHz", "%.1f s · %d kHz", "%.1f 秒 · %d kHz"), snapshot.duration, Int(snapshot.sampleRate / 1000)))
                     .font(.system(size: 11))
                     .foregroundStyle(Theme.textTertiary)
             }
@@ -1813,11 +1877,11 @@ struct ContentView: View {
             return
         }
         guard engine.isModelReady else {
-            showTransientTopNotice(tr("请先下载模型", "Download a model first"))
+            showTransientTopNotice(tr("请先下载模型", "Download a model first", "先にモデルをダウンロード"))
             return
         }
         guard currentModelCapabilities.supportsLive else {
-            showTransientTopNotice(tr("当前模型不支持 LIVE", "Current model does not support LIVE"))
+            showTransientTopNotice(tr("当前模型不支持 LIVE", "Current model does not support LIVE", "現在のモデルは LIVE に非対応"))
             return
         }
 
@@ -1874,7 +1938,7 @@ struct ContentView: View {
                     importedAudioFilename = filename
                     print("[UI] Audio file decoded: \(filename) → \(snapshot.pcm.count) samples @ \(Int(snapshot.sampleRate))Hz, \(String(format: "%.1f", snapshot.duration))s")
                 } catch {
-                    inputText += (inputText.isEmpty ? "" : "\n") + tr("[附件: \(filename) — 音频解码失败]", "[Attachment: \(filename) — audio decode failed]")
+                    inputText += (inputText.isEmpty ? "" : "\n") + tr("[附件: \(filename) — 音频解码失败]", "[Attachment: \(filename) — audio decode failed]", "[添付: \(filename) — 音声のデコードに失敗]")
                     print("[UI] Failed to decode audio file: \(error)")
                 }
             }
@@ -1892,18 +1956,18 @@ struct ContentView: View {
                     }
                     let trimmed = pdfText.trimmingCharacters(in: .whitespacesAndNewlines)
                     if trimmed.isEmpty {
-                        inputText += (inputText.isEmpty ? "" : "\n") + tr("[附件: \(filename) — PDF 无法提取文字]", "[Attachment: \(filename) — couldn't extract text from PDF]")
+                        inputText += (inputText.isEmpty ? "" : "\n") + tr("[附件: \(filename) — PDF 无法提取文字]", "[Attachment: \(filename) — couldn't extract text from PDF]", "[添付: \(filename) — PDF からテキストを抽出できません]")
                     } else {
                         // 限制长度避免超出上下文
                         let maxChars = 4000
                         let content = trimmed.count > maxChars
-                            ? String(trimmed.prefix(maxChars)) + tr("\n...(已截断)", "\n...(truncated)")
+                            ? String(trimmed.prefix(maxChars)) + tr("\n...(已截断)", "\n...(truncated)", "\n...(省略)")
                             : trimmed
-                        inputText += (inputText.isEmpty ? "" : "\n") + tr("以下是 \(filename) 的内容:\n\(content)", "Contents of \(filename):\n\(content)")
+                        inputText += (inputText.isEmpty ? "" : "\n") + tr("以下是 \(filename) 的内容:\n\(content)", "Contents of \(filename):\n\(content)", "\(filename) の内容:\n\(content)")
                     }
                     print("[UI] PDF imported: \(filename) (\(pdfDoc.numberOfPages) pages)")
                 } else {
-                    inputText += (inputText.isEmpty ? "" : "\n") + tr("[附件: \(filename) — PDF 打开失败]", "[Attachment: \(filename) — couldn't open PDF]")
+                    inputText += (inputText.isEmpty ? "" : "\n") + tr("[附件: \(filename) — PDF 打开失败]", "[Attachment: \(filename) — couldn't open PDF]", "[添付: \(filename) — PDF を開けません]")
                 }
             }
             // 文本文件 → 直接读取
@@ -1912,9 +1976,9 @@ struct ContentView: View {
                     let content = try String(contentsOf: url, encoding: .utf8)
                     let maxChars = 4000
                     let trimmed = content.count > maxChars
-                        ? String(content.prefix(maxChars)) + tr("\n...(已截断)", "\n...(truncated)")
+                        ? String(content.prefix(maxChars)) + tr("\n...(已截断)", "\n...(truncated)", "\n...(省略)")
                         : content
-                    inputText += (inputText.isEmpty ? "" : "\n") + tr("以下是 \(filename) 的内容:\n\(trimmed)", "Contents of \(filename):\n\(trimmed)")
+                    inputText += (inputText.isEmpty ? "" : "\n") + tr("以下是 \(filename) 的内容:\n\(trimmed)", "Contents of \(filename):\n\(trimmed)", "\(filename) の内容:\n\(trimmed)")
                     print("[UI] Text file imported: \(filename)")
                 } catch {
                     print("[UI] Failed to read text file: \(error)")
@@ -1922,7 +1986,7 @@ struct ContentView: View {
             }
             // 其他 → 标注文件名
             else {
-                inputText += (inputText.isEmpty ? "" : "\n") + tr("[附件: \(filename)]", "[Attachment: \(filename)]")
+                inputText += (inputText.isEmpty ? "" : "\n") + tr("[附件: \(filename)]", "[Attachment: \(filename)]", "[添付: \(filename)]")
                 print("[UI] Unknown file type imported: \(filename)")
             }
 
@@ -2008,7 +2072,7 @@ private struct ComposerPromptCarousel: View {
     }
 
     private var currentPrompt: String {
-        guard !prompts.isEmpty else { return tr("问点什么…", "Ask anything...") }
+        guard !prompts.isEmpty else { return tr("问点什么…", "Ask anything...", "なんでも聞いてください…") }
         return prompts[index % prompts.count]
     }
 
@@ -2057,10 +2121,11 @@ private struct SessionHistorySheet: View {
     @Environment(\.dismiss) private var dismiss
 
     var engine: AgentEngine
+    @State private var showSettings = false
 
     private var dateFormatter: RelativeDateTimeFormatter {
         let formatter = RelativeDateTimeFormatter()
-        formatter.locale = Locale(identifier: LanguageService.shared.current.isChinese ? "zh-Hans" : "en")
+        formatter.locale = Locale(identifier: LanguageService.shared.current.isJapanese ? "ja" : (LanguageService.shared.current.isChinese ? "zh-Hans" : "en"))
         formatter.unitsStyle = .short
         return formatter
     }
@@ -2085,6 +2150,9 @@ private struct SessionHistorySheet: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .fullScreenCover(isPresented: $showSettings) {
+            ConfigurationsView(engine: engine)
+        }
     }
 
     private var sessions: [ChatSessionSummary] {
@@ -2113,7 +2181,7 @@ private struct SessionHistorySheet: View {
 
             Spacer()
 
-            Text(tr("历史记录", "History"))
+            Text(tr("历史记录", "History", "履歴"))
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(Theme.textSecondary)
                 .opacity(0.72)
@@ -2121,10 +2189,9 @@ private struct SessionHistorySheet: View {
             Spacer()
 
             Button {
-                engine.startNewSession()
-                dismiss()
+                showSettings = true
             } label: {
-                Image(systemName: "square.and.pencil")
+                Image(systemName: "gearshape")
                     .font(.system(size: UIScale.gearIconSize, weight: .regular))
                     .foregroundStyle(Theme.textSecondary)
                     .opacity(UIScale.gearIconOpacity)
@@ -2135,6 +2202,7 @@ private struct SessionHistorySheet: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(Text(tr("设置", "Settings", "設定")))
         }
         .padding(.horizontal, Theme.inputPadH)
         .padding(.vertical, 10)
@@ -2163,14 +2231,14 @@ private struct SessionHistorySheet: View {
                     } label: {
                         Image(systemName: "trash")
                     }
-                    .accessibilityLabel(Text(tr("删除", "Delete")))
+                    .accessibilityLabel(Text(tr("删除", "Delete", "削除")))
                     .tint(Theme.accentMuted)
                 }
                 .contextMenu {
                     Button(role: .destructive) {
                         engine.deleteSession(id: session.id)
                     } label: {
-                        Label(tr("删除", "Delete"), systemImage: "trash")
+                        Label(tr("删除", "Delete", "削除"), systemImage: "trash")
                     }
                 }
             }
@@ -2226,7 +2294,7 @@ private struct SessionHistorySheet: View {
 
     private var emptyState: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text(tr("暂无历史", "No History"))
+            Text(tr("暂无历史", "No History", "履歴なし"))
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(Theme.textPrimary)
 
@@ -2234,7 +2302,7 @@ private struct SessionHistorySheet: View {
                 engine.startNewSession()
                 dismiss()
             } label: {
-                Text(tr("新会话", "New Chat"))
+                Text(tr("新会话", "New Chat", "新しいチャット"))
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(Theme.accentMuted)
             }
@@ -2300,3 +2368,149 @@ struct UserBubble: View, Equatable {
 // - AudioUI.swift
 // - ResponseUI.swift
 // - SharedUI.swift
+
+// MARK: - 模型切换弹层 (聊天右上 cpu 图标 → 本地/远程已就绪模型, 点即切换)
+//
+// 只列「现在能用的」:已下载的本地模型 + 已配对 Mac 的远程模型。下载/配对走设置页,
+// 这里不放跳转入口。视觉沿用 Theme,不套 stock List/Form。
+
+private struct ModelSwitcherSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    var engine: AgentEngine
+
+    /// 已就绪的本地模型 (已下载;artifactPath 存在才算可切)。
+    private var localModels: [ModelDescriptor] {
+        engine.availableModels.filter {
+            !$0.id.hasPrefix("remote::") && engine.installer.artifactPath(for: $0) != nil
+        }
+    }
+
+    /// 已配对 Mac 的远程模型 (refreshRemoteModels 灌进 catalog 的)。
+    private var remoteModels: [ModelDescriptor] {
+        engine.availableModels.filter { $0.id.hasPrefix("remote::") }
+    }
+
+    private var isEmpty: Bool { localModels.isEmpty && remoteModels.isEmpty }
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            Theme.bg.ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: 0) {
+                Text(tr("切换模型", "Switch Model", "モデル切替"))
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Theme.textSecondary)
+                    .opacity(0.72)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 18)
+                    .padding(.bottom, 14)
+
+                if isEmpty {
+                    emptyHint
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 24) {
+                            if !localModels.isEmpty {
+                                section(tr("本地模型", "Local", "ローカル"), models: localModels)
+                            }
+                            if !remoteModels.isEmpty {
+                                section(tr("远程模型", "Remote", "リモート"), models: remoteModels)
+                            }
+                        }
+                        .padding(.horizontal, 24)
+                        .padding(.top, 4)
+                        .padding(.bottom, 28)
+                    }
+                    .scrollIndicators(.hidden)
+                }
+            }
+        }
+        .onAppear { Task { await engine.refreshRemoteModels() } }
+    }
+
+    private func section(_ title: String, models: [ModelDescriptor]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(title)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Theme.textTertiary)
+                .padding(.bottom, 8)
+
+            ForEach(Array(models.enumerated()), id: \.element.id) { idx, model in
+                modelRow(model)
+                if idx < models.count - 1 {
+                    Rectangle()
+                        .fill(Theme.borderSubtle)
+                        .frame(height: 1)
+                        .opacity(0.9)
+                }
+            }
+        }
+    }
+
+    private func modelRow(_ model: ModelDescriptor) -> some View {
+        let isCurrent = model.id == engine.config.selectedModelID
+        let subtitle = rowSubtitle(model)
+        return Button {
+            select(model)
+        } label: {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(rowTitle(model))
+                        .font(.system(size: 16, weight: .regular))
+                        .foregroundStyle(Theme.textPrimary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(.system(size: 12, weight: .regular))
+                            .foregroundStyle(Theme.textTertiary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                }
+                Spacer(minLength: 12)
+                if isCurrent {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Theme.accentMuted)
+                }
+            }
+            .padding(.vertical, 14)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// 远程行只显示模型名 (从 id "remote::<macID>::<model>" 取 model,去掉机器名);本地用 displayName。
+    private func rowTitle(_ model: ModelDescriptor) -> String {
+        if model.id.hasPrefix("remote::") {
+            return LANConnectionManager.remoteDisplayParts(for: model).title
+        }
+        return model.displayName
+    }
+
+    private func rowSubtitle(_ model: ModelDescriptor) -> String? {
+        guard model.id.hasPrefix("remote::") else { return nil }
+        return LANConnectionManager.remoteDisplayParts(for: model).subtitle
+    }
+
+    private var emptyHint: some View {
+        Text(tr(
+            "还没有可用模型,去设置里下载或连接 Mac",
+            "No models yet — download one or connect a Mac in Settings",
+            "モデルがありません。設定でダウンロード、または Mac に接続してください"
+        ))
+        .font(.system(size: 13, weight: .regular))
+        .foregroundStyle(Theme.textTertiary)
+        .multilineTextAlignment(.center)
+        .padding(.horizontal, 40)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+    }
+
+    private func select(_ model: ModelDescriptor) {
+        guard model.id != engine.config.selectedModelID else { dismiss(); return }
+        engine.config.selectedModelID = model.id
+        engine.reloadModel()   // 持久化 + reconcile + coordinator.load(选中模型)
+        dismiss()
+    }
+}

@@ -266,39 +266,39 @@ final class ChatSessionStore {
     // MARK: - Private Helpers
 
     private func sessionTitle(from message: ChatMessage?) -> String {
-        guard let message else { return tr("新会话", "New Chat") }
+        guard let message else { return tr("新会话", "New Chat", "新しいチャット") }
         let trimmed = message.content.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty {
             return String(trimmed.prefix(24))
         }
         if !message.images.isEmpty && !message.audios.isEmpty {
-            return tr("图片与语音会话", "Image & Voice Chat")
+            return tr("图片与语音会话", "Image & Voice Chat", "画像と音声のチャット")
         }
         if !message.images.isEmpty {
-            return tr("图片会话", "Image Chat")
+            return tr("图片会话", "Image Chat", "画像チャット")
         }
         if !message.audios.isEmpty {
-            return tr("语音会话", "Voice Chat")
+            return tr("语音会话", "Voice Chat", "音声チャット")
         }
-        return tr("新会话", "New Chat")
+        return tr("新会话", "New Chat", "新しいチャット")
     }
 
     private func sessionPreview(from message: ChatMessage?) -> String {
-        guard let message else { return tr("暂无内容", "No content") }
+        guard let message else { return tr("暂无内容", "No content", "内容なし") }
         let trimmed = message.content.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty {
             return String(trimmed.prefix(80))
         }
         if !message.images.isEmpty && !message.audios.isEmpty {
-            return tr("包含图片与语音", "Contains images and voice")
+            return tr("包含图片与语音", "Contains images and voice", "画像と音声を含む")
         }
         if !message.images.isEmpty {
-            return tr("包含图片", "Contains images")
+            return tr("包含图片", "Contains images", "画像を含む")
         }
         if !message.audios.isEmpty {
-            return tr("包含语音", "Contains voice")
+            return tr("包含语音", "Contains voice", "音声を含む")
         }
-        return tr("暂无内容", "No content")
+        return tr("暂无内容", "No content", "内容なし")
     }
 
     // MARK: - Index File

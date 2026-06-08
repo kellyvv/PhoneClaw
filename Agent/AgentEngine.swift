@@ -48,6 +48,8 @@ class AgentEngine {
     let installer: ModelInstaller
     let coordinator: ModelRuntimeCoordinator
     let sessionStore: ChatSessionStore
+    /// 局域网发现 + 绑定 (远程 Mac 推理)。UI 用它发现/配对;dispatcher 的 remote backend 用它解析 endpoint。
+    let lan: LANConnectionManager
 
     // MARK: - Observable State
 
@@ -225,6 +227,8 @@ class AgentEngine {
         self.legacyContextBudgetPlanner = LegacyBudgetPlanner()
         self.hotfixContextBudgetPlanner = HotfixBudgetPlanner()
         self.toolResultCanonicalizer = LegacyToolCanonicalizer()
+        let lan = LANConnectionManager()
+        self.lan = lan
 
         if let inference {
             self.inference = inference
@@ -295,9 +299,12 @@ class AgentEngine {
                 }
             )
 
+            let remote = RemoteInferenceService()
+            remote.endpointResolver = { [lan] modelID in await lan.resolveRemoteModel(modelID) }
             self.inference = BackendDispatcher(
                 liteRT: liteRT,
                 miniCPMV: miniCPMV,
+                remote: remote,
                 modelLookup: { modelID in
                     resolvedCatalog.availableModels.first(where: { $0.id == modelID })
                 }
@@ -314,5 +321,20 @@ class AgentEngine {
         self.sessionStore = ChatSessionStore()
 
         loadSkillEntries()
+    }
+
+    /// 把所有已绑定 Mac 的远程模型刷进 catalog (UI 配对后 / 启动后调用)。
+    func refreshRemoteModels() async {
+        var all: [ModelDescriptor] = []
+        for binding in lan.bindings.all() {
+            all += await lan.remoteModels(for: binding)
+        }
+        catalog.setRemoteModels(all)
+        if config.selectedModelID.hasPrefix("remote::"),
+           !all.contains(where: { $0.id == config.selectedModelID }),
+           let replacement = all.first {
+            config.selectedModelID = replacement.id
+            reloadModel()
+        }
     }
 }

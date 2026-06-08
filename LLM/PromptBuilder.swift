@@ -192,6 +192,20 @@ struct PromptBuilder {
             当前问题：
             \(userMessage)
             """
+        } else if LanguageService.shared.current.isJapanese {
+            return """
+            \(imageFollowUpContextOpenMarker)
+            前のターンでユーザーは画像を送信しました。
+            前のターンでの画像への回答：\(clippedSummary)
+            現在の質問が前のターンの画像への追加質問である場合、上記の回答を優先して続けて答えてください。
+            要約・言い換え・確認・簡単な説明の場合は、上記の回答からそのまま答えを生成してください。
+            ユーザーに画像を再アップロードするよう求めないでください。
+            上記の回答だけでは細部を判断できない場合は、「前回の説明だけでは判断できません」とはっきり述べてもかまいませんが、画像の再送信は求めないでください。
+            \(imageFollowUpContextCloseMarker)
+
+            現在の質問：
+            \(userMessage)
+            """
         } else {
             return """
             \(imageFollowUpContextOpenMarker)
@@ -242,7 +256,8 @@ struct PromptBuilder {
         let rawBase = (systemPrompt ?? defaultSystemPrompt).trimmingCharacters(in: .whitespacesAndNewlines)
         return rawBase + tr(
             "\n\n【当前模式: 闲聊】本轮严禁输出 <tool_call>, 严禁提及 Skill / load_skill / 工具调用, 也不要复述 DEVICE_SKILLS / CONTENT_SKILLS / NETWORK_SKILLS 这类内部分类名. 上文所有 Skill 调用规则本轮一律不适用. 回答语言跟随用户当轮输入, 默认简洁. 自我介绍或说明能力时, 用自然短段回答, 不要写成 README、编号清单或系统说明书. 除非用户明确要求拼音、发音、翻译或语言学习, 否则不要附加拼音、罗马音、英文发音或括号解释.",
-            "\n\n[Current mode: casual chat] This turn: do NOT emit <tool_call>, do NOT mention Skill / load_skill / tool invocation, and do NOT repeat internal category names such as DEVICE_SKILLS, CONTENT_SKILLS, or NETWORK_SKILLS. All Skill invocation rules above do not apply this turn. Reply in the same language the user used this turn, concise by default. When introducing yourself or explaining capabilities, use short natural prose, not a README, numbered list, or system manual. Unless the user explicitly asks for pinyin, pronunciation, translation, or language learning help, do not add pinyin, romanization, pronunciation guides, or parenthetical language notes."
+            "\n\n[Current mode: casual chat] This turn: do NOT emit <tool_call>, do NOT mention Skill / load_skill / tool invocation, and do NOT repeat internal category names such as DEVICE_SKILLS, CONTENT_SKILLS, or NETWORK_SKILLS. All Skill invocation rules above do not apply this turn. Reply in the same language the user used this turn, concise by default. When introducing yourself or explaining capabilities, use short natural prose, not a README, numbered list, or system manual. Unless the user explicitly asks for pinyin, pronunciation, translation, or language learning help, do not add pinyin, romanization, pronunciation guides, or parenthetical language notes.",
+            "\n\n【現在のモード: 雑談】今回は <tool_call> を絶対に出力せず, Skill / load_skill / ツール呼び出しに言及せず, DEVICE_SKILLS / CONTENT_SKILLS / NETWORK_SKILLS のような内部カテゴリ名も復唱しないでください. 上記の Skill 呼び出しルールは今回いっさい適用されません. 回答はユーザーが今回使った言語に合わせ, 既定では簡潔に. 自己紹介や能力の説明をするときは, README や番号付きリスト, システム仕様書のようにせず, 自然な短い文章で答えてください. ユーザーが明示的にピンイン・発音・翻訳・語学学習を求めていない限り, ピンイン・ローマ字・英語の発音・かっこ書きの注釈を付け足さないでください."
         )
     }
 
@@ -267,15 +282,16 @@ struct PromptBuilder {
             if tools.isEmpty {
                 return tr(
                     "（content-type SKILL, 无 tool, 按 SKILL 指令直接生成文本结果）",
-                    "(content-type SKILL, no tools — generate text result directly per SKILL instructions)"
+                    "(content-type SKILL, no tools — generate text result directly per SKILL instructions)",
+                    "（content-type の SKILL, ツールなし — SKILL の指示に従ってテキスト結果を直接生成）"
                 )
             }
             var lines: [String] = []
             for t in tools {
                 lines.append("- `\(t.name)`: \(t.description)")
-                lines.append("  \(tr("参数", "Parameters")): \(t.parameters)")
+                lines.append("  \(tr("参数", "Parameters", "パラメータ")): \(t.parameters)")
                 if !t.requiredParameters.isEmpty {
-                    lines.append("  \(tr("必填", "Required")): \(t.requiredParameters.joined(separator: ", "))")
+                    lines.append("  \(tr("必填", "Required", "必須")): \(t.requiredParameters.joined(separator: ", "))")
                 }
             }
             return lines.joined(separator: "\n")
@@ -315,7 +331,7 @@ struct PromptBuilder {
         let contentSkills = tools.filter { $0.type == .content }
         let networkSkills = tools.filter { $0.type == .network }
         func renderList(_ list: [SkillInfo]) -> String {
-            if list.isEmpty { return tr("（无）\n", "(none)\n") }
+            if list.isEmpty { return tr("（无）\n", "(none)\n", "（なし）\n") }
             return list.map { "- **\($0.name)**: \($0.description)" }.joined(separator: "\n") + "\n"
         }
         // Router 已锁定时, system prompt 的全 skill 列表是冗余的——locked ability
@@ -327,7 +343,7 @@ struct PromptBuilder {
         let contentListText: String
         let networkListText: String
         if isPreloaded {
-            let markerText = tr("（已锁定能力见下方 — Locked ability shown below）\n", "(locked ability shown below)\n")
+            let markerText = tr("（已锁定能力见下方 — Locked ability shown below）\n", "(locked ability shown below)\n", "（ロック済みの機能は下記を参照）\n")
             deviceListText = markerText
             contentListText = markerText
             networkListText = markerText
@@ -363,7 +379,8 @@ struct PromptBuilder {
             if !tools.isEmpty {
                 prompt += tr(
                     "\n\n你拥有以下能力（Skill）：\n\n",
-                    "\n\nYou have the following abilities (Skills):\n\n"
+                    "\n\nYou have the following abilities (Skills):\n\n",
+                    "\n\nあなたは以下の機能（Skill）を持っています：\n\n"
                 ) + flatListText
             }
         }
@@ -372,7 +389,8 @@ struct PromptBuilder {
         if showListSkillsHint && !isMultimodalTurn {
             prompt += tr(
                 "\n如果以上列出的能力都不匹配用户需求，可以调用 list_skills 查询更多能力：\n<tool_call>\n{\"name\": \"list_skills\", \"arguments\": {\"query\": \"用户需求描述\"}}\n</tool_call>\n",
-                "\nIf none of the abilities above match the user's needs, you can call list_skills to discover more:\n<tool_call>\n{\"name\": \"list_skills\", \"arguments\": {\"query\": \"<user need description>\"}}\n</tool_call>\n"
+                "\nIf none of the abilities above match the user's needs, you can call list_skills to discover more:\n<tool_call>\n{\"name\": \"list_skills\", \"arguments\": {\"query\": \"<user need description>\"}}\n</tool_call>\n",
+                "\n上記の機能がどれもユーザーの要望に合わない場合は、list_skills を呼び出してさらに機能を検索できます：\n<tool_call>\n{\"name\": \"list_skills\", \"arguments\": {\"query\": \"ユーザーの要望の説明\"}}\n</tool_call>\n"
             )
         }
 
@@ -388,26 +406,31 @@ struct PromptBuilder {
             prompt += "\n\n━━━━━━━━━━━━━━━━━━━━\n"
             prompt += tr(
                 "【已锁定能力 — 直接调用工具, 不需要先 load_skill】\n",
-                "[Locked ability — call tools directly, no need to load_skill first]\n"
+                "[Locked ability — call tools directly, no need to load_skill first]\n",
+                "【ロック済みの機能 — ツールを直接呼び出し, 先に load_skill する必要はありません】\n"
             )
             if allAllowed.isEmpty {
                 prompt += tr(
                     "当前锁定的 Skill 没有工具, 按 Skill 指令直接给最终答案, 禁止输出 <tool_call>。\n",
-                    "The locked Skill has no tools. Follow the Skill instructions and give the final answer directly. Do not emit <tool_call>.\n"
+                    "The locked Skill has no tools. Follow the Skill instructions and give the final answer directly. Do not emit <tool_call>.\n",
+                    "現在ロックされている Skill にはツールがありません. Skill の指示に従って最終的な答えを直接出し, <tool_call> は出力しないでください。\n"
                 )
             } else {
                 prompt += tr(
                     "\n可调用的工具 (只允许这些名字, 其他名字一律视为非法, 不要凭空编造):\n",
-                    "\nCallable tools (only these names; any other name is illegal, do not fabricate):\n"
+                    "\nCallable tools (only these names; any other name is illegal, do not fabricate):\n",
+                    "\n呼び出せるツール (これらの名前のみ許可, それ以外の名前はすべて不正とみなし, 勝手に作らないでください):\n"
                 )
                 prompt += allAllowed.map { "- `\($0)`" }.joined(separator: "\n") + "\n"
                 prompt += tr(
                     "\n如果需要操作, 输出:\n<tool_call>\n{\"name\": \"<上面列表中的名字>\", \"arguments\": {...}}\n</tool_call>\n",
-                    "\nIf action is needed, emit:\n<tool_call>\n{\"name\": \"<a name from the list above>\", \"arguments\": {...}}\n</tool_call>\n"
+                    "\nIf action is needed, emit:\n<tool_call>\n{\"name\": \"<a name from the list above>\", \"arguments\": {...}}\n</tool_call>\n",
+                    "\n操作が必要な場合は, 次を出力:\n<tool_call>\n{\"name\": \"<上のリストにある名前>\", \"arguments\": {...}}\n</tool_call>\n"
                 )
                 prompt += tr(
                     "如果不需要工具就直接给最终答案正文。**不要**再调用 load_skill, 已经加载好了。\n",
-                    "If no tools are needed, give the final answer directly. **Do not** call load_skill again — it's already loaded.\n"
+                    "If no tools are needed, give the final answer directly. **Do not** call load_skill again — it's already loaded.\n",
+                    "ツールが不要なら最終的な答えの本文を直接出してください。**load_skill を再度呼び出さないでください**, すでに読み込み済みです。\n"
                 )
             }
             for sk in preloadedSkills {
@@ -461,12 +484,14 @@ struct PromptBuilder {
                 if msg.skillResultKind == .generatedContent {
                     resultText = tr(
                         "Skill \(skillLabel) 生成的内容：\(msg.content)",
-                        "Generated content from skill \(skillLabel): \(msg.content)"
+                        "Generated content from skill \(skillLabel): \(msg.content)",
+                        "Skill \(skillLabel) が生成した内容：\(msg.content)"
                     )
                 } else {
                     resultText = tr(
                         "工具 \(skillLabel) 的执行结果：\(msg.content)",
-                        "Result of tool \(skillLabel): \(msg.content)"
+                        "Result of tool \(skillLabel): \(msg.content)",
+                        "ツール \(skillLabel) の実行結果：\(msg.content)"
                     )
                 }
                 prompt += "<|turn>user\n" + resultText + "<turn|>\n"
@@ -562,6 +587,16 @@ struct PromptBuilder {
             """
             userHeader = "最近一轮与图片相关的助手回答："
             questionLabel = "用户新问题："
+        } else if LanguageService.shared.current.isJapanese {
+            systemBody = """
+            あなたは3分類の判定だけを行います。
+            ユーザーの新しい質問が前の画像と無関係なら、NORMAL_TEXT を出力します。
+            ユーザーの新しい質問が前の画像への追加質問だが、既存のテキスト回答だけで答えられるなら、IMAGE_TEXT を出力します。
+            ユーザーの新しい質問に確実に答えるには前の画像の視覚的な細部を見直す必要があるなら、RE_MULTIMODAL を出力します。
+            この3つのラベルのうち1つだけを出力し、それ以外は一切出力しないでください。
+            """
+            userHeader = "画像に関連する直近のアシスタントの回答："
+            questionLabel = "ユーザーの新しい質問："
         } else {
             systemBody = """
             You do one 3-way classification only.
@@ -613,6 +648,18 @@ struct PromptBuilder {
             """
             skillsLabel = "可用 network skills:"
             questionLabel = "用户问题:"
+        } else if LanguageService.shared.current.isJapanese {
+            systemBody = """
+            あなたはルーティング分類だけを行い, ユーザーの質問には答えません。
+            このユーザーの質問が下記のいずれかの network skill を必要とするか判断してください。
+            network skill は公開インターネットやウェブページに関する機能のみに使います。
+            確実な回答が, 現在・最近・リアルタイム・時間とともに変化する・場所によって変化する, またはウェブで確認が必要な公開情報に依存する場合は, 最も適切な skill id を出力してください。
+            ユーザーが「検索」や「ネット」と書いていないという理由だけで none を出力しないでください; 質問そのものが外部の公開情報を必要とするかどうかで判断してください。
+            外部のウェブ情報が不要なら, none を出力してください。
+            skill id を1つ, または none だけを出力し, 説明も JSON も `<tool_call>` も出力しないでください。
+            """
+            skillsLabel = "利用可能な network skills:"
+            questionLabel = "ユーザーの質問:"
         } else {
             systemBody = """
             You only classify routing; do not answer the user.
@@ -654,12 +701,15 @@ struct PromptBuilder {
         let previousTool = previousToolName?.trimmingCharacters(in: .whitespacesAndNewlines)
         let toolLineZh: String
         let toolLineEn: String
+        let toolLineJa: String
         if let previousTool, !previousTool.isEmpty {
             toolLineZh = "上一轮工具: \(previousTool)\n"
             toolLineEn = "Previous tool: \(previousTool)\n"
+            toolLineJa = "前のターンのツール: \(previousTool)\n"
         } else {
             toolLineZh = ""
             toolLineEn = ""
+            toolLineJa = ""
         }
         if LanguageService.shared.current.isChinese {
             return """
@@ -706,6 +756,56 @@ struct PromptBuilder {
             \(clippedSummary)
 
             当前用户消息:
+            \(clippedQuestion)
+            <turn|>
+            <|turn>model
+
+            """
+        } else if LanguageService.shared.current.isJapanese {
+            return """
+            <|turn>system
+            あなたは対話行為の分類だけを行い, ユーザーの質問には答えず, ツールも呼び出しません。
+            現在のユーザーメッセージと前のターンの文脈成果物との関係を判断してください。出力は必ず1つの JSON object にしてください。
+
+            選択できる act:
+            - new_task: ユーザーが新しい独立したタスクや質問を出した
+            - continue_task: ユーザーが前のタスクの次のステップを進めたい
+            - correct_parameters: ユーザーが前のターンのパラメータ・範囲・対象・条件を訂正している
+            - refresh_result: ユーザーが取得し直す・更新する・もう一度調べるよう明示的に求めている
+            - verify_last_result: ユーザーが前のターンの結果が信頼できるか・確かかを確認している
+            - explain_last_result: ユーザーが前のターンの結果がなぜそうなのか・何を意味するのかを尋ねている
+            - clarify_last_result: ユーザーが前のターンの結果のある細部の明確化を求めている
+            - elaborate_last_result: ユーザーが前のターンの内容の展開・補足・例示・続きを求めている
+            - transform_last_result: ユーザーが前のターンの内容を構造化・要約・書き換え・翻訳・形式変換・箇条書き・チェックリスト・表など二次加工することを求めている
+            - cancel_or_reject: ユーザーが取り消し・否定・続行の拒否をしている
+            - chitchat: 雑談, またはツールを必要としない自然な返答
+
+            判断の原則:
+            - 「前のターンの文脈成果物」は, 前のターンのアシスタント回答・ツール結果・画像への回答・生成された内容のいずれでもあり得ます; 現在のメッセージはそれを継続・確認・加工しているかもしれません。
+            - 最優先: 現在のメッセージが前のターンの範囲・対象・時間・数量・場所・実体・条件が誤っていると指摘し, 代わりの値や新しい制約を示している場合, act は必ず correct_parameters, target は必ず previous_result, should_execute_tool は必ず true にしてください。
+            - 現在のメッセージが省略的な追加質問で, 新しい時間・範囲・対象・場所・実体・条件の断片だけを示し, 前のターンの能力を流用しないと答えられない場合, act は必ず correct_parameters または continue_task, target は必ず previous_result, should_execute_tool は必ず true にしてください。
+            - 直近のツール能力自体が情報の検索・読み取り・調査・確認・一覧化であり, 現在のメッセージが「それ/また/変えて/then/what about」などの受け継ぎ表現で新しい対象や範囲を示している場合は, 直近のツール能力を流用して実行してください。
+            - 現在のメッセージが前のターンの成果物を確認・疑問・説明・明確化・展開・加工しているだけなら, ツールを再実行しないでください。
+            - 現在のメッセージが「要約/構造化/整理/書き換え/翻訳/箇条書き/表に/Markdown に/JSON に」などを求めており, 新しく処理すべき本文を提供していない場合, act は必ず transform_last_result, target は必ず previous_result, should_execute_tool は必ず false にしてください。
+            - 現在のメッセージ自体が新しい処理対象の本文・リンク・画像・ファイル, または明らかに新しいトピックを提供している場合, act は必ず new_task, target は必ず new_task にしてください。
+            - 現在のメッセージが範囲/対象/条件を変えた場合, または取得し直すよう明示的に求めた場合のみ, ツールの続行実行を許可します。
+            - 特定の業務語そのもので判断しないでください; 対話行為と前のターンの結果との関係だけで判断してください。
+            - 例: 「<旧値> ではなく <新値>」/「<新値> に変えて」/「use <new value> instead」は correct_parameters であり, verify_last_result ではありません。
+            - 例: 「では <新しい時間/新しい範囲/新しい対象> を調べて」/「<新しい条件> に変えて」/「what about <new scope>?」は correct_parameters または continue_task で, should_execute_tool=true です。
+            - 例: 「確かですか?」/「本当ですか?」/「why so low?」は verify_last_result または explain_last_result で, should_execute_tool=false です。
+            - 例: 「構造化して」/「3点に要約して」/「make it a table」は transform_last_result で, should_execute_tool=false です。
+
+            JSON schema:
+            {"act":"...", "target":"previous_result|new_task|none", "should_execute_tool":true|false, "confidence":0.0}
+            JSON だけを出力し, Markdown・説明・コードブロック・`<tool_call>` は出力しないでください。
+            <turn|>
+            <|turn>user
+            前のターンの成果物タイプ: \(previousContextKind)
+            前のターンの出所: \(previousSourceName)
+            \(toolLineJa)前のターンの成果物の要約:
+            \(clippedSummary)
+
+            現在のユーザーメッセージ:
             \(clippedQuestion)
             <turn|>
             <|turn>model
@@ -781,12 +881,15 @@ struct PromptBuilder {
         let previousTool = previousToolName?.trimmingCharacters(in: .whitespacesAndNewlines)
         let toolLineZh: String
         let toolLineEn: String
+        let toolLineJa: String
         if let previousTool, !previousTool.isEmpty {
             toolLineZh = "\n上一轮工具:\n\(previousTool)\n"
             toolLineEn = "\nPrevious tool:\n\(previousTool)\n"
+            toolLineJa = "\n前のターンのツール:\n\(previousTool)\n"
         } else {
             toolLineZh = ""
             toolLineEn = ""
+            toolLineJa = ""
         }
         let visibleBlockZh = visibleAnswer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "" : """
 
@@ -796,6 +899,11 @@ struct PromptBuilder {
         let visibleBlockEn = visibleAnswer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "" : """
 
             Previous answer shown to the user:
+            \(visibleAnswer)
+            """
+        let visibleBlockJa = visibleAnswer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "" : """
+
+            前のターンでユーザーに表示した回答:
             \(visibleAnswer)
             """
         let thinkingPrefix = enableThinking ? "<|think|>" : ""
@@ -832,6 +940,43 @@ struct PromptBuilder {
             \(summary)
 
             上一轮产物原始/补充内容:
+            \(detail)
+            <turn|>
+            <|turn>model
+
+            """
+        } else if LanguageService.shared.current.isJapanese {
+            return """
+            <|turn>system
+            \(thinkingPrefix)\(defaultSystemPrompt)
+            あなたは前のターンの文脈成果物に対する追加質問に答えています。
+            ツールを呼び出さず, `<tool_call>` を出力せず, データを読み直した・検索し直した・更新した・見直したと主張しないでください。
+            下記に示す前のターンの文脈成果物だけに基づいて答えてください。
+            対話行為が transform_last_result の場合は, ユーザーの今の要求どおり前のターンの内容を構造化・要約・書き換え・翻訳・形式変換・箇条書き・表にしてください。
+            対話行為が elaborate_last_result の場合は, 前のターンの内容を展開・補足・例示してください。
+            ユーザーが信頼性を確認している場合は, それが前のターンで返された/表示された内容に基づくものだと述べ, 必要な制限も示してください。
+            前のターンの内容にすでにソースのリンクや引用 URL があれば, 整理する際に関連するソースを残してください; 新しいソースを捏造しないでください。
+            下記に前のターンの内容が提供されている限り, 「テキスト/情報を提供してください」とは答えないでください。
+            回答は簡潔にし, 内部のフィールド名を復唱しないでください。
+            \(thinkingInstruction)
+            <turn|>
+            <|turn>user
+            現在のユーザーの追加質問:
+            \(userQuestion)
+
+            対話行為:
+            \(dialogueAct)
+
+            前のターンの成果物タイプ:
+            \(contextKind)
+
+            前のターンの出所:
+            \(previousSourceName)\(toolLineJa)\(visibleBlockJa)
+
+            前のターンの成果物の要約:
+            \(summary)
+
+            前のターンの成果物の元データ/補足内容:
             \(detail)
             <turn|>
             <|turn>model
@@ -928,6 +1073,14 @@ struct PromptBuilder {
             prompt += "\n如果仅根据上一轮图片回答无法确定，就明确说\"仅根据上一轮描述无法确定\"。"
             prompt += "\n直接回答问题，不要复述规则。"
             prompt += "\n输出 1 到 2 句完整的简体中文句子，必须自然收尾并以中文句号结束，不要只输出半句。"
+        } else if LanguageService.shared.current.isJapanese {
+            prompt += "\n\nあなたは同じ画像に関する追加質問への回答を続けています。"
+            prompt += "\n下記に示す前のターンの画像への回答だけに基づいて続けて答え、画像を見直したふりをしないでください。"
+            prompt += "\nユーザーに画像を再アップロードするよう求めないでください。"
+            prompt += "\nユーザーが要約・概括・言い換え・確認を求めた場合は、前のターンの画像への回答からそのまま整理した答えを出してください。"
+            prompt += "\n前のターンの画像への回答だけでは判断できない場合は、「前回の説明だけでは判断できません」とはっきり述べてください。"
+            prompt += "\n質問に直接答え、ルールを復唱しないでください。"
+            prompt += "\n完結した自然な日本語の文を1〜2文出力し、必ず自然に締めくくって句点で終え、文の途中で止めないでください。"
         } else {
             prompt += "\n\nYou are continuing to answer a follow-up question about the same image."
             prompt += "\nYou can only continue based on the previous image answer below; do not pretend to see the image again."
@@ -948,6 +1101,17 @@ struct PromptBuilder {
             \(clippedSummary)
 
             当前追问：
+            \(userMessage)
+            <turn|>
+            <|turn>model
+            """
+        } else if LanguageService.shared.current.isJapanese {
+            prompt += """
+            <|turn>user
+            前のターンでの画像への回答：
+            \(clippedSummary)
+
+            現在の追加質問：
             \(userMessage)
             <turn|>
             <|turn>model
@@ -999,6 +1163,13 @@ struct PromptBuilder {
             prompt += "\n严禁输出 <tool_call>、load_skill、JSON 或任何工具调用内容。"
             prompt += "\n如果信息仍然不足，就明确说\"仅根据上一轮图片回答无法确定\"。"
             prompt += "\n最终答案必须自然收尾并以中文句号结束。"
+        } else if LanguageService.shared.current.isJapanese {
+            prompt += "\n\nあなたは言いかけで終わった画像追加質問への回答を、完結した自然で簡潔な日本語1〜2文に書き換えるだけを担当します。"
+            prompt += "\n与えられた前のターンの画像への回答だけに基づいて補完し、画像を見直したふりをしないでください。"
+            prompt += "\nユーザーに画像を再アップロードするよう求めず、ルールを説明せず、文の途中で止めないでください。"
+            prompt += "\n<tool_call>、load_skill、JSON、その他いかなるツール呼び出しの内容も絶対に出力しないでください。"
+            prompt += "\n情報がまだ不足している場合は、「前のターンの画像への回答だけでは判断できません」とはっきり述べてください。"
+            prompt += "\n最終的な答えは必ず自然に締めくくり、句点で終えてください。"
         } else {
             prompt += "\n\nYou only rewrite an incomplete image follow-up answer into 1 to 2 complete, natural, concise English sentences."
             prompt += "\nComplete the answer based only on the previous image answer provided; do not pretend to see the image again."
@@ -1021,6 +1192,20 @@ struct PromptBuilder {
             \(userMessage)
 
             回答草稿（可能未完成）：
+            \(normalizedPartial)
+            <turn|>
+            <|turn>model
+            """
+        } else if LanguageService.shared.current.isJapanese {
+            prompt += """
+            <|turn>user
+            前のターンでの画像への回答：
+            \(clippedSummary)
+
+            現在の追加質問：
+            \(userMessage)
+
+            回答の下書き（未完成の可能性あり）：
             \(normalizedPartial)
             <turn|>
             <|turn>model
@@ -1246,6 +1431,50 @@ struct PromptBuilder {
             <|turn>model
 
             """
+        } else if LanguageService.shared.current.isJapanese {
+            let thinkingPrefix = enableThinking ? "<|think|>" : ""
+            let thinkingInstruction = enableThinking ? "\n\n\(thinkingLanguageInstruction)" : ""
+            let answerOnlyRule: String
+            let finalInstruction: String
+            if allowsFollowUpFetch {
+                answerOnlyRule = "あなたは実行が完了した web-search の結果を使ってユーザーの質問を続けて仕上げています。結果がすでに十分なら、最終回答は答えだけを出力します；検索結果が原文の読み取りを明確に必要とし、1つのウェブページで根拠を補える場合のみ、web-fetch を1回だけ呼び出してよく、web-search やその他のツールを再度呼び出さないでください。"
+                finalInstruction = """
+                原文の読み取りが必要なら、次だけを出力:
+                <tool_call>{"name":"web-fetch","arguments":{"url":"https://example.com","max_characters":6000}}</tool_call>
+                ここで url は上記で最も関連する実在のソース URL に置き換えてください。
+                これ以上読み取る必要がなければ、ツールが返した内容に基づいてユーザーに直接答えてください。
+                直接答えるときは JSON・フィールド名・テンプレート・コードブロック・中間ステップを出力しないでください。内部のツール呼び出しの流れに言及しないでください。
+                """
+            } else {
+                answerOnlyRule = enableThinking
+                    ? "あなたは実行が完了したツール結果に基づいてユーザーに答えています。最終回答の部分では答えだけを出力し、ツールを再度呼び出さないでください。"
+                    : "あなたは実行が完了したツール結果に基づいてユーザーに答えています。最終的な答えだけを出力し、ツールを再度呼び出さないでください。"
+                finalInstruction = """
+                ツールが返した内容に基づいてユーザーに直接答えてください。
+                JSON・フィールド名・テンプレート・コードブロック・中間ステップを出力しないでください。内部のツール呼び出しの流れに言及しないでください。
+                """
+            }
+            return """
+            <|turn>system
+            \(thinkingPrefix)\(defaultSystemPrompt)
+            \(currentTimeAnchorBlock())
+            \(answerOnlyRule)
+            回答は必ず簡潔でスキャンしやすく：1段落の長文にしないでください。単純な事実の質問はまず直接の答えを出し、次に根拠や制限を1〜2点補います；ニュースやリスト類の質問は3〜6件の異なる出来事/進展を1件ずつ列挙し、各件は具体的な出来事を1文で要約しできるだけ日付を付け、複数のニュースを1つの漠然とした結論にまとめないでください；トレンド・比較類のみテーマでまとめ、各件は短いラベルで始めます；順位・比較・価格・仕様・時系列が明らかに適している場合のみ表を使います。
+            ネット系ツールの結果の場合、根拠の関連性を優先します：ユーザーの質問に直接関連する根拠だけを使い、「主題相关性低 / low query relevance」と付いた項目・confidence=low・トップ/入口ページ・ツールが事実として直接扱えないと示す項目は無視します。時効性は並べ替えに使い、拒否には使いません：最新の関連項目を先に出してその発布時間を明記し（結果には既に「発布時間」が注記されています）、新しい順に整理します；ユーザーの期間に厳密に収まる結果がなければ、「より新しいものは見つかりませんでした、以下は検索できた最新の内容です」と正直に述べ、それでも答え、拒否せず、古い内容を当日のものと偽らないでください。本文には結論・重要な事実・必要な不確実性だけを書き、ソースのリンクは別立ての「引用 URL」段にまとめます；URL/host を本文の要点に混ぜないでください。ツール結果にない情報を捏造しないでください。
+            \(toolSpecificInstructions)\(thinkingInstruction)
+            <turn|>
+            <|turn>user
+            ユーザーの質問：
+            \(userQuestion)\(imagePromptSuffix(count: currentImageCount))
+
+            ツール \(toolName) の返答：
+            \(result)
+
+            \(finalInstruction)
+            <turn|>
+            <|turn>model
+
+            """
         } else {
             let thinkingPrefix = enableThinking ? "<|think|>" : ""
             let thinkingInstruction = enableThinking ? "\n\n\(thinkingLanguageInstruction)" : ""
@@ -1298,12 +1527,14 @@ struct PromptBuilder {
         case "web-search":
             return tr(
                 "对 web-search：优先查看 evidence_pack，并看每条结果的“发布时间 / published_at / age_days”。若 evidence_pack.sufficiency=sufficient 或 answerability=direct，基于 evidence_pack.chunks / 可直接使用的搜索条目回答。可直接使用的条目需满足：query_relevant 不是 false、confidence 不是 low、不是首页/入口页、没有标记“主题相关性低 / low query relevance”。时效性用于排序而不是拒答：按发布时间从新到旧组织，先给最新的相关条目并标注其发布时间；如果最新的也比用户要求的时间窗口旧，如实说明“没有找到严格满足时间约束的，以下是检索到的最新内容”，仍然照常作答，不要拒答，也不要把旧内容谎称成当天。只有在确实没有任何相关结果时，才说明这次搜索没有返回可用结果。直接回答必须分成两段：先写“总结”，再写“引用网址”。必须全程使用当前会话语言回答，即使来源页面是其他语言。“总结”段必须是可扫描的结构化 Markdown，不要写成单段长文；只写结论、关键数值、主题化要点和必要的不确定性，不要夹 URL、host、来源括号或搜索时间；新闻/快讯类要逐条列出 3-6 个不同的事件，每条一句话概括一个具体事件并带上日期，不要把多条新闻压成一条笼统结论；趋势/对比类才按主题归并，优先用 `- 标签：事实/影响` 形式；简单事实问题第一句先给直接答案。“引用网址”段列出 1-5 条支撑结论的 Markdown 链接，优先使用 evidence_pack.chunks 里的真实 URL，同源去重，较新的来源排前面。若用户问具体数值、价格、汇率、比分或“多少”，总结第一句先给证据里的具体数值。若 answerability=needs_fetch 且 evidence_pack 为空或偏薄，才选择最相关 URL 调用一次 web-fetch。不要把首页、频道页、站点简介、低置信或低相关条目当作事实。",
-                "For web-search: inspect evidence_pack first, and check each result's “Published / published_at / age_days.” If evidence_pack.sufficiency=sufficient or answerability=direct, answer from evidence_pack.chunks / directly usable search entries. A directly usable entry must have query_relevant not false, confidence not low, not be homepage/index, and not be marked “low query relevance.” Use recency to order, not to refuse: organize newest-first, lead with the freshest relevant items and state each item's publish date; if even the freshest is older than the user's requested window, say plainly “nothing strictly within the time constraint was found; here is the latest available,” still answer as usual, do not refuse, and never claim stale items are same-day. Only when there is genuinely no relevant result at all, say the search returned no usable results. Direct answers must use two sections: “Summary” first, then “Sources.” Write the entire answer in the current conversation language, even if sources use another language. The Summary section must be scannable structured Markdown, not one long paragraph; include only the conclusion, key values, themed bullets, and necessary uncertainty, with no URLs, hosts, inline source parentheticals, or search timestamps. For news, enumerate 3-6 distinct events, each a one-line summary of a specific event with its date, without collapsing them into one vague conclusion; group by theme only for trends/comparisons, preferring `- Label: fact/implication` bullets. For a simple factual question, put the direct answer first. The Sources section must list 1-5 supporting Markdown links, preferring real URLs from evidence_pack.chunks, deduplicating by source, with fresher sources first. If the user asks for a concrete value, price, exchange rate, score, or “how much/how many,” the first Summary sentence must give the concrete value from evidence. If answerability=needs_fetch and the evidence_pack is empty or thin, choose the most relevant URL and call web-fetch once. Do not treat homepages, category pages, site descriptions, low-confidence, or low-relevance entries as facts."
+                "For web-search: inspect evidence_pack first, and check each result's “Published / published_at / age_days.” If evidence_pack.sufficiency=sufficient or answerability=direct, answer from evidence_pack.chunks / directly usable search entries. A directly usable entry must have query_relevant not false, confidence not low, not be homepage/index, and not be marked “low query relevance.” Use recency to order, not to refuse: organize newest-first, lead with the freshest relevant items and state each item's publish date; if even the freshest is older than the user's requested window, say plainly “nothing strictly within the time constraint was found; here is the latest available,” still answer as usual, do not refuse, and never claim stale items are same-day. Only when there is genuinely no relevant result at all, say the search returned no usable results. Direct answers must use two sections: “Summary” first, then “Sources.” Write the entire answer in the current conversation language, even if sources use another language. The Summary section must be scannable structured Markdown, not one long paragraph; include only the conclusion, key values, themed bullets, and necessary uncertainty, with no URLs, hosts, inline source parentheticals, or search timestamps. For news, enumerate 3-6 distinct events, each a one-line summary of a specific event with its date, without collapsing them into one vague conclusion; group by theme only for trends/comparisons, preferring `- Label: fact/implication` bullets. For a simple factual question, put the direct answer first. The Sources section must list 1-5 supporting Markdown links, preferring real URLs from evidence_pack.chunks, deduplicating by source, with fresher sources first. If the user asks for a concrete value, price, exchange rate, score, or “how much/how many,” the first Summary sentence must give the concrete value from evidence. If answerability=needs_fetch and the evidence_pack is empty or thin, choose the most relevant URL and call web-fetch once. Do not treat homepages, category pages, site descriptions, low-confidence, or low-relevance entries as facts.",
+                "web-search について：まず evidence_pack を確認し、各結果の「発布時間 / published_at / age_days」を見ます。evidence_pack.sufficiency=sufficient または answerability=direct なら、evidence_pack.chunks／そのまま使える検索項目に基づいて答えます。そのまま使える項目の条件：query_relevant が false でない、confidence が low でない、トップ/入口ページでない、「主題相关性低 / low query relevance」と付いていないこと。時効性は並べ替えに使い、拒否には使いません：発布時間の新しい順に整理し、最新の関連項目を先に出してその発布時間を明記します；最新のものでもユーザーが求めた期間より古い場合は、「時間条件を厳密に満たすものは見つかりませんでした、以下は検索できた最新の内容です」と正直に述べ、通常どおり答え、拒否せず、古い内容を当日のものと偽らないでください。本当に関連する結果が一つもない場合のみ、今回の検索では使える結果が返らなかったと述べます。直接回答する場合は必ず2つの段落に分けます：先に「総結」、次に「引用 URL」。たとえソースのページが他言語でも、回答は全編にわたり現在の会話の言語で書いてください。「総結」段はスキャンしやすい構造化された Markdown にし、1段落の長文にしないでください；結論・重要な数値・テーマ別の要点・必要な不確実性だけを書き、URL・host・ソースのかっこ書き・検索時刻は混ぜないでください；ニュース/速報類は3〜6件の異なる出来事を1件ずつ列挙し、各件は具体的な出来事を1文で要約し日付を付け、複数のニュースを1つの漠然とした結論にまとめないでください；トレンド/比較類のみテーマでまとめ、`- ラベル：事実/影響` の形式を優先します；単純な事実の質問は最初の1文でまず直接の答えを出します。「引用 URL」段は結論を裏づける Markdown リンクを1〜5件挙げ、evidence_pack.chunks 内の実在する URL を優先し、同一ソースは重複排除し、新しいソースを前に並べます。ユーザーが具体的な数値・価格・為替・スコア・「いくつ/いくら」を尋ねた場合、総結の最初の1文で根拠にある具体的な数値をまず出します。answerability=needs_fetch かつ evidence_pack が空または薄い場合のみ、最も関連する URL を選んで web-fetch を1回だけ呼び出します。トップページ・チャンネルページ・サイト紹介・低 confidence・低関連の項目を事実として扱わないでください。"
             )
         case "web-fetch":
             return tr(
                 "对 web-fetch：只使用已读取网页正文回答。必须全程使用当前会话语言回答，即使网页正文是其他语言。若正文包含按时间、排行或列表排列的数据，选最相关/最新的一条直接给结论；不要因为页面没有写“绝对最新”就空泛拒答。直接回答同样分成“总结”和“引用网址”，“总结”必须可扫描、结构化，不要写成单段长文；来源只放在“引用网址”段。只有正文确实没有覆盖用户问题时，才明确说明页面中没有找到对应信息。",
-                "For web-fetch: answer only from the fetched page text. Write the entire answer in the current conversation language, even if the page text uses another language. If the text contains dated, ranked, or listed data, choose the most relevant/latest entry and give the conclusion; do not refuse just because the page does not explicitly label it as “absolute latest.” Direct answers should also use “Summary” and “Sources”; the Summary must be scannable and structured, not one long paragraph, with source links only in Sources. Only say the requested information was not found when the page text truly does not cover the user question."
+                "For web-fetch: answer only from the fetched page text. Write the entire answer in the current conversation language, even if the page text uses another language. If the text contains dated, ranked, or listed data, choose the most relevant/latest entry and give the conclusion; do not refuse just because the page does not explicitly label it as “absolute latest.” Direct answers should also use “Summary” and “Sources”; the Summary must be scannable and structured, not one long paragraph, with source links only in Sources. Only say the requested information was not found when the page text truly does not cover the user question.",
+                "web-fetch について：読み取ったページ本文だけに基づいて答えます。たとえページ本文が他言語でも、回答は全編にわたり現在の会話の言語で書いてください。本文に時間・順位・リスト順に並んだデータが含まれる場合は、最も関連する/最新の1件を選んで結論を出します；ページに「絶対的な最新」と書いていないという理由で漠然と拒否しないでください。直接回答も同様に「総結」と「引用 URL」に分け、「総結」はスキャンしやすく構造化し、1段落の長文にしないでください；ソースは「引用 URL」段にのみ置きます。本文が本当にユーザーの質問をカバーしていない場合のみ、ページ内に該当する情報が見つからなかったとはっきり述べてください。"
             )
         default:
             return ""
@@ -1335,6 +1566,31 @@ struct PromptBuilder {
             \(userQuestion)\(imagePromptSuffix(count: currentImageCount))
 
             初始查询:
+            \(initialQuery)
+            <turn|>
+            <|turn>model
+
+            """
+        } else if LanguageService.shared.current.isJapanese {
+            return """
+            <|turn>system
+            \(defaultSystemPrompt)
+            \(currentTimeAnchorBlock())
+            あなたはネット検索クエリのプランナーです。ユーザーの質問を検索エンジン向けの2〜4件のクエリ語に書き換えるのが任務です。
+            ルール:
+            - JSON オブジェクトだけを出力し、説明・Markdown・ツール呼び出しはしないでください。
+            - JSON schema: {"queries":["..."],"freshness":"current|recent|static|unspecified"}
+            - queries にはユーザーの主体・場所・期間・比較条件・言語の好みを必ず残してください。
+            - 時効性のある質問（リアルタイム/今日/最近/価格/為替/天気/ニュース/試合/政策/バージョンなど変化する情報）は freshness=current または recent で表します。
+            - 時効性は freshness フィールドにだけ入れます；クエリ語は主題語そのものを保ち、絶対日付や「今日/今」のような時間語を入れないでください（検索側が freshness に従って自動で時間フィルタをかけます；クエリ語に「2026年6月6日」のような日付があると、かえってカレンダー/年/日程などの無関係なページにマッチします）。
+            - ユーザーが尋ねていない実体・都市・ブランド・日付・サイト名を勝手に追加しないでください。
+            - 各 query は6〜20語または4〜40文字に収め、完全な文は避けてください。
+            <turn|>
+            <|turn>user
+            ユーザーの質問:
+            \(userQuestion)\(imagePromptSuffix(count: currentImageCount))
+
+            初期クエリ:
             \(initialQuery)
             <turn|>
             <|turn>model
@@ -1393,6 +1649,30 @@ struct PromptBuilder {
             \(userQuestion)\(imagePromptSuffix(count: currentImageCount))
 
             上一轮搜索摘要:
+            \(summary)
+            <turn|>
+            <|turn>model
+
+            """
+        } else if LanguageService.shared.current.isJapanese {
+            return """
+            <|turn>system
+            \(defaultSystemPrompt)
+            \(currentTimeAnchorBlock())
+            あなたはネット検索の二次クエリプランナーです。前回の検索では根拠が不足したため、失敗の情報を踏まえて2〜4件の異なる検索 query を作り直してください。
+            ルール:
+            - JSON オブジェクトだけを出力し、説明・Markdown・ツール呼び出しはしないでください。
+            - JSON schema: {"queries":["..."],"reason":"..."}
+            - 新しい queries にはユーザーの元の質問の主体・場所・期間・制約を必ず残してください。
+            - 前回の query の繰り返しを避け、同義表現・英語/中国語の言い換え・公式/データソースの表現・具体的な実体名・より狭い条件に切り替えてください。
+            - ユーザーが尋ねていない実体・都市・ブランド・日付・サイト名を勝手に追加しないでください。
+            - 各 query は6〜20語または4〜40文字に収めてください。
+            <turn|>
+            <|turn>user
+            ユーザーの質問:
+            \(userQuestion)\(imagePromptSuffix(count: currentImageCount))
+
+            前回の検索の要約:
             \(summary)
             <turn|>
             <|turn>model
@@ -1462,6 +1742,32 @@ struct PromptBuilder {
             <|turn>model
 
             """
+        } else if LanguageService.shared.current.isJapanese {
+            return """
+            <|turn>system
+            \(defaultSystemPrompt)
+            \(currentTimeAnchorBlock())
+            あなたはネット検索が返した複数のソースから、ユーザーの質問に答えられる事実を抽出しています。下記のソース資料だけに基づき、資料外の情報は一切補わず、今は最終回答を書かないでください。
+            出力の要件：
+            - ユーザーの質問に直接関連する具体的な事実を1件ずつ列挙し、各件は1文で、文末にソース番号を付けます（例: [来源2]）。
+            - 具体的な数値と日付（価格・為替・スコア・気温・パーセント・時刻など）はそのまま残し、四捨五入したり「約/おおよそ」に書き換えたりしないでください。
+            - ソースごとに数値が食い違う場合は別々に列挙し各自のソースを付けます；同じ事実を複数のソースが裏づける場合はソースをまとめて付けてもかまいません。
+            - 質問に無関係なソース（チームの名簿・ナビゲーションバー・広告・用語の定義・質問の主体と関係のない古い内容など）は飛ばし、それらの項目は書かないでください。
+            - どのソースにも質問に答えられる事実がない場合は、1行だけ出力: NO RELEVANT FACTS。
+            - 「総結/引用 URL」などの小見出しは書かず、社交辞令も書かず、事実の一覧だけを出力してください。
+            <turn|>
+            <|turn>user
+            ユーザーの質問：
+            \(userQuestion)\(imagePromptSuffix(count: currentImageCount))
+
+            ソース資料：
+            \(candidates)
+
+            関連する事実の一覧だけを出力してください。
+            <turn|>
+            <|turn>model
+
+            """
         } else {
             return """
             <|turn>system
@@ -1502,7 +1808,7 @@ struct PromptBuilder {
         let result = compactToolResultSummary(toolResultSummary, maxCharacters: 5_200)
         let draft = compactToolResultSummary(draftAnswer, maxCharacters: 1_600)
         let issues = validationIssues.isEmpty
-            ? tr("输出格式或证据约束不稳定。", "The output format or evidence grounding is unstable.")
+            ? tr("输出格式或证据约束不稳定。", "The output format or evidence grounding is unstable.", "出力形式または根拠の制約が安定していません。")
             : validationIssues.map { "- \($0)" }.joined(separator: "\n")
 
         if LanguageService.shared.current.isChinese {
@@ -1535,6 +1841,40 @@ struct PromptBuilder {
             \(issues)
 
             请只输出修复后的最终答案。
+            <turn|>
+            <|turn>model
+
+            """
+        } else if LanguageService.shared.current.isJapanese {
+            return """
+            <|turn>system
+            \(defaultSystemPrompt)
+            \(currentTimeAnchorBlock())
+            あなたはネット検索に基づく回答を修復しています。下記のツール結果だけに基づいて最終回答を書き直してください；ツールを呼び出さず；ツール結果外の情報を補わないでください。
+            出力の契約:
+            - 「総結」と「引用 URL」の2つの段落を必ず含めてください。
+            - たとえソースが英語や他言語でも、回答は全編にわたり日本語で書いてください。
+            - 関連性は形式に優先します：query_relevant=false・「主題相关性低」の表示・confidence=low・トップ/入口ページ・事実として直接使えない項目は無視し、構造を埋めるために無関係な結果を要約しないでください。
+            - 時効性は並べ替えに使い、拒否には使いません：最新の関連項目を先に出してその発布時間を明記し、新しい順に整理します。
+            - 「総結」はスキャンしやすい構造化された Markdown にし、1段落の長文にしないでください；結論・重要な数値・テーマ別の要点・必要な不確実性だけを書き；URL・host・ソースのかっこ書き・検索時刻・内部の流れは置かないでください。
+            - 単純な事実の質問はまず直接の答えを出します；ニュース・トレンド・比較・リスト類の質問は短いラベル付きの要点を3〜6件使います；順位・比較・価格・仕様・時系列が明らかに適している場合のみ表を使います。
+            - 「引用 URL」には関連するソースの Markdown リンクだけを並べます、例: 1. [サイト名](https://example.com)。
+            - 時間条件を厳密に満たす結果がなければ、「より新しいものは見つかりませんでした、以下は検索できた最新の内容です」と正直に述べ、それでも最新の関連項目を日付付きで示します；関連する結果が全くない場合のみ根拠不足と述べます。捏造せず、古い内容を当日のものと偽らないでください。
+            <turn|>
+            <|turn>user
+            ユーザーの質問：
+            \(userQuestion)\(imagePromptSuffix(count: currentImageCount))
+
+            ツール \(toolName) の返答：
+            \(result)
+
+            修復対象の回答：
+            \(draft)
+
+            修復が必要な問題：
+            \(issues)
+
+            修復後の最終回答だけを出力してください。
             <turn|>
             <|turn>model
 
@@ -1643,6 +1983,31 @@ struct PromptBuilder {
             不要重复调用工具，不要反问，不要提到工具名、Skill、status、result、arguments 等字段。
             不要输出 Markdown 代码块，也不要输出 JSON、键名、模板或中间步骤。
             不能输出空白。
+            <turn|>
+            <|turn>model
+
+            """
+        } else if LanguageService.shared.current.isJapanese {
+            leanSystemBlock = """
+            <|turn>system
+            \(defaultSystemPrompt) 回答はユーザーが入力した言語に合わせ、簡潔で実用的に.
+            <turn|>
+
+            """
+            userBlock = """
+            <|turn>user
+            ユーザーの元の質問：
+            \(userQuestion)\(imagePromptSuffix(count: currentImageCount))
+
+            ツール \(toolName) は実行が完了しました。
+            ユーザーにそのまま渡せる結果：
+            \(toolResultSummary)
+
+            以上の結果に基づいてユーザーに直接答えてください。
+            上記の内容がすでに完全な答えなら、最小限の整理だけにとどめてよいですが、重要な情報を漏らさないでください。
+            ツールを再度呼び出さず、聞き返さず、ツール名・Skill・status・result・arguments などのフィールドに言及しないでください。
+            Markdown のコードブロックも、JSON・キー名・テンプレート・中間ステップも出力しないでください。
+            空白を出力しないでください。
             <turn|>
             <|turn>model
 
@@ -2252,6 +2617,30 @@ struct PromptBuilder {
             - 不要反问，不要提到工具名、Skill、status、result、arguments 等字段。
             - 不要输出 Markdown 代码块，也不要输出 JSON、键名、模板或中间步骤。
             - 不能输出空白。
+            <turn|>
+            <|turn>model
+
+            """
+        } else if LanguageService.shared.current.isJapanese {
+            var resultsBlock = ""
+            for (toolName, result) in toolResults {
+                resultsBlock += "ツール \(toolName) の実行結果：\(result)\n"
+            }
+
+            return systemBlock + extractHistoryBlock(from: originalPrompt) + """
+            <|turn>user
+            ユーザーの元の質問：
+            \(userQuestion)\(imagePromptSuffix(count: currentImageCount))
+
+            すべてのツールの実行が完了しました：
+            \(resultsBlock)
+
+            以上のすべての結果に基づいてユーザーに答えてください：
+            - 以上の結果でユーザーの質問に答えられるなら、最終回答を直接出し、すでに成功したツールを再度呼び出さないでください。
+            - 答えを補うために新しいツールをさらに呼び出す必要がある場合は、1つ以上の `<tool_call>...</tool_call>` を出力してかまいません。
+            - 聞き返さず、ツール名・Skill・status・result・arguments などのフィールドに言及しないでください。
+            - Markdown のコードブロックも、JSON・キー名・テンプレート・中間ステップも出力しないでください。
+            - 空白を出力しないでください。
             <turn|>
             <|turn>model
 

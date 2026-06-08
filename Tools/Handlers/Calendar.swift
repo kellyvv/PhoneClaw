@@ -10,13 +10,15 @@ enum CalendarTools {
             name: "calendar-create-event",
             description: tr(
                 "创建新的日历事项，可写入标题、开始时间、结束时间、地点和备注",
-                "Create a new calendar event with title, start time, end time, location, and notes."
+                "Create a new calendar event with title, start time, end time, location, and notes.",
+                "タイトル・開始時刻・終了時刻・場所・メモを指定して、新しいカレンダー予定を作成します。"
             ),
             // 设计原则: SKILL/TOOL 契约按最低能力的模型 (E2B 2B) 来. 不要求 LLM 把
             // 中文相对时间转成 ISO 8601 — handler 自己解析任何合理时间表达式.
             parameters: tr(
                 "title: 事件标题（可选, 没说就用用户原话里的事件名）, start: 开始时间 (ISO 8601 / 中文相对时间如\"明天下午两点\" / 中文绝对时间如\"5月3日15:00\" 都可), end: 结束时间（可选, 同 start 格式）, location: 地点（可选）, notes: 备注（可选）",
-                "title: event title (optional, falls back to the event name from the user's phrasing), start: start time (ISO 8601, or natural language like \"tomorrow 2pm\" / \"May 3 15:00\"), end: end time (optional, same format as start), location: location (optional), notes: notes (optional)"
+                "title: event title (optional, falls back to the event name from the user's phrasing), start: start time (ISO 8601, or natural language like \"tomorrow 2pm\" / \"May 3 15:00\"), end: end time (optional, same format as start), location: location (optional), notes: notes (optional)",
+                "title: 予定のタイトル（任意。指定がなければユーザーの発話にある予定名を使う）, start: 開始時刻（ISO 8601、または\"明日の午後2時\"のような自然な相対表現や\"5月3日15:00\"のような絶対表現も可）, end: 終了時刻（任意。start と同じ形式）, location: 場所（任意）, notes: メモ（任意）"
             ),
             requiredParameters: ["start"],
             execute: { args in
@@ -32,11 +34,13 @@ enum CalendarTools {
             name: "calendar-query-events",
             description: tr(
                 "读取指定时间范围内的日历事项，用于日程总结、忙闲分析和空闲时间查询",
-                "Read calendar events in a time range for schedule summaries, availability checks, and local planning analysis."
+                "Read calendar events in a time range for schedule summaries, availability checks, and local planning analysis.",
+                "指定した期間のカレンダー予定を読み取り、予定のまとめ・空き状況の確認・空き時間の検索に使います。"
             ),
             parameters: tr(
                 "period: 预设范围（可选: today/tomorrow/this_week/next_week/next_7_days）, start: 开始时间或日期范围表达（可选, 例如\"今天\"/\"明天下午\"）, end: 结束时间（可选）, days: 从 start 起查询天数（可选）, calendar: 日历名称过滤（可选）, limit: 最大返回数量（可选, 默认 20, 最多 50）, include_notes: 是否包含备注（可选, 默认 false）",
-                "period: preset range (optional: today/tomorrow/this_week/next_week/next_7_days), start: start time or range expression (optional, e.g. \"today\" / \"tomorrow afternoon\"), end: end time (optional), days: number of days from start (optional), calendar: calendar title filter (optional), limit: max events to return (optional, default 20, max 50), include_notes: include event notes (optional, default false)"
+                "period: preset range (optional: today/tomorrow/this_week/next_week/next_7_days), start: start time or range expression (optional, e.g. \"today\" / \"tomorrow afternoon\"), end: end time (optional), days: number of days from start (optional), calendar: calendar title filter (optional), limit: max events to return (optional, default 20, max 50), include_notes: include event notes (optional, default false)",
+                "period: プリセット範囲（任意: today/tomorrow/this_week/next_week/next_7_days）, start: 開始時刻または範囲の表現（任意。例:\"今日\"/\"明日の午後\"）, end: 終了時刻（任意）, days: start からの日数（任意）, calendar: カレンダー名でのフィルタ（任意）, limit: 返す予定の最大件数（任意。既定20、最大50）, include_notes: メモを含めるか（任意。既定false）"
             ),
             aliases: ["calendar-query", "calendar-list-events", "calendar-read-events"],
             execute: { args in
@@ -90,18 +94,20 @@ enum CalendarTools {
     private static func createEventCanonical(_ args: [String: Any]) async throws -> CanonicalToolResult {
         let rawTitle = (args["title"] as? String)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let title = rawTitle.isEmpty ? tr("新日历事项", "New calendar event") : rawTitle
+        let title = rawTitle.isEmpty ? tr("新日历事项", "New calendar event", "新しいカレンダー予定") : rawTitle
 
         guard let startRaw = args["start"] as? String,
               let parsed = parseToolDateTimeDetailed(startRaw) else {
             return calendarFailure(
                 summary: tr(
                     "什么时候开始? 例如\"明天下午两点\"或\"5月3日15:00\"",
-                    "When should it start? For example \"tomorrow 2pm\" or \"May 3 15:00\"."
+                    "When should it start? For example \"tomorrow 2pm\" or \"May 3 15:00\".",
+                    "いつ始めますか? 例えば\"明日の午後2時\"や\"5月3日15:00\"のように。"
                 ),
                 detail: tr(
                     "没听清开始时间, 可以再说一次吗? 例如\"明天下午两点\"或\"5月3日15:00\"",
-                    "I didn't catch the start time. Could you say it again? For example \"tomorrow 2pm\" or \"May 3 15:00\"."
+                    "I didn't catch the start time. Could you say it again? For example \"tomorrow 2pm\" or \"May 3 15:00\".",
+                    "開始時刻が聞き取れませんでした。もう一度言ってもらえますか? 例えば\"明日の午後2時\"や\"5月3日15:00\"のように。"
                 ),
                 errorCode: "TIME_UNPARSEABLE"
             )
@@ -110,11 +116,13 @@ enum CalendarTools {
             return calendarFailure(
                 summary: tr(
                     "想约什么时间呢? 例如\"\(startRaw)下午两点\"",
-                    "What time would you like? For example \"\(startRaw) 2pm\"."
+                    "What time would you like? For example \"\(startRaw) 2pm\".",
+                    "何時にしますか? 例えば\"\(startRaw)の午後2時\"のように。"
                 ),
                 detail: tr(
                     "\u{201C}\(startRaw)\u{201D}没说几点, 想约什么时间呢? 例如\"\(startRaw)下午两点\"",
-                    "\u{201C}\(startRaw)\u{201D} didn't include a time of day. What time would you like? For example \"\(startRaw) 2pm\"."
+                    "\u{201C}\(startRaw)\u{201D} didn't include a time of day. What time would you like? For example \"\(startRaw) 2pm\".",
+                    "\u{201C}\(startRaw)\u{201D}には時刻が含まれていません。何時にしますか? 例えば\"\(startRaw)の午後2時\"のように。"
                 ),
                 errorCode: "TIME_MISSING"
             )
@@ -127,11 +135,13 @@ enum CalendarTools {
             return calendarFailure(
                 summary: tr(
                     "结束时间不能早于开始时间，请再确认一下。",
-                    "The end time can't be earlier than the start time — please double-check."
+                    "The end time can't be earlier than the start time — please double-check.",
+                    "終了時刻を開始時刻より前にはできません。もう一度ご確認ください。"
                 ),
                 detail: tr(
                     "end 不能早于 start",
-                    "end must not be earlier than start"
+                    "end must not be earlier than start",
+                    "end は start より前にできません"
                 ),
                 errorCode: "END_BEFORE_START"
             )
@@ -141,7 +151,8 @@ enum CalendarTools {
         let notes = (args["notes"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         let summary = tr(
             "已创建：\(title)，\(displayDateTimeString(from: startDate))。",
-            "Created: \(title), \(displayDateTimeString(from: startDate))."
+            "Created: \(title), \(displayDateTimeString(from: startDate)).",
+            "作成しました：\(title)、\(displayDateTimeString(from: startDate))。"
         )
 
         #if !os(iOS)
@@ -170,11 +181,13 @@ enum CalendarTools {
             return calendarFailure(
                 summary: tr(
                     "请先在系统设置里允许日历权限。",
-                    "Please enable Calendar access in System Settings first."
+                    "Please enable Calendar access in System Settings first.",
+                    "先にシステム設定でカレンダーへのアクセスを許可してください。"
                 ),
                 detail: tr(
                     "未获得日历写入权限",
-                    "Calendar write permission not granted"
+                    "Calendar write permission not granted",
+                    "カレンダーへの書き込み権限がありません"
                 ),
                 errorCode: "CALENDAR_PERMISSION_DENIED"
             )
@@ -184,11 +197,13 @@ enum CalendarTools {
             return calendarFailure(
                 summary: tr(
                     "当前没有可写的日历，请先在系统日历 App 中启用或创建一个日历。",
-                    "No writable calendar is available. Please enable or create one in the system Calendar app first."
+                    "No writable calendar is available. Please enable or create one in the system Calendar app first.",
+                    "書き込み可能なカレンダーがありません。先にシステムのカレンダーAppで有効化するか、新しく作成してください。"
                 ),
                 detail: tr(
                     "没有可用于新建事项的可写日历，请先在系统日历中启用或创建一个日历",
-                    "No writable calendar available for new events — enable or create one in the system Calendar app first"
+                    "No writable calendar available for new events — enable or create one in the system Calendar app first",
+                    "新規予定に使える書き込み可能なカレンダーがありません。先にシステムのカレンダーで有効化するか作成してください"
                 ),
                 errorCode: "CALENDAR_NO_WRITABLE"
             )
@@ -228,11 +243,13 @@ enum CalendarTools {
             return calendarFailure(
                 summary: tr(
                     "没听清要查询哪个时间范围，可以说“今天”“明天”或“本周”。",
-                    "I couldn't tell which date range to check. Try \"today\", \"tomorrow\", or \"this week\"."
+                    "I couldn't tell which date range to check. Try \"today\", \"tomorrow\", or \"this week\".",
+                    "どの期間を調べればよいか聞き取れませんでした。\"今日\"\"明日\"\"今週\"などと言ってみてください。"
                 ),
                 detail: tr(
                     "无法解析日历查询时间范围",
-                    "Unable to parse calendar query range"
+                    "Unable to parse calendar query range",
+                    "カレンダーの照会期間を解釈できません"
                 ),
                 errorCode: "CALENDAR_QUERY_RANGE_UNPARSEABLE"
             )
@@ -254,11 +271,13 @@ enum CalendarTools {
             return calendarFailure(
                 summary: tr(
                     "请先允许日历读取权限。",
-                    "Please allow Calendar read access first."
+                    "Please allow Calendar read access first.",
+                    "先にカレンダーの読み取りアクセスを許可してください。"
                 ),
                 detail: tr(
                     "未获得日历读取权限",
-                    "Calendar read permission not granted"
+                    "Calendar read permission not granted",
+                    "カレンダーの読み取り権限がありません"
                 ),
                 errorCode: "CALENDAR_READ_PERMISSION_DENIED"
             )
@@ -283,7 +302,7 @@ enum CalendarTools {
                 let title = (event.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
                 return CalendarEventSnapshot(
                     id: event.eventIdentifier ?? "",
-                    title: title.isEmpty ? tr("未命名日程", "Untitled event") : title,
+                    title: title.isEmpty ? tr("未命名日程", "Untitled event", "名称未設定の予定") : title,
                     start: event.startDate,
                     end: event.endDate,
                     isAllDay: event.isAllDay,
@@ -361,8 +380,8 @@ enum CalendarTools {
             let defaultDays = days > 0 ? days : 1
             inferredEnd = calendar.date(byAdding: .day, value: defaultDays, to: startDate) ?? startDate.addingTimeInterval(86_400)
             label = days > 0
-                ? tr("未来 \(defaultDays) 天", "Next \(defaultDays) days")
-                : tr("今天", "Today")
+                ? tr("未来 \(defaultDays) 天", "Next \(defaultDays) days", "今後 \(defaultDays) 日間")
+                : tr("今天", "Today", "今日")
         }
 
         let endDate: Date
@@ -408,16 +427,16 @@ enum CalendarTools {
         }
 
         if ["today", "今天", "今日"].contains(normalized) {
-            return daysFromToday(0, label: tr("今天", "Today"))
+            return daysFromToday(0, label: tr("今天", "Today", "今日"))
         }
         if ["tomorrow", "明天", "明日"].contains(normalized) {
-            return daysFromToday(1, label: tr("明天", "Tomorrow"))
+            return daysFromToday(1, label: tr("明天", "Tomorrow", "明日"))
         }
         if ["yesterday", "昨天", "昨日"].contains(normalized) {
-            return daysFromToday(-1, label: tr("昨天", "Yesterday"))
+            return daysFromToday(-1, label: tr("昨天", "Yesterday", "昨日"))
         }
         if normalized.contains("后天") {
-            return daysFromToday(2, label: tr("后天", "The day after tomorrow"))
+            return daysFromToday(2, label: tr("后天", "The day after tomorrow", "明後日"))
         }
 
         if normalized.contains("thisweek") || normalized.contains("本周") || normalized.contains("这周") {
@@ -425,7 +444,7 @@ enum CalendarTools {
             return CalendarQueryRange(
                 start: interval.start,
                 end: interval.end,
-                label: tr("本周", "This week")
+                label: tr("本周", "This week", "今週")
             )
         }
         if normalized.contains("nextweek") || normalized.contains("下周") || normalized.contains("下星期") {
@@ -437,7 +456,7 @@ enum CalendarTools {
             return CalendarQueryRange(
                 start: start,
                 end: end,
-                label: tr("下周", "Next week")
+                label: tr("下周", "Next week", "来週")
             )
         }
         if normalized.contains("next7days")
@@ -445,7 +464,7 @@ enum CalendarTools {
             || normalized.contains("最近7天")
             || normalized.contains("一周内") {
             let end = calendar.date(byAdding: .day, value: 7, to: today) ?? today.addingTimeInterval(7 * 86_400)
-            return CalendarQueryRange(start: today, end: end, label: tr("未来 7 天", "Next 7 days"))
+            return CalendarQueryRange(start: today, end: end, label: tr("未来 7 天", "Next 7 days", "今後 7 日間"))
         }
 
         return nil
@@ -595,32 +614,35 @@ enum CalendarTools {
     ) -> String {
         let label = range.label
         guard !events.isEmpty else {
-            return tr("\(label)没有日程。", "No calendar events for \(label).")
+            return tr("\(label)没有日程。", "No calendar events for \(label).", "\(label)は予定がありません。")
         }
 
         let preview = events.prefix(3)
             .map { "\($0.title) \(displayEventTime($0))" }
-            .joined(separator: tr("；", "; "))
+            .joined(separator: tr("；", "; ", "、"))
         let extra = events.count > 3
-            ? tr(" 等", " and more")
+            ? tr(" 等", " and more", " ほか")
             : ""
         let busyText = stats.busyMinutes > 0
-            ? tr("，忙碌约 \(formatMinutes(stats.busyMinutes))", ", about \(formatMinutes(stats.busyMinutes)) busy")
+            ? tr("，忙碌约 \(formatMinutes(stats.busyMinutes))", ", about \(formatMinutes(stats.busyMinutes)) busy", "、うち約 \(formatMinutes(stats.busyMinutes)) は予定あり")
             : ""
         return tr(
             "\(label)有 \(events.count) 个日程\(busyText)：\(preview)\(extra)。",
-            "\(label) has \(events.count) calendar events\(busyText): \(preview)\(extra)."
+            "\(label) has \(events.count) calendar events\(busyText): \(preview)\(extra).",
+            "\(label)は \(events.count) 件の予定があります\(busyText)：\(preview)\(extra)。"
         )
     }
 
     private static func displayEventTime(_ event: CalendarEventSnapshot) -> String {
         if event.isAllDay {
-            return tr("全天", "all day")
+            return tr("全天", "all day", "終日")
         }
         let formatter = DateFormatter()
-        formatter.locale = LanguageService.shared.current.isChinese
-            ? Locale(identifier: "zh_Hans_CN")
-            : Locale(identifier: "en_US")
+        formatter.locale = LanguageService.shared.current.isJapanese
+            ? Locale(identifier: "ja_JP")
+            : (LanguageService.shared.current.isChinese
+                ? Locale(identifier: "zh_Hans_CN")
+                : Locale(identifier: "en_US"))
         formatter.timeZone = .current
         formatter.timeStyle = .short
         formatter.dateStyle = Foundation.Calendar.current.isDate(event.start, inSameDayAs: event.end)
@@ -631,9 +653,11 @@ enum CalendarTools {
 
     private static func displayDateRangeLabel(start: Date, end: Date) -> String {
         let formatter = DateFormatter()
-        formatter.locale = LanguageService.shared.current.isChinese
-            ? Locale(identifier: "zh_Hans_CN")
-            : Locale(identifier: "en_US")
+        formatter.locale = LanguageService.shared.current.isJapanese
+            ? Locale(identifier: "ja_JP")
+            : (LanguageService.shared.current.isChinese
+                ? Locale(identifier: "zh_Hans_CN")
+                : Locale(identifier: "en_US"))
         formatter.timeZone = .current
         formatter.dateStyle = .medium
         formatter.timeStyle = .none
@@ -642,14 +666,14 @@ enum CalendarTools {
 
     private static func formatMinutes(_ minutes: Int) -> String {
         if minutes < 60 {
-            return tr("\(minutes) 分钟", "\(minutes) minutes")
+            return tr("\(minutes) 分钟", "\(minutes) minutes", "\(minutes) 分")
         }
         let hours = minutes / 60
         let rest = minutes % 60
         if rest == 0 {
-            return tr("\(hours) 小时", "\(hours) hours")
+            return tr("\(hours) 小时", "\(hours) hours", "\(hours) 時間")
         }
-        return tr("\(hours) 小时 \(rest) 分钟", "\(hours) hours \(rest) minutes")
+        return tr("\(hours) 小时 \(rest) 分钟", "\(hours) hours \(rest) minutes", "\(hours) 時間 \(rest) 分")
     }
 
     private static func stringArg(_ value: Any?) -> String? {
@@ -778,7 +802,7 @@ enum CalendarTools {
             return [
                 CalendarEventSnapshot(
                     id: "mock-calendar-standup",
-                    title: tr("晨会", "Standup"),
+                    title: tr("晨会", "Standup", "朝会"),
                     start: date(hour: 9, minute: 30),
                     end: date(hour: 10),
                     isAllDay: false,
@@ -789,18 +813,18 @@ enum CalendarTools {
                 ),
                 CalendarEventSnapshot(
                     id: "mock-calendar-review",
-                    title: tr("产品评审", "Product review"),
+                    title: tr("产品评审", "Product review", "プロダクトレビュー"),
                     start: date(hour: 14),
                     end: date(hour: 15),
                     isAllDay: false,
-                    location: tr("3 楼会议室", "3F Meeting Room"),
+                    location: tr("3 楼会议室", "3F Meeting Room", "3階 会議室"),
                     notes: nil,
                     calendarTitle: "PhoneClaw Mock",
                     availability: "busy"
                 ),
                 CalendarEventSnapshot(
                     id: "mock-calendar-tomorrow",
-                    title: tr("客户沟通", "Customer sync"),
+                    title: tr("客户沟通", "Customer sync", "顧客との打ち合わせ"),
                     start: date(dayOffset: 1, hour: 16),
                     end: date(dayOffset: 1, hour: 17),
                     isAllDay: false,

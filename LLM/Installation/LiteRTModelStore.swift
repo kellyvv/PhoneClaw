@@ -419,28 +419,32 @@ final class LiteRTModelStore: ModelInstaller {
         if let failure = error as? DownloadFailure {
             switch failure {
             case .httpStatus(let code):
-                return tr("下载失败：HTTP \(code)", "Download failed: HTTP \(code)")
+                return tr("下载失败：HTTP \(code)", "Download failed: HTTP \(code)", "ダウンロードに失敗しました：HTTP \(code)")
             case .insufficientDiskSpace(let required, let available):
                 return tr(
                     "磁盘空间不足：需要 \(formatBytes(required))，可用 \(formatBytes(available))",
-                    "Not enough storage: needs \(formatBytes(required)), available \(formatBytes(available))"
+                    "Not enough storage: needs \(formatBytes(required)), available \(formatBytes(available))",
+                    "ストレージ容量が不足しています：\(formatBytes(required)) 必要ですが、空き容量は \(formatBytes(available)) です"
                 )
             case .validatorMismatch:
                 return tr(
                     "下载源校验不一致，请重试。",
-                    "Download source validation changed. Please retry."
+                    "Download source validation changed. Please retry.",
+                    "ダウンロード元の検証結果が一致しません。もう一度お試しください。"
                 )
             case .manifestCorrupt:
                 return tr(
                     "下载记录损坏，已重新开始下载。",
-                    "Download record was corrupt and has been restarted."
+                    "Download record was corrupt and has been restarted.",
+                    "ダウンロード記録が破損していたため、ダウンロードを最初からやり直しました。"
                 )
             case .cancelled:
-                return tr("下载已取消", "Download cancelled")
+                return tr("下载已取消", "Download cancelled", "ダウンロードをキャンセルしました")
             case .invalidURL, .invalidResponse, .fileSystem:
                 return tr(
                     "下载失败，请检查网络后重试。",
-                    "Download failed. Check your network and retry."
+                    "Download failed. Check your network and retry.",
+                    "ダウンロードに失敗しました。ネットワークを確認して、もう一度お試しください。"
                 )
             }
         }

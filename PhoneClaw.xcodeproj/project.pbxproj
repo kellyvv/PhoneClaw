@@ -209,6 +209,10 @@
 		FEFA2136332FF2B38F71C999 /* PromptBuilder+LiveVoice.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3E547AAB840AEB6F57C71A4 /* PromptBuilder+LiveVoice.swift */; };
 		ICONASSETS0000000000002 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = ICONASSETS0000000000001 /* Assets.xcassets */; };
 		MINICPMV0000000000001 /* MiniCPMVBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = MINICPMV0000000000101 /* MiniCPMVBackend.swift */; };
+		REMOTEINFERENCE00000001 /* RemoteInferenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = REMOTEINFERENCE00000101 /* RemoteInferenceService.swift */; };
+		LANDISCOVERY00000000001 /* LANDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = LANDISCOVERY00000000101 /* LANDiscovery.swift */; };
+		LANBINDING0000000000001 /* LANBinding.swift in Sources */ = {isa = PBXBuildFile; fileRef = LANBINDING0000000000101 /* LANBinding.swift */; };
+		RMVIEW00000000000001 /* RemoteMacSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = RMVIEW00000000000101 /* RemoteMacSettingsView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -357,6 +361,10 @@
 		F8D921B323B9D6342A22A29E /* LiveAudioIO.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveAudioIO.swift; path = Live/Audio/LiveAudioIO.swift; sourceTree = SOURCE_ROOT; };
 		ICONASSETS0000000000001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		MINICPMV0000000000101 /* MiniCPMVBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniCPMVBackend.swift; sourceTree = "<group>"; };
+		REMOTEINFERENCE00000101 /* RemoteInferenceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RemoteInferenceService.swift; path = LLM/Backends/Remote/RemoteInferenceService.swift; sourceTree = SOURCE_ROOT; };
+		LANDISCOVERY00000000101 /* LANDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LANDiscovery.swift; path = LLM/Backends/Remote/LANDiscovery.swift; sourceTree = SOURCE_ROOT; };
+		LANBINDING0000000000101 /* LANBinding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LANBinding.swift; path = LLM/Backends/Remote/LANBinding.swift; sourceTree = SOURCE_ROOT; };
+		RMVIEW00000000000101 /* RemoteMacSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RemoteMacSettingsView.swift; path = UI/RemoteMacSettingsView.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -721,6 +729,10 @@
 			isa = PBXGroup;
 			children = (
 				MINICPMV0000000000101 /* MiniCPMVBackend.swift */,
+				REMOTEINFERENCE00000101 /* RemoteInferenceService.swift */,
+				LANDISCOVERY00000000101 /* LANDiscovery.swift */,
+				LANBINDING0000000000101 /* LANBinding.swift */,
+				RMVIEW00000000000101 /* RemoteMacSettingsView.swift */,
 			);
 			path = MiniCPMV;
 			sourceTree = "<group>";
@@ -1051,6 +1063,10 @@
 				BB2000000000000000000006 /* PredefinedModels.swift in Sources */,
 				BB2000000000000000000007 /* LiteRTBackend.swift in Sources */,
 				MINICPMV0000000000001 /* MiniCPMVBackend.swift in Sources */,
+				REMOTEINFERENCE00000001 /* RemoteInferenceService.swift in Sources */,
+				LANDISCOVERY00000000001 /* LANDiscovery.swift in Sources */,
+				LANBINDING0000000000001 /* LANBinding.swift in Sources */,
+				RMVIEW00000000000001 /* RemoteMacSettingsView.swift in Sources */,
 				DISPATCHER000000000001 /* BackendDispatcher.swift in Sources */,
 				BB2000000000000000000099 /* AudioBypassTest.swift in Sources */,
 				BB2000000000000000000008 /* LiteRTCatalog.swift in Sources */,
