@@ -752,6 +752,126 @@ extension AgentEngine {
         return nil
     }
 
+    // MARK: - Guarded Skill 路由
+
+    /// trigger 没命中时的确定性补漏层。
+    ///
+    /// iOS 27 Foundation Models 真机 probe 证明: 结构化输出能保证形状,
+    /// 但语义策略仍会把解释类问题误路由到 skill, 或把相对时间判断成缺参。
+    /// 因此真实 Router 先走低成本规则, 只返回需要加载的 Skill ID;
+    /// 缺参追问继续交给对应 SKILL.md 指令和工具链处理。
+    func guardedSkillRouteDecision(for userQuestion: String) -> GuardedSkillRouteDecision? {
+        guard HotfixFeatureFlags.enableGuardedSkillRouter else { return nil }
+
+        guard let decision = GuardedSkillRouter.route(
+            for: userQuestion,
+            enabledSkillIDs: enabledRouteSkillIDs(),
+            canonicalSkillID: { skillRegistry.canonicalSkillId(for: $0) }
+        ) else {
+            return nil
+        }
+
+        let selected = decision.skillID ?? "none"
+        log("[SkillRouter] source=guarded action=\(decision.action.rawValue) selected=\(selected) reason=\(decision.reason)")
+        return decision
+    }
+
+    func ios27FoundationSkillRouteDecision(for userQuestion: String) async -> GuardedSkillRouteDecision? {
+        guard shouldAttemptIOS27FoundationSkillRoute(for: userQuestion) else {
+            return nil
+        }
+
+        guard let result = await IOS27FoundationSkillRouter.route(
+            for: userQuestion,
+            enabledSkillIDs: enabledRouteSkillIDs()
+        ) else {
+            return nil
+        }
+
+        logIOS27FoundationRouteDiagnostics(result)
+        guard let decision = result.decision else {
+            return nil
+        }
+
+        let selected = decision.skillID ?? "none"
+        log("[SkillRouter] source=foundation action=\(decision.action.rawValue) selected=\(selected) reason=\(decision.reason)")
+        return decision
+    }
+
+    private func shouldAttemptIOS27FoundationSkillRoute(for userQuestion: String) -> Bool {
+        let normalized = userQuestion
+            .lowercased()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return false }
+
+        return containsAnyRouteSignal(normalized, [
+            "帮我", "给我", "替我", "安排", "创建", "添加", "新建", "预约",
+            "提醒", "待办", "记得", "翻译", "译成", "翻成", "译为",
+            "日程", "会议", "开会", "约会", "评审会", "同步会",
+            "schedule", "book", "create", "add", "remind", "translate"
+        ])
+    }
+
+    private func containsAnyRouteSignal(_ text: String, _ signals: [String]) -> Bool {
+        signals.contains { signal in
+            text.contains(signal)
+        }
+    }
+
+    private func logIOS27FoundationRouteDiagnostics(_ result: IOS27FoundationSkillRouteResult) {
+        let diagnostics = result.diagnostics
+        let action = result.decision?.action.rawValue ?? "none"
+        let selected = result.decision?.skillID ?? "none"
+        log(
+            "[SkillRouter] source=foundation_probe action=\(action) selected=\(selected) " +
+            "reason=\(diagnosticToken(diagnostics.reason)) " +
+            "availability=\(diagnosticToken(diagnostics.availability)) " +
+            "prewarm_ms=\(diagnosticValue(diagnostics.prewarmMilliseconds)) " +
+            "route_ms=\(diagnosticValue(diagnostics.routeMilliseconds)) " +
+            "input_tokens=\(diagnosticValue(diagnostics.inputTokens)) " +
+            "cached_input_tokens=\(diagnosticValue(diagnostics.cachedInputTokens)) " +
+            "output_tokens=\(diagnosticValue(diagnostics.outputTokens)) " +
+            "reasoning_tokens=\(diagnosticValue(diagnostics.reasoningTokens)) " +
+            "total_tokens=\(diagnosticValue(diagnostics.totalTokens)) " +
+            "confidence=\(diagnosticConfidence(diagnostics.confidence)) " +
+            "raw_action=\(diagnosticToken(diagnostics.rawAction)) " +
+            "raw_skill=\(diagnosticToken(diagnostics.rawSkillID)) " +
+            "raw_tool=\(diagnosticToken(diagnostics.rawToolName)) " +
+            "error=\(diagnosticToken(diagnostics.errorDescription))"
+        )
+    }
+
+    private func diagnosticValue<T>(_ value: T?) -> String {
+        value.map { "\($0)" } ?? "na"
+    }
+
+    private func diagnosticConfidence(_ value: Double?) -> String {
+        guard let value else { return "na" }
+        return String((value * 1000).rounded() / 1000)
+    }
+
+    private func diagnosticToken(_ value: String?) -> String {
+        guard let value, !value.isEmpty else { return "na" }
+        let collapsed = value
+            .replacingOccurrences(of: "\n", with: "_")
+            .replacingOccurrences(of: "\r", with: "_")
+            .replacingOccurrences(of: " ", with: "_")
+        return String(collapsed.prefix(120))
+    }
+
+    private func enabledRouteSkillIDs() -> Set<String> {
+        Set(
+            skillEntries.compactMap { entry -> String? in
+                guard entry.isEnabled,
+                      let definition = skillRegistry.getDefinition(entry.id),
+                      definition.isEnabled else {
+                    return nil
+                }
+                return entry.id
+            }
+        )
+    }
+
     // MARK: - 模型意图路由
 
     /// 当 trigger/sticky 都没有命中时, 用一个极小的模型分类器判断是否需要
@@ -773,11 +893,11 @@ extension AgentEngine {
 
         guard let rawDecision,
               let selected = parseNetworkIntentRoute(rawDecision, candidateIds: candidates.ids) else {
-            log("[IntentRouter] selected=none candidates=\(candidates.ids.count)")
+            log("[SkillRouter] source=model action=none selected=none reason=no_candidate candidates=\(candidates.ids.count)")
             return []
         }
 
-        log("[IntentRouter] selected=\(selected) candidates=\(candidates.ids.count)")
+        log("[SkillRouter] source=model action=useSkill selected=\(selected) reason=intent_router candidates=\(candidates.ids.count)")
         return [selected]
     }
 

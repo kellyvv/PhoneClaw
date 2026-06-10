@@ -91,7 +91,28 @@ extension AgentEngine {
         var matchedSkillIdsForTurn = requiresMultimodal
             ? []
             : matchedSkillIds(for: normalizedText, allowSticky: false)
+        if !matchedSkillIdsForTurn.isEmpty {
+            log("[SkillRouter] source=trigger action=useSkill selected=\(matchedSkillIdsForTurn.joined(separator: ",")) reason=trigger_match")
+        }
+        var guardedRouteDecision: GuardedSkillRouteDecision?
         if !requiresMultimodal, matchedSkillIdsForTurn.isEmpty {
+            guardedRouteDecision = guardedSkillRouteDecision(for: normalizedText)
+            if guardedRouteDecision?.action == .useSkill,
+               let skillID = guardedRouteDecision?.skillID {
+                matchedSkillIdsForTurn = [skillID]
+            }
+        }
+        let guardedRouteBlocksModelIntent = guardedRouteDecision?.action == .answerDirectly
+        var ios27RouteDecision: GuardedSkillRouteDecision?
+        if !requiresMultimodal, matchedSkillIdsForTurn.isEmpty, !guardedRouteBlocksModelIntent {
+            ios27RouteDecision = await ios27FoundationSkillRouteDecision(for: normalizedText)
+            if ios27RouteDecision?.action == .useSkill,
+               let skillID = ios27RouteDecision?.skillID {
+                matchedSkillIdsForTurn = [skillID]
+            }
+        }
+        let ios27RouteBlocksModelIntent = ios27RouteDecision?.action == .answerDirectly
+        if !requiresMultimodal, matchedSkillIdsForTurn.isEmpty, !guardedRouteBlocksModelIntent, !ios27RouteBlocksModelIntent {
             matchedSkillIdsForTurn = await modelIntentRoutedSkillIds(for: normalizedText)
         }
         var allowPreloadedSkillFallbackForTurn = !matchedSkillIdsForTurn.isEmpty

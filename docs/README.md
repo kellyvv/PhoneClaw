@@ -12,3 +12,5 @@ Public technical notes and launch materials for PhoneClaw.
 ## Existing engineering notes
 
 The rest of this directory contains implementation plans, risk audits, test fixtures, and internal architecture notes used during development.
+
+- [iOS 27 Core AI Research Plan](IOS27_CORE_AI_RESEARCH_PLAN.md)

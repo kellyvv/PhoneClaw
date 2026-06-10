@@ -13,6 +13,8 @@ private enum HotfixFlagKey: String {
     case enableHistoryTrim = "ENABLE_HISTORY_TRIM"
     case enableMultimodalSessionGroup = "ENABLE_MULTIMODAL_SESSION_GROUP"
     case enableImageFollowUpRegrounding = "ENABLE_IMAGE_FOLLOWUP_REGROUNDING"
+    case enableGuardedSkillRouter = "ENABLE_GUARDED_SKILL_ROUTER"
+    case enableIOS27FoundationRouter = "ENABLE_IOS27_FOUNDATION_ROUTER"
 }
 
 enum HotfixFeatureFlags {
@@ -38,6 +40,14 @@ enum HotfixFeatureFlags {
 
     static var enableImageFollowUpRegrounding: Bool {
         value(for: .enableImageFollowUpRegrounding, defaultValue: true)
+    }
+
+    static var enableGuardedSkillRouter: Bool {
+        value(for: .enableGuardedSkillRouter, defaultValue: true)
+    }
+
+    static var enableIOS27FoundationRouter: Bool {
+        value(for: .enableIOS27FoundationRouter, defaultValue: true)
     }
 
     private static func value(for key: HotfixFlagKey, defaultValue: Bool) -> Bool {
