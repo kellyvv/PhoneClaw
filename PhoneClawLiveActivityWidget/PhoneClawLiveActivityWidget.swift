@@ -1,3 +1,4 @@
+import AppIntents
 import ActivityKit
 import SwiftUI
 import WidgetKit
@@ -18,8 +19,13 @@ struct PhoneClawLiveActivityWidgetBundle: WidgetBundle {
     var body: some Widget {
         PhoneClawLiveActivityWidget()
         PhoneClawLiveLauncherWidget()
+        if #available(iOS 18.0, *) {
+            PhoneClawLiveControlWidget()
+        }
     }
 }
+
+private let phoneClawLiveLaunchURL = URL(string: "phoneclaw://live?mode=voice")!
 
 struct PhoneClawLiveActivityWidget: Widget {
     var body: some WidgetConfiguration {
@@ -420,7 +426,7 @@ struct PhoneClawLiveLauncherWidget: Widget {
             provider: PhoneClawLiveLauncherProvider()
         ) { entry in
             PhoneClawLiveLauncherView(entry: entry)
-                .widgetURL(URL(string: "phoneclaw://live?mode=voice"))
+                .widgetURL(phoneClawLiveLaunchURL)
         }
         .configurationDisplayName("PhoneClaw LIVE")
         .description("Open PhoneClaw directly in LIVE voice mode.")
@@ -551,5 +557,19 @@ private struct PhoneClawLiveLauncherView: View {
 
     private var inlineLauncher: some View {
         Label("PhoneClaw LIVE", systemImage: "waveform")
+    }
+}
+
+@available(iOS 18.0, *)
+struct PhoneClawLiveControlWidget: ControlWidget {
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: "PhoneClawLiveControlWidget") {
+            ControlWidgetButton(action: OpenURLIntent(phoneClawLiveLaunchURL)) {
+                Label("PhoneClaw LIVE", systemImage: "waveform")
+            }
+            .tint(.orange)
+        }
+        .displayName("PhoneClaw LIVE")
+        .description("Open PhoneClaw directly in LIVE voice mode.")
     }
 }

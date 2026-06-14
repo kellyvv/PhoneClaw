@@ -150,9 +150,10 @@ final class SkillRouterCompatibilityContractTests: XCTestCase {
     func testLiveLauncherWidgetSupportsLockScreenEntryPoints() throws {
         let widget = try source("PhoneClawLiveActivityWidget/PhoneClawLiveActivityWidget.swift")
 
+        XCTAssertTrue(widget.contains("private let phoneClawLiveLaunchURL = URL(string: \"phoneclaw://live?mode=voice\")!"))
         XCTAssertTrue(widget.contains("PhoneClawLiveLauncherWidget()"))
         XCTAssertTrue(widget.contains("kind: \"PhoneClawLiveLauncherWidget\""))
-        XCTAssertTrue(widget.contains(".widgetURL(URL(string: \"phoneclaw://live?mode=voice\"))"))
+        XCTAssertTrue(widget.contains(".widgetURL(phoneClawLiveLaunchURL)"))
         XCTAssertTrue(widget.contains(".supportedFamilies(["))
         XCTAssertTrue(widget.contains(".systemSmall"))
         XCTAssertTrue(widget.contains(".accessoryCircular"))
@@ -163,6 +164,19 @@ final class SkillRouterCompatibilityContractTests: XCTestCase {
         XCTAssertTrue(widget.contains("case .accessoryRectangular"))
         XCTAssertTrue(widget.contains("case .accessoryInline"))
         XCTAssertTrue(widget.contains("AccessoryWidgetBackground()"))
+    }
+
+    func testLiveControlWidgetSupportsControlCenterEntryPoint() throws {
+        let widget = try source("PhoneClawLiveActivityWidget/PhoneClawLiveActivityWidget.swift")
+
+        XCTAssertTrue(widget.contains("import AppIntents"))
+        XCTAssertTrue(widget.contains("if #available(iOS 18.0, *)"))
+        XCTAssertTrue(widget.contains("PhoneClawLiveControlWidget()"))
+        XCTAssertTrue(widget.contains("struct PhoneClawLiveControlWidget: ControlWidget"))
+        XCTAssertTrue(widget.contains("StaticControlConfiguration(kind: \"PhoneClawLiveControlWidget\")"))
+        XCTAssertTrue(widget.contains("ControlWidgetButton(action: OpenURLIntent(phoneClawLiveLaunchURL))"))
+        XCTAssertTrue(widget.contains("Label(\"PhoneClaw LIVE\", systemImage: \"waveform\")"))
+        XCTAssertTrue(widget.contains(".displayName(\"PhoneClaw LIVE\")"))
     }
 
     func testLiveASRReusesMainAgentSkillChain() throws {
