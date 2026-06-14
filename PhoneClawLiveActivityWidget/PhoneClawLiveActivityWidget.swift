@@ -424,7 +424,12 @@ struct PhoneClawLiveLauncherWidget: Widget {
         }
         .configurationDisplayName("PhoneClaw LIVE")
         .description("Open PhoneClaw directly in LIVE voice mode.")
-        .supportedFamilies([.systemSmall])
+        .supportedFamilies([
+            .systemSmall,
+            .accessoryCircular,
+            .accessoryRectangular,
+            .accessoryInline
+        ])
     }
 }
 
@@ -454,8 +459,25 @@ private struct PhoneClawLiveLauncherProvider: TimelineProvider {
 
 private struct PhoneClawLiveLauncherView: View {
     let entry: PhoneClawLiveLauncherEntry
+    @Environment(\.widgetFamily) private var widgetFamily
 
     var body: some View {
+        Group {
+            switch widgetFamily {
+            case .accessoryCircular:
+                circularLauncher
+            case .accessoryRectangular:
+                rectangularLauncher
+            case .accessoryInline:
+                inlineLauncher
+            default:
+                systemSmallLauncher
+            }
+        }
+        .containerBackground(.clear, for: .widget)
+    }
+
+    private var systemSmallLauncher: some View {
         ZStack(alignment: .bottomLeading) {
             LinearGradient(
                 colors: [
@@ -495,6 +517,39 @@ private struct PhoneClawLiveLauncherView: View {
             }
             .padding(14)
         }
-        .containerBackground(.clear, for: .widget)
+    }
+
+    private var circularLauncher: some View {
+        ZStack {
+            AccessoryWidgetBackground()
+            Image(systemName: "waveform")
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(.orange)
+        }
+    }
+
+    private var rectangularLauncher: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "waveform")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(.orange)
+                .frame(width: 22)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text("PhoneClaw LIVE")
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+                Text("点按开始语音")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+        }
+    }
+
+    private var inlineLauncher: some View {
+        Label("PhoneClaw LIVE", systemImage: "waveform")
     }
 }

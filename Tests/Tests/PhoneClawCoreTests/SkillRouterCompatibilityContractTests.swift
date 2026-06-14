@@ -147,6 +147,24 @@ final class SkillRouterCompatibilityContractTests: XCTestCase {
         XCTAssertTrue(agentEngine.contains("sessionStore.cancelPendingSave()"))
     }
 
+    func testLiveLauncherWidgetSupportsLockScreenEntryPoints() throws {
+        let widget = try source("PhoneClawLiveActivityWidget/PhoneClawLiveActivityWidget.swift")
+
+        XCTAssertTrue(widget.contains("PhoneClawLiveLauncherWidget()"))
+        XCTAssertTrue(widget.contains("kind: \"PhoneClawLiveLauncherWidget\""))
+        XCTAssertTrue(widget.contains(".widgetURL(URL(string: \"phoneclaw://live?mode=voice\"))"))
+        XCTAssertTrue(widget.contains(".supportedFamilies(["))
+        XCTAssertTrue(widget.contains(".systemSmall"))
+        XCTAssertTrue(widget.contains(".accessoryCircular"))
+        XCTAssertTrue(widget.contains(".accessoryRectangular"))
+        XCTAssertTrue(widget.contains(".accessoryInline"))
+        XCTAssertTrue(widget.contains("@Environment(\\.widgetFamily)"))
+        XCTAssertTrue(widget.contains("case .accessoryCircular"))
+        XCTAssertTrue(widget.contains("case .accessoryRectangular"))
+        XCTAssertTrue(widget.contains("case .accessoryInline"))
+        XCTAssertTrue(widget.contains("AccessoryWidgetBackground()"))
+    }
+
     func testLiveASRReusesMainAgentSkillChain() throws {
         let contentView = try source("UI/ContentView.swift")
         let liveModeUI = try source("Live/UI/LiveModeUI.swift")
