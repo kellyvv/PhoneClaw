@@ -45,27 +45,11 @@ struct PhoneClawLiveActivityWidget: Widget {
                         .padding(.bottom, 2)
                 }
             } compactLeading: {
-                Image(systemName: liveIconName(for: context.state))
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(liveAccent(for: context.state).glyph)
-                    .contentTransition(.symbolEffect(.replace))
-                    .symbolEffect(
-                        .variableColor.iterative,
-                        options: .repeating,
-                        isActive: liveIsInFlight(context.state)
-                    )
+                LiveCompactGlyph(state: context.state)
             } compactTrailing: {
                 LiveProgressRing(state: context.state)
             } minimal: {
-                Image(systemName: liveIconName(for: context.state))
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(liveAccent(for: context.state).glyph)
-                    .contentTransition(.symbolEffect(.replace))
-                    .symbolEffect(
-                        .variableColor.iterative,
-                        options: .repeating,
-                        isActive: liveIsInFlight(context.state)
-                    )
+                LiveCompactGlyph(state: context.state)
             }
             .widgetURL(URL(string: "phoneclaw://live?mode=voice"))
         }
@@ -201,6 +185,75 @@ private struct LiveProgressRing: View {
     }
 }
 
+/// 灵动岛 compact/minimal 入口符号:
+/// - listening/recording: 语音态, 保持 waveform 呼吸;
+/// - understanding/searching/executing/summarizing: 思考/调用态, 类 Siri AI 小 spinner;
+/// - skill/result: 结果态, 显示具体 Skill 图标。
+private struct LiveCompactGlyph: View {
+    let state: PhoneClawLiveActivityAttributes.ContentState
+
+    var body: some View {
+        Group {
+            if liveIsVoiceInputPhase(state.phase) {
+                LiveVoiceIslandGlyph(state: state)
+            } else if liveIsThinkingPhase(state.phase) {
+                LiveThinkingIslandGlyph()
+            } else {
+                LiveStaticIslandGlyph(state: state)
+            }
+        }
+        .frame(width: 18, height: 18)
+        .contentTransition(.symbolEffect(.replace))
+    }
+}
+
+private struct LiveVoiceIslandGlyph: View {
+    let state: PhoneClawLiveActivityAttributes.ContentState
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(liveAccent(for: state).color.opacity(0.18))
+                .frame(width: 18, height: 18)
+                .blur(radius: 2)
+
+            Image(systemName: "waveform")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(liveAccent(for: state).glyph)
+                .symbolEffect(
+                    .variableColor.iterative,
+                    options: .repeating,
+                    isActive: true
+                )
+        }
+    }
+}
+
+private struct LiveThinkingIslandGlyph: View {
+    var body: some View {
+        ProgressView()
+            .progressViewStyle(.circular)
+            .tint(.white.opacity(0.92))
+            .controlSize(.mini)
+            .frame(width: 16, height: 16)
+    }
+}
+
+private struct LiveStaticIslandGlyph: View {
+    let state: PhoneClawLiveActivityAttributes.ContentState
+
+    var body: some View {
+        Image(systemName: liveIconName(for: state))
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(liveAccent(for: state).glyph)
+            .symbolEffect(
+                .variableColor.iterative,
+                options: .repeating,
+                isActive: liveIsInFlight(state)
+            )
+    }
+}
+
 /// 圆角方块 icon chip — 跟 app 内 Skill 卡同款 (26~28pt, tint 0.16)。
 private struct LiveIconChip: View {
     let state: PhoneClawLiveActivityAttributes.ContentState
@@ -317,7 +370,7 @@ private func liveAccent(for state: PhoneClawLiveActivityAttributes.ContentState)
         return state.success == false ? .red : .green
     }
     switch state.phase {
-    case "recording": return .amber
+    case "listening", "recording": return .amber
     case "understanding", "processing", "searching", "summarizing", "executing", "speaking": return .neutral
     case "ended": return .dim
     default: return .dim
@@ -335,7 +388,7 @@ private func liveIconName(for state: PhoneClawLiveActivityAttributes.ContentStat
         }
     }
     switch state.phase {
-    case "recording": return "waveform"
+    case "listening", "recording": return "waveform"
     case "understanding", "processing": return "ellipsis"
     case "searching": return "magnifyingglass"
     case "summarizing": return "text.alignleft"
@@ -351,6 +404,7 @@ private func liveIconName(for state: PhoneClawLiveActivityAttributes.ContentStat
 private func liveProgress(for state: PhoneClawLiveActivityAttributes.ContentState) -> Double {
     if state.phase == "skill" { return 1.0 }
     switch state.phase {
+    case "listening": return 0.18
     case "recording": return 0.3
     case "understanding", "processing": return 0.55
     case "searching", "executing": return 0.72
@@ -373,6 +427,7 @@ private func liveIsInFlight(_ state: PhoneClawLiveActivityAttributes.ContentStat
 private func liveNextMilestone(for state: PhoneClawLiveActivityAttributes.ContentState) -> Double {
     if state.phase == "skill" { return 1.0 }
     switch state.phase {
+    case "listening": return 0.3
     case "recording": return 0.55
     case "understanding", "processing": return 0.72
     case "searching", "executing": return 0.84
@@ -385,12 +440,26 @@ private func liveNextMilestone(for state: PhoneClawLiveActivityAttributes.Conten
 /// 阶段时长的展示预估 (秒) — 只决定爬行速度, 跑满即停在下一档前, 不影响真实进度。
 private func livePhaseEstimate(for state: PhoneClawLiveActivityAttributes.ContentState) -> TimeInterval {
     switch state.phase {
+    case "listening": return 30
     case "recording": return 12
     case "understanding", "processing": return 12
     case "searching", "executing": return 50
     case "summarizing": return 35
     case "speaking": return 20
     default: return 20
+    }
+}
+
+private func liveIsVoiceInputPhase(_ phase: String) -> Bool {
+    phase == "listening" || phase == "recording"
+}
+
+private func liveIsThinkingPhase(_ phase: String) -> Bool {
+    switch phase {
+    case "understanding", "processing", "searching", "executing", "summarizing":
+        return true
+    default:
+        return false
     }
 }
 

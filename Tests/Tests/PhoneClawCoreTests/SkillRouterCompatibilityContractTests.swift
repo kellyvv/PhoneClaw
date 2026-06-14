@@ -179,6 +179,24 @@ final class SkillRouterCompatibilityContractTests: XCTestCase {
         XCTAssertTrue(widget.contains(".displayName(\"PhoneClaw LIVE\")"))
     }
 
+    func testLiveDynamicIslandSeparatesVoiceAndThinkingGlyphs() throws {
+        let widget = try source("PhoneClawLiveActivityWidget/PhoneClawLiveActivityWidget.swift")
+
+        XCTAssertTrue(widget.contains("LiveCompactGlyph(state: context.state)"))
+        XCTAssertTrue(widget.contains("private struct LiveVoiceIslandGlyph: View"))
+        XCTAssertTrue(widget.contains("private struct LiveThinkingIslandGlyph: View"))
+        XCTAssertTrue(widget.contains("ProgressView()"))
+        XCTAssertTrue(widget.contains("Image(systemName: \"waveform\")"))
+        XCTAssertTrue(widget.contains("private func liveIsVoiceInputPhase(_ phase: String) -> Bool"))
+        XCTAssertTrue(widget.contains("phase == \"listening\" || phase == \"recording\""))
+        XCTAssertTrue(widget.contains("private func liveIsThinkingPhase(_ phase: String) -> Bool"))
+        XCTAssertTrue(widget.contains("case \"understanding\", \"processing\", \"searching\", \"executing\", \"summarizing\""))
+        XCTAssertTrue(widget.contains("case \"listening\", \"recording\": return .amber"))
+        XCTAssertTrue(widget.contains("case \"listening\": return 0.18"))
+        XCTAssertTrue(widget.contains("case \"listening\": return 0.3"))
+        XCTAssertTrue(widget.contains("case \"listening\": return 30"))
+    }
+
     func testLiveASRReusesMainAgentSkillChain() throws {
         let contentView = try source("UI/ContentView.swift")
         let liveModeUI = try source("Live/UI/LiveModeUI.swift")
