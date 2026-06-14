@@ -56,8 +56,10 @@ class AgentEngine {
     var messages: [ChatMessage] = [] {
         didSet {
             messagesRevision &+= 1
-            sessionStore.scheduleSave { [weak self] in
-                self?.messages ?? []
+            if isSessionPersistenceEnabled {
+                sessionStore.scheduleSave { [weak self] in
+                    self?.messages ?? []
+                }
             }
         }
     }
@@ -68,6 +70,7 @@ class AgentEngine {
 
     @ObservationIgnored private var pendingStreamingContentByMessageID: [UUID: String] = [:]
     @ObservationIgnored private var streamingUIFlushTask: Task<Void, Never>?
+    @ObservationIgnored private var isSessionPersistenceEnabled = true
 
     // MARK: - Skill System
 
@@ -144,6 +147,13 @@ class AgentEngine {
             guard let index = messages.firstIndex(where: { $0.id == messageID }),
                   messages[index].role == .assistant else { continue }
             messages[index].update(content: content)
+        }
+    }
+
+    func setSessionPersistenceEnabled(_ enabled: Bool) {
+        isSessionPersistenceEnabled = enabled
+        if !enabled {
+            sessionStore.cancelPendingSave()
         }
     }
 

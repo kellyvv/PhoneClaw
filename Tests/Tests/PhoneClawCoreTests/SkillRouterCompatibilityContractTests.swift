@@ -121,6 +121,32 @@ final class SkillRouterCompatibilityContractTests: XCTestCase {
         XCTAssertTrue(continuation.contains("case \"summarizing\": return 84"))
     }
 
+    func testLiveAppIntentCanExecuteSkillsWithoutOpeningMainChat() throws {
+        let shortcuts = try source("App/LiveModeShortcuts.swift")
+        let agentEngine = try source("Agent/AgentEngine.swift")
+
+        XCTAssertTrue(shortcuts.contains("struct AskPhoneClawLiveIntent: AppIntent"))
+        XCTAssertTrue(shortcuts.contains("static var openAppWhenRun: Bool = false"))
+        XCTAssertTrue(shortcuts.contains("PhoneClawLiveAgentRuntime.shared.run(request: request)"))
+        XCTAssertTrue(shortcuts.contains("final class PhoneClawLiveAgentRuntime"))
+        XCTAssertTrue(shortcuts.contains("await engine.processInput(normalized)"))
+        XCTAssertTrue(shortcuts.contains("engine.setSessionPersistenceEnabled(false)"))
+        XCTAssertTrue(shortcuts.contains("engine.messages = []"))
+        XCTAssertTrue(shortcuts.contains("engine.sessionStore.cancelPendingSave()"))
+        XCTAssertTrue(shortcuts.contains("phase: \"understanding\""))
+        XCTAssertTrue(shortcuts.contains("phase: \"executing\""))
+        XCTAssertTrue(shortcuts.contains("phase: \"ended\""))
+        XCTAssertTrue(shortcuts.contains("AppShortcut("))
+        XCTAssertTrue(shortcuts.contains("AskPhoneClawLiveIntent()"))
+        XCTAssertTrue(shortcuts.contains("requestValueDialog: \"What should PhoneClaw do?\""))
+        XCTAssertFalse(shortcuts.contains("\\(\\.$request)"))
+
+        XCTAssertTrue(agentEngine.contains("@ObservationIgnored private var isSessionPersistenceEnabled = true"))
+        XCTAssertTrue(agentEngine.contains("func setSessionPersistenceEnabled(_ enabled: Bool)"))
+        XCTAssertTrue(agentEngine.contains("if isSessionPersistenceEnabled"))
+        XCTAssertTrue(agentEngine.contains("sessionStore.cancelPendingSave()"))
+    }
+
     func testLiveASRReusesMainAgentSkillChain() throws {
         let contentView = try source("UI/ContentView.swift")
         let liveModeUI = try source("Live/UI/LiveModeUI.swift")
