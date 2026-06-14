@@ -169,6 +169,7 @@ class LiveModeEngine {
 
     private var turnPhase: TurnPhase = .inactive
     private var turnGeneration: UInt64 = 0
+    private var liveActivityListeningRefreshTask: Task<Void, Never>?
 
     private var synthesisPipeline: AsyncStream<String>.Continuation?
     private var synthesisTask: Task<Void, Never>?
@@ -358,6 +359,7 @@ class LiveModeEngine {
         // Wire turn controller callbacks
         turnController.onTurnStarted = { [weak self] in
             guard let self else { return }
+            self.cancelLiveActivityListeningRefresh()
             self.cancelIncompleteTurnFollowUp()
             self.beginCurrentTurnPreview()
             self.lastTranscript = ""
@@ -527,6 +529,7 @@ class LiveModeEngine {
     private func stopLegacy() async {
         guard turnPhase != .stopping, turnPhase != .inactive else { return }
         turnPhase = .stopping
+        cancelLiveActivityListeningRefresh()
 
         vad.stopListening()
         await cancelActiveGeneration()
@@ -995,7 +998,28 @@ class LiveModeEngine {
         turnPhase = .listening
         state = .listening
         statusMessage = liveStrings.listeningPrompt
+        scheduleLiveActivityListeningRefresh(afterResultGeneration: gen)
         print("[Live] 👂 Listening...")
+    }
+
+    private func cancelLiveActivityListeningRefresh() {
+        liveActivityListeningRefreshTask?.cancel()
+        liveActivityListeningRefreshTask = nil
+    }
+
+    private func scheduleLiveActivityListeningRefresh(afterResultGeneration gen: UInt64) {
+        cancelLiveActivityListeningRefresh()
+        liveActivityListeningRefreshTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(2500))
+            guard !Task.isCancelled, let self else { return }
+            guard self.turnPhase == .listening, self.turnGeneration == gen else { return }
+            await self.liveActivity.update(
+                phase: "listening",
+                headline: "PhoneClaw LIVE",
+                detail: self.liveStrings.listeningPrompt
+            )
+            self.backgroundContinuation.update(phase: "listening", detail: self.liveStrings.listeningPrompt)
+        }
     }
 
     @MainActor
