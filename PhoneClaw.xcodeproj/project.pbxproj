@@ -37,8 +37,11 @@
 		43DD7FAECE6EEBA9D504D3D5 /* (null) in Sources */ = {isa = PBXBuildFile; };
 		44E858BC1F79BDD31F923BBC /* (null) in Sources */ = {isa = PBXBuildFile; };
 		45B7FEC6C4D055F44A87BFA9 /* PhoneClawApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DD9808FE93325C3CE4CFA00 /* PhoneClawApp.swift */; };
+		45B7FEC6C4D055F44A87BFAA /* LiveLaunchRouting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DD9808FE93325C3CE4CFAA1 /* LiveLaunchRouting.swift */; };
+		45B7FEC6C4D055F44A87BFAB /* LiveModeShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DD9808FE93325C3CE4CFAA2 /* LiveModeShortcuts.swift */; };
 		4A99F468A0CDF3F577738F6C /* (null) in Sources */ = {isa = PBXBuildFile; };
 		4C01A62B1E57D91C45FFEEA8 /* LiveTurnProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BCB3AA5590B964AC46945D5 /* LiveTurnProcessor.swift */; };
+		4DD9808FE93325C3CE4CFAA4 /* LiveSkillRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DD9808FE93325C3CE4CFAA3 /* LiveSkillRuntime.swift */; };
 		5084E1CD2E831BC05F5E4374 /* PromptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E7C06DA449D1395217A42D5 /* PromptBuilder.swift */; };
 		542491EC62E3A48A32792C5D /* (null) in Sources */ = {isa = PBXBuildFile; };
 		583517394D45962A75274774 /* (null) in Sources */ = {isa = PBXBuildFile; };
@@ -215,7 +218,40 @@
 		LANDISCOVERY00000000001 /* LANDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = LANDISCOVERY00000000101 /* LANDiscovery.swift */; };
 		LANBINDING0000000000001 /* LANBinding.swift in Sources */ = {isa = PBXBuildFile; fileRef = LANBINDING0000000000101 /* LANBinding.swift */; };
 		RMVIEW00000000000001 /* RemoteMacSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = RMVIEW00000000000101 /* RemoteMacSettingsView.swift */; };
+		A7C100000000000000000001 /* PhoneClawLiveActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C200000000000000000001 /* PhoneClawLiveActivityAttributes.swift */; };
+		A7C100000000000000000002 /* LiveActivityBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C200000000000000000002 /* LiveActivityBridge.swift */; };
+		A7C100000000000000000003 /* PhoneClawLiveActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C200000000000000000003 /* PhoneClawLiveActivityWidget.swift */; };
+		A7C100000000000000000004 /* PhoneClawLiveActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C200000000000000000001 /* PhoneClawLiveActivityAttributes.swift */; };
+		A7C100000000000000000005 /* PhoneClawLiveActivityWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A7C200000000000000000005 /* PhoneClawLiveActivityWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		A7C100000000000000000006 /* LiveWarmPool.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C200000000000000000006 /* LiveWarmPool.swift */; };
+		A7C100000000000000000007 /* LiveBackgroundContinuation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C200000000000000000007 /* LiveBackgroundContinuation.swift */; };
+		A7C100000000000000000008 /* LiveTurnTokenSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C200000000000000000008 /* LiveTurnTokenSource.swift */; };
+		A7C100000000000000000009 /* IOS27LiveFoundationTokenSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C200000000000000000009 /* IOS27LiveFoundationTokenSource.swift */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		A7C600000000000000000002 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 3FB79357A07D44E17582311F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A7C500000000000000000001;
+			remoteInfo = PhoneClawLiveActivityWidget;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		A7C400000000000000000004 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				A7C100000000000000000005 /* PhoneClawLiveActivityWidget.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		05853E0317CAA5E4BBEDD865 /* LiveOutputEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveOutputEvent.swift; path = Live/Turn/Types/LiveOutputEvent.swift; sourceTree = SOURCE_ROOT; };
@@ -232,6 +268,9 @@
 		408F2AE98EA54717A74FA4B1 /* PhoneClaw.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PhoneClaw.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4628E2A5FD49247E1D6BE283 /* ResponseUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ResponseUI.swift; path = UI/ResponseUI.swift; sourceTree = SOURCE_ROOT; };
 		4DD9808FE93325C3CE4CFA00 /* PhoneClawApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneClawApp.swift; sourceTree = "<group>"; };
+		4DD9808FE93325C3CE4CFAA1 /* LiveLaunchRouting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveLaunchRouting.swift; sourceTree = "<group>"; };
+		4DD9808FE93325C3CE4CFAA2 /* LiveModeShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveModeShortcuts.swift; sourceTree = "<group>"; };
+		4DD9808FE93325C3CE4CFAA3 /* LiveSkillRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveSkillRuntime.swift; path = Live/Turn/LiveSkillRuntime.swift; sourceTree = SOURCE_ROOT; };
 		4F4ACB3F4531FF61E0AADA07 /* libPods-PhoneClaw.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-PhoneClaw.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		52F30C6348B834E5D157205F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		571908036E6DCED1D58C1E9E /* Skills.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Skills.swift; sourceTree = "<group>"; };
@@ -369,6 +408,15 @@
 		LANDISCOVERY00000000101 /* LANDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LANDiscovery.swift; path = LLM/Backends/Remote/LANDiscovery.swift; sourceTree = SOURCE_ROOT; };
 		LANBINDING0000000000101 /* LANBinding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LANBinding.swift; path = LLM/Backends/Remote/LANBinding.swift; sourceTree = SOURCE_ROOT; };
 		RMVIEW00000000000101 /* RemoteMacSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RemoteMacSettingsView.swift; path = UI/RemoteMacSettingsView.swift; sourceTree = SOURCE_ROOT; };
+		A7C200000000000000000001 /* PhoneClawLiveActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PhoneClawLiveActivityAttributes.swift; path = Live/Activity/PhoneClawLiveActivityAttributes.swift; sourceTree = SOURCE_ROOT; };
+		A7C200000000000000000002 /* LiveActivityBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveActivityBridge.swift; path = Live/Activity/LiveActivityBridge.swift; sourceTree = SOURCE_ROOT; };
+		A7C200000000000000000003 /* PhoneClawLiveActivityWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneClawLiveActivityWidget.swift; sourceTree = "<group>"; };
+		A7C200000000000000000004 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A7C200000000000000000005 /* PhoneClawLiveActivityWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = PhoneClawLiveActivityWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		A7C200000000000000000006 /* LiveWarmPool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveWarmPool.swift; path = Live/Core/LiveWarmPool.swift; sourceTree = SOURCE_ROOT; };
+		A7C200000000000000000007 /* LiveBackgroundContinuation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveBackgroundContinuation.swift; path = Live/Core/LiveBackgroundContinuation.swift; sourceTree = SOURCE_ROOT; };
+		A7C200000000000000000008 /* LiveTurnTokenSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveTurnTokenSource.swift; path = Live/Turn/LiveTurnTokenSource.swift; sourceTree = SOURCE_ROOT; };
+		A7C200000000000000000009 /* IOS27LiveFoundationTokenSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = IOS27LiveFoundationTokenSource.swift; path = Live/Turn/IOS27LiveFoundationTokenSource.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -392,6 +440,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A7C400000000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -408,6 +463,7 @@
 			isa = PBXGroup;
 			children = (
 				D21E6B56B839A63857912FE0 /* PhoneClaw */,
+				A7C300000000000000000002 /* PhoneClawLiveActivityWidget */,
 				D5E6F7081A2B3C4D5E6F7094 /* piz_compressed.exr */,
 				D5E6F7081A2B3C4D5E6F7096 /* studio_env.hdr */,
 				A1B2C3D4E5F607182930D004 /* OrbWebAssets */,
@@ -423,6 +479,8 @@
 			isa = PBXGroup;
 			children = (
 				4DD9808FE93325C3CE4CFA00 /* PhoneClawApp.swift */,
+				4DD9808FE93325C3CE4CFAA1 /* LiveLaunchRouting.swift */,
+				4DD9808FE93325C3CE4CFAA2 /* LiveModeShortcuts.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -530,6 +588,7 @@
 			isa = PBXGroup;
 			children = (
 				408F2AE98EA54717A74FA4B1 /* PhoneClaw.app */,
+				A7C200000000000000000005 /* PhoneClawLiveActivityWidget.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -629,6 +688,10 @@
 				05853E0317CAA5E4BBEDD865 /* LiveOutputEvent.swift */,
 				1933DF0A8083223AD681A973 /* LiveOutputParser.swift */,
 				9BCB3AA5590B964AC46945D5 /* LiveTurnProcessor.swift */,
+				4DD9808FE93325C3CE4CFAA3 /* LiveSkillRuntime.swift */,
+				A7C200000000000000000008 /* LiveTurnTokenSource.swift */,
+				A7C200000000000000000009 /* IOS27LiveFoundationTokenSource.swift */,
+				A7C300000000000000000001 /* Activity */,
 				C6B2CA800EABEF23C3821C51 /* LiveVoiceConstants.swift */,
 				F3E547AAB840AEB6F57C71A4 /* PromptBuilder+LiveVoice.swift */,
 				7C500DE8A47482D5DA7DA6D3 /* ASRService.swift */,
@@ -656,6 +719,8 @@
 				9D80CB631331A0CA07699BDE /* OutputSanitizer.swift */,
 				F8D921B323B9D6342A22A29E /* LiveAudioIO.swift */,
 				83C5B0E5FD420CCB6BD8D1A4 /* LiveModeEngine.swift */,
+				A7C200000000000000000006 /* LiveWarmPool.swift */,
+				A7C200000000000000000007 /* LiveBackgroundContinuation.swift */,
 				840B21562E52B6B93D4410D0 /* LiveModeUI.swift */,
 				52F30C6348B834E5D157205F /* Info.plist */,
 				B1A2C3D4E5F607182930C000 /* InfoPlist.strings */,
@@ -731,6 +796,24 @@
 			path = UI;
 			sourceTree = "<group>";
 		};
+		A7C300000000000000000001 /* Activity */ = {
+			isa = PBXGroup;
+			children = (
+				A7C200000000000000000001 /* PhoneClawLiveActivityAttributes.swift */,
+				A7C200000000000000000002 /* LiveActivityBridge.swift */,
+			);
+			path = Activity;
+			sourceTree = "<group>";
+		};
+		A7C300000000000000000002 /* PhoneClawLiveActivityWidget */ = {
+			isa = PBXGroup;
+			children = (
+				A7C200000000000000000003 /* PhoneClawLiveActivityWidget.swift */,
+				A7C200000000000000000004 /* Info.plist */,
+			);
+			path = PhoneClawLiveActivityWidget;
+			sourceTree = "<group>";
+		};
 		MINICPMV0000000000201 /* MiniCPMV */ = {
 			isa = PBXGroup;
 			children = (
@@ -754,12 +837,14 @@
 				479C4F7A038F48E691B8652F /* Sources */,
 				4B243621551C86F4B6922A8F /* Frameworks */,
 				E6F7081A2B3C4D5E6F708100 /* Resources */,
+				A7C400000000000000000004 /* Embed App Extensions */,
 				BB2000000000000000000021 /* Copy LiteRT runtime plugin frameworks */,
 				BB2000000000000000000020 /* Re-sign embedded dylibs */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				A7C600000000000000000001 /* PBXTargetDependency */,
 			);
 			name = PhoneClaw;
 			packageProductDependencies = (
@@ -779,6 +864,25 @@
 			productReference = 408F2AE98EA54717A74FA4B1 /* PhoneClaw.app */;
 			productType = "com.apple.product-type.application";
 		};
+		A7C500000000000000000001 /* PhoneClawLiveActivityWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A7C700000000000000000003 /* Build configuration list for PBXNativeTarget "PhoneClawLiveActivityWidget" */;
+			buildPhases = (
+				A7C400000000000000000003 /* Sources */,
+				A7C400000000000000000001 /* Frameworks */,
+				A7C400000000000000000002 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = PhoneClawLiveActivityWidget;
+			packageProductDependencies = (
+			);
+			productName = PhoneClawLiveActivityWidget;
+			productReference = A7C200000000000000000005 /* PhoneClawLiveActivityWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -787,6 +891,12 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					A7C500000000000000000001 = {
+						CreatedOnToolsVersion = 16.0;
+						ProvisioningStyle = Automatic;
+					};
+				};
 			};
 			buildConfigurationList = D08DE168688EBAEF987138AB /* Build configuration list for PBXProject "PhoneClaw" */;
 			developmentRegion = en;
@@ -814,6 +924,7 @@
 			projectRoot = "";
 			targets = (
 				DC4DB8CD35E6335C6F8AC3D7 /* PhoneClaw */,
+				A7C500000000000000000001 /* PhoneClawLiveActivityWidget */,
 			);
 		};
 /* End PBXProject section */
@@ -831,6 +942,13 @@
 				B1A2C3D4E5F607182930B108 /* studio_env.hdr in Resources */,
 				B1A2C3D4E5F607182930C002 /* InfoPlist.strings in Resources */,
 				AA1000000000000000000033 /* open_jtalk_dic_utf_8-1.11 in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A7C400000000000000000002 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -935,6 +1053,11 @@
 				E9D6E75B5D98FAD1F17265D7 /* LiveOutputEvent.swift in Sources */,
 				23D41FD1E095FCDDC5BE04EF /* LiveOutputParser.swift in Sources */,
 				4C01A62B1E57D91C45FFEEA8 /* LiveTurnProcessor.swift in Sources */,
+				4DD9808FE93325C3CE4CFAA4 /* LiveSkillRuntime.swift in Sources */,
+				A7C100000000000000000008 /* LiveTurnTokenSource.swift in Sources */,
+				A7C100000000000000000009 /* IOS27LiveFoundationTokenSource.swift in Sources */,
+				A7C100000000000000000001 /* PhoneClawLiveActivityAttributes.swift in Sources */,
+				A7C100000000000000000002 /* LiveActivityBridge.swift in Sources */,
 				F3B736266E38252D03E6C354 /* LiveVoiceConstants.swift in Sources */,
 				FEFA2136332FF2B38F71C999 /* PromptBuilder+LiveVoice.swift in Sources */,
 				0F13CB63EFD6EB20B60C013B /* ASRService.swift in Sources */,
@@ -1012,6 +1135,8 @@
 				F84BD7F445E2D383551198FB /* OutputSanitizer.swift in Sources */,
 				32D9B612A8A28256BD2CCA55 /* LiveAudioIO.swift in Sources */,
 				0D58F93BFFFFE778CD8A34D1 /* LiveModeEngine.swift in Sources */,
+				A7C100000000000000000006 /* LiveWarmPool.swift in Sources */,
+				A7C100000000000000000007 /* LiveBackgroundContinuation.swift in Sources */,
 				CE2D5BD7F3C310C8CE319A6D /* LiveModeUI.swift in Sources */,
 				A31476FC2F85741500318978 /* ToolCallParser.swift in Sources */,
 				AA1000000000000000000005 /* Gemma4Model.swift in Sources */,
@@ -1038,6 +1163,8 @@
 				AA1000000000000000000002 /* MLXLocalLLMService.swift in Sources */,
 				AA1000000000000000000202 /* MLXLocalLLMService+KVReuse.swift in Sources */,
 				45B7FEC6C4D055F44A87BFA9 /* PhoneClawApp.swift in Sources */,
+				45B7FEC6C4D055F44A87BFAA /* LiveLaunchRouting.swift in Sources */,
+				45B7FEC6C4D055F44A87BFAB /* LiveModeShortcuts.swift in Sources */,
 				5084E1CD2E831BC05F5E4374 /* PromptBuilder.swift in Sources */,
 				C1A2B3D4E5F607182930A1B2 /* SkillLoader.swift in Sources */,
 				C1A2B3D4E5F607182930A1C2 /* SkillRegistry.swift in Sources */,
@@ -1094,7 +1221,24 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A7C400000000000000000003 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A7C100000000000000000003 /* PhoneClawLiveActivityWidget.swift in Sources */,
+				A7C100000000000000000004 /* PhoneClawLiveActivityAttributes.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A7C600000000000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A7C500000000000000000001 /* PhoneClawLiveActivityWidget */;
+			targetProxy = A7C600000000000000000002 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin PBXVariantGroup section */
 		B1A2C3D4E5F607182930C000 /* InfoPlist.strings */ = {
@@ -1310,9 +1454,74 @@
 			};
 			name = Debug;
 		};
+		A7C700000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 36;
+				DEVELOPMENT_TEAM = 2K4BDCCL73;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PhoneClawLiveActivityWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.4.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kellyvv.phoneclaw.LiveActivityWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A7C700000000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 36;
+				DEVELOPMENT_TEAM = 2K4BDCCL73;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PhoneClawLiveActivityWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.4.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kellyvv.phoneclaw.LiveActivityWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		A7C700000000000000000003 /* Build configuration list for PBXNativeTarget "PhoneClawLiveActivityWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A7C700000000000000000001 /* Debug */,
+				A7C700000000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		B11AD88A6CD732D24531EE34 /* Build configuration list for PBXNativeTarget "PhoneClaw" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

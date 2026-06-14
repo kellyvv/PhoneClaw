@@ -25,6 +25,7 @@ struct PhoneClawApp: App {
         // registered before that happens, otherwise GPU engines can never be
         // created in this process. See docs/RUNTIME_ARCHITECTURE_PLAN.md §VI.
         LiteRTBootstrap.bootstrap()
+        LiveBackgroundContinuation.shared.register()
 
         #if DEBUG
         AudioBypassTest.runIfRequested()

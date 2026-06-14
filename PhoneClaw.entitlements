@@ -20,5 +20,11 @@
 	<!-- HealthKit Skill: 步数 / 心率 / 睡眠等数据读取. -->
 	<key>com.apple.developer.healthkit</key>
 	<true/>
+
+	<!-- LIVE background Skill chain: allows BGContinuedProcessingTask to request GPU
+	     so the existing ASR -> LLM -> tool_call -> ToolRegistry path can continue
+	     after the user backgrounds the app. Requires Apple-supported signing. -->
+	<key>com.apple.developer.background-tasks.continued-processing.gpu</key>
+	<true/>
 </dict>
 </plist>

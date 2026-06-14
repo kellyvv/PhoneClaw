@@ -35,7 +35,7 @@ enum IOS27FoundationSkillRouter {
         guard HotfixFeatureFlags.enableIOS27FoundationRouter else { return nil }
 
         #if canImport(FoundationModels)
-        if #available(iOS 27.0, *) {
+        if #available(iOS 27.0, macOS 27.0, *) {
             return await IOS27FoundationSkillRouterRuntime.route(
                 for: userQuestion,
                 enabledSkillIDs: enabledSkillIDs,
@@ -49,7 +49,7 @@ enum IOS27FoundationSkillRouter {
 }
 
 #if canImport(FoundationModels)
-@available(iOS 27.0, *)
+@available(iOS 27.0, macOS 27.0, *)
 @Generable(description: "A PhoneClaw skill routing decision.")
 private struct IOS27GeneratedSkillRoute {
     @Guide(description: "Routing action.", .anyOf(["answerDirectly", "useSkill", "askClarification"]))
@@ -68,7 +68,7 @@ private struct IOS27GeneratedSkillRoute {
     var reason: String
 }
 
-@available(iOS 27.0, *)
+@available(iOS 27.0, macOS 27.0, *)
 private enum IOS27FoundationSkillRouterRuntime {
     static func route(
         for userQuestion: String,

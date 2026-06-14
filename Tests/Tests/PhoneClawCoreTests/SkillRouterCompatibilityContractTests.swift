@@ -62,7 +62,7 @@ final class SkillRouterCompatibilityContractTests: XCTestCase {
         XCTAssertTrue(processInput.contains("!ios27RouteBlocksModelIntent"))
         XCTAssertTrue(router.contains("shouldAttemptIOS27FoundationSkillRoute"))
         XCTAssertTrue(ios27Router.contains("#if canImport(FoundationModels)"))
-        XCTAssertTrue(ios27Router.contains("if #available(iOS 27.0, *)"))
+        XCTAssertTrue(ios27Router.contains("if #available(iOS 27.0, macOS 27.0, *)"))
     }
 
     func testIOS27FoundationRouterUsesIOS27ModelAPIsWithDiagnostics() throws {
@@ -90,5 +90,103 @@ final class SkillRouterCompatibilityContractTests: XCTestCase {
         XCTAssertTrue(router.contains("source=guarded"))
         XCTAssertTrue(router.contains("source=foundation"))
         XCTAssertTrue(router.contains("source=model"))
+    }
+
+    func testLiveSkillInfoDisplayDoesNotExposeRawToolJSON() throws {
+        let liveOutputEvent = try source("Live/Turn/Types/LiveOutputEvent.swift")
+
+        XCTAssertTrue(liveOutputEvent.contains("case skillInfo(LiveSkillInfoOutput)"))
+        XCTAssertTrue(liveOutputEvent.contains("jsonPayload(from: detail)"))
+        XCTAssertTrue(liveOutputEvent.contains("looksMachineReadable"))
+        XCTAssertTrue(liveOutputEvent.contains("\"eventid\""))
+        XCTAssertTrue(liveOutputEvent.contains("return Self.clipped(normalizedSummary, maxLength: 2200)"))
+        XCTAssertFalse(liveOutputEvent.contains("normalizedSummary + \"\\n\\n\" + String(normalizedDetail.prefix"))
+    }
+
+    func testLiveBackgroundContinuationFollowsContinuedProcessingContract() throws {
+        let continuation = try source("Live/Core/LiveBackgroundContinuation.swift")
+        let infoPlist = try source("Info.plist")
+
+        XCTAssertTrue(continuation.contains("static let taskIdentifier = \"com.kellyvv.phoneclaw.live-continuation\""))
+        XCTAssertTrue(continuation.contains("registrationAccepted"))
+        XCTAssertTrue(continuation.contains("submit skipped: no registered launch handler"))
+        XCTAssertTrue(continuation.contains("BGContinuedProcessingTaskRequest("))
+        XCTAssertTrue(continuation.contains("identifier: requestIdentifier"))
+        XCTAssertTrue(infoPlist.contains("com.kellyvv.phoneclaw.live-continuation"))
+        XCTAssertTrue(continuation.contains("BGTaskScheduler.supportedResources.contains(.gpu)"))
+        XCTAssertTrue(continuation.contains("task.setTaskCompleted(success: success)"))
+        XCTAssertTrue(continuation.contains("reason: \"expired_by_system\""))
+        XCTAssertTrue(continuation.contains("case \"understanding\": return 55"))
+        XCTAssertTrue(continuation.contains("case \"searching\", \"executing\": return 72"))
+        XCTAssertTrue(continuation.contains("case \"summarizing\": return 84"))
+    }
+
+    func testLiveASRReusesMainAgentSkillChain() throws {
+        let contentView = try source("UI/ContentView.swift")
+        let liveModeUI = try source("Live/UI/LiveModeUI.swift")
+        let liveModeEngine = try source("Live/Core/LiveModeEngine.swift")
+        let liveWarmPool = try source("Live/Core/LiveWarmPool.swift")
+        let liveActivityWidget = try source("PhoneClawLiveActivityWidget/PhoneClawLiveActivityWidget.swift")
+
+        XCTAssertTrue(contentView.contains("agentEngine: engine"))
+        XCTAssertTrue(liveModeUI.contains("let agentEngine: AgentEngine"))
+        XCTAssertTrue(liveModeUI.contains("agentEngine: agentEngine"))
+        XCTAssertTrue(liveModeUI.contains("liveEngine.setup(inference: inference, agentEngine: agentEngine)"))
+
+        XCTAssertTrue(liveModeEngine.contains("private var agentEngine: AgentEngine?"))
+        XCTAssertTrue(liveModeEngine.contains("processMainAgentTextTurn("))
+        XCTAssertTrue(liveModeEngine.contains("await agentEngine.processInput(transcript)"))
+        XCTAssertTrue(liveModeEngine.contains("liveInfoOutputFromMainAgentMessages"))
+        XCTAssertTrue(liveModeEngine.contains("persistent live LLM conversation skipped"))
+        XCTAssertTrue(liveModeEngine.contains("refusing LIVE-local Skill path"))
+        XCTAssertTrue(liveModeEngine.contains("missing MAIN AgentEngine during ASR turn"))
+        XCTAssertTrue(liveModeEngine.contains("didEnterLLMLiveMode"))
+        XCTAssertTrue(liveModeEngine.contains("mainAgentTurnTimeout: TimeInterval = 180"))
+        XCTAssertTrue(liveModeEngine.contains("liveTimedOutInfoOutput("))
+        XCTAssertTrue(liveModeEngine.contains("main Agent turn still processing after"))
+        XCTAssertTrue(liveModeEngine.contains("LiveAgentProgressSnapshot"))
+        XCTAssertTrue(liveModeEngine.contains("publishMainAgentProgress("))
+        XCTAssertTrue(liveModeEngine.contains("正在搜索相关信息，请稍等。"))
+        XCTAssertTrue(liveModeEngine.contains("已检索到相关信息，正在整理答案。"))
+        XCTAssertTrue(liveModeEngine.contains("已收到指令，请稍等。"))
+        XCTAssertTrue(liveModeUI.contains("liveProgressHeadline"))
+        XCTAssertTrue(liveActivityWidget.contains("case \"searching\": return \"搜索中\""))
+        XCTAssertTrue(liveActivityWidget.contains("case \"summarizing\": return \"总结中\""))
+        XCTAssertTrue(liveActivityWidget.contains("case \"searching\": return \"magnifyingglass\""))
+        XCTAssertTrue(liveWarmPool.contains("agentEngine: AgentEngine"))
+        XCTAssertTrue(liveWarmPool.contains("engine.setup(inference: inference, agentEngine: agentEngine)"))
+        XCTAssertFalse(liveWarmPool.contains("engine.setup(inference: inference)\n"))
+
+        // LIVE must not rebuild tool arguments from ASR text. The ASR text is handed to
+        // AgentEngine; Router/PromptBuilder/ToolChain remain the only Skill execution path.
+        XCTAssertFalse(liveModeUI.contains("calendar-create-event\", \"arguments\""))
+        XCTAssertFalse(liveModeUI.contains("reminders-create\", \"arguments\""))
+        XCTAssertFalse(liveModeEngine.contains("calendar-create-event\", \"arguments\""))
+        XCTAssertFalse(liveModeEngine.contains("reminders-create\", \"arguments\""))
+        XCTAssertFalse(liveModeEngine.contains("LiveTurnProcessor("))
+        XCTAssertFalse(liveModeEngine.contains("LiveSkillRouter"))
+        XCTAssertFalse(liveModeEngine.contains("liveSkillRegistry"))
+    }
+
+    func testLiveDoesNotForceLiteRTLiveConversationForMainAgentMode() throws {
+        let processor = try source("Live/Turn/LiveTurnProcessor.swift")
+        let foundation = try source("Live/Turn/IOS27LiveFoundationTokenSource.swift")
+        let liveModeEngine = try source("Live/Core/LiveModeEngine.swift")
+
+        XCTAssertTrue(liveModeEngine.contains("guard agentEngine != nil"))
+        XCTAssertFalse(liveModeEngine.contains("try await inference.enterLiveMode(systemPrompt: liveSystemPrompt)"))
+        XCTAssertTrue(liveModeEngine.contains("didEnterLLMLiveMode = false"))
+        XCTAssertTrue(liveModeEngine.contains("if didEnterLLMLiveMode"))
+
+        // The older LIVE-local token source remains available as a non-default path, but
+        // production LIVE from ContentView now passes AgentEngine and therefore uses MAIN.
+        XCTAssertTrue(processor.contains("LiveTurnProcessor"))
+        XCTAssertTrue(foundation.contains("#if canImport(FoundationModels)"))
+        XCTAssertTrue(foundation.contains("if #available(iOS 27.0, macOS 26.0, *)"))
+
+        // FM source must not introduce a second domain-specific Skill understanding layer.
+        XCTAssertFalse(foundation.lowercased().contains("calendar"))
+        XCTAssertFalse(foundation.lowercased().contains("reminder"))
+        XCTAssertFalse(foundation.lowercased().contains("web-search"))
     }
 }

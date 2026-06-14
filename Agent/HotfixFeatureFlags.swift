@@ -15,6 +15,7 @@ private enum HotfixFlagKey: String {
     case enableImageFollowUpRegrounding = "ENABLE_IMAGE_FOLLOWUP_REGROUNDING"
     case enableGuardedSkillRouter = "ENABLE_GUARDED_SKILL_ROUTER"
     case enableIOS27FoundationRouter = "ENABLE_IOS27_FOUNDATION_ROUTER"
+    case enableLiveFoundationTokenSource = "ENABLE_LIVE_FOUNDATION_TOKEN_SOURCE"
 }
 
 enum HotfixFeatureFlags {
@@ -48,6 +49,10 @@ enum HotfixFeatureFlags {
 
     static var enableIOS27FoundationRouter: Bool {
         value(for: .enableIOS27FoundationRouter, defaultValue: true)
+    }
+
+    static var enableLiveFoundationTokenSource: Bool {
+        value(for: .enableLiveFoundationTokenSource, defaultValue: true)
     }
 
     private static func value(for key: HotfixFlagKey, defaultValue: Bool) -> Bool {

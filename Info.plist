@@ -12,6 +12,17 @@
 	<string>PhoneClaw</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.kellyvv.phoneclaw</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>phoneclaw</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
@@ -37,7 +48,7 @@
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>PhoneClaw does not write Health data. This permission description is included because HealthKit access requires a write-purpose string for App Store validation.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>PhoneClaw uses the microphone to record your voice and capture audio input</string>
+	<string>PhoneClaw uses the microphone for LIVE voice conversations, including an active LIVE session that can continue while the app is in the background.</string>
 	<key>NSRemindersFullAccessUsageDescription</key>
 	<string>PhoneClaw needs Reminders access to create reminders</string>
 	<key>NSRemindersUsageDescription</key>
@@ -63,8 +74,18 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.kellyvv.phoneclaw.live-continuation</string>
+	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>PhoneClaw 在局域网内发现并连接你的 Mac,把推理交给 Mac 上更强的大模型运行。</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_phoneclaw-llm._tcp</string>

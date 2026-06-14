@@ -270,6 +270,9 @@ struct ContentView: View {
             guard !ProcessInfo.processInfo.isRunningXCTest else { return }
             engine.setup()
             refreshDisplayItems()
+            if !consumePendingLiveLaunchIfNeeded() {
+                prewarmLiveIfPossible()
+            }
             // 不在这里 initialize hold-to-talk ASR. 改为用户第一次按住说话时
             // 通过 ASRService.ensureInitialized 懒加载, 避免 cold start 就占用 ASR 内存 (zh ~160MB / en ~180MB).
         }
@@ -279,11 +282,21 @@ struct ContentView: View {
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
                 audioCapture.refreshPermissionStatus()
+                if !consumePendingLiveLaunchIfNeeded() {
+                    prewarmLiveIfPossible()
+                }
                 return
             }
             engine.flushPendingSessionSave()
+            if showLiveMode {
+                print("[UI] Scene inactive while LIVE is running; preserving LIVE audio and inference session")
+                return
+            }
             engine.cancelActiveGeneration()
             _ = audioCapture.stopCapture()
+        }
+        .onOpenURL { url in
+            handleExternalLaunchURL(url)
         }
         .onChange(of: engine.messages.isEmpty) { wasEmpty, isEmpty in
             // 新会话: 卸载 hold-to-talk ASR 以释放内存 (zh ~160MB / en ~180MB). 下次按住说话会 lazy 重新加载.
@@ -327,8 +340,10 @@ struct ContentView: View {
         .fullScreenCover(isPresented: $showLiveMode) {
             LiveModeView(
                 isPresented: $showLiveMode,
+                agentEngine: engine,
                 inference: engine.inference,
                 catalog: engine.catalog,
+                coordinator: engine.coordinator,
                 userSystemPrompt: engine.config.systemPrompt
             )
         }
@@ -1038,6 +1053,11 @@ struct ContentView: View {
                 symbolName: "exclamationmark.circle",
                 isWarning: true
             )
+            return
+        }
+
+        if case .ready = state {
+            prewarmLiveIfPossible()
         }
     }
 
@@ -1894,6 +1914,30 @@ struct ContentView: View {
         _ = audioCapture.consumeLatestSnapshot()
         isInputFocused = false
         showAttachmentTray = false
+    }
+
+    private func handleExternalLaunchURL(_ url: URL) {
+        guard LiveLaunchRoute.parse(url) == .voice else { return }
+        LiveLaunchRequestStore.requestVoiceLaunch()
+        consumePendingLiveLaunchIfNeeded()
+    }
+
+    @discardableResult
+    private func consumePendingLiveLaunchIfNeeded() -> Bool {
+        guard LiveLaunchRequestStore.consumeVoiceLaunchRequest() else { return false }
+        showHistory = false
+        showConfigurations = false
+        showModelSwitcher = false
+        enterLiveMode()
+        return true
+    }
+
+    private func prewarmLiveIfPossible() {
+        guard !showLiveMode, engine.isModelReady else { return }
+        LiveWarmPool.shared.prewarmIfPossible(
+            inference: engine.inference,
+            userSystemPrompt: engine.config.systemPrompt
+        )
     }
 
     private func showVoiceModelsRequiredPrompt() {
