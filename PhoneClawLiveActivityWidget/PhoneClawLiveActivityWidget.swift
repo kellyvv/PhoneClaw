@@ -155,6 +155,35 @@ private struct LiveIslandPresentation {
         }
     }
 
+    var compactTitle: String {
+        switch stage {
+        case .voice: return "LIVE"
+        case .thinking, .searching, .executing: return "AI"
+        case .responding: return "答"
+        case .result: return state.success == false ? "FAIL" : "DONE"
+        case .ended: return "END"
+        case .starting: return "LIVE"
+        case .idle: return "LIVE"
+        }
+    }
+
+    var compactStageText: String {
+        if stage == .result {
+            return state.success == false ? "!" : "✓"
+        }
+        switch stage {
+        case .starting: return "启"
+        case .voice: return phase == "recording" ? "听" : "待"
+        case .thinking: return "想"
+        case .searching: return "搜"
+        case .executing: return "做"
+        case .responding: return "答"
+        case .ended: return "停"
+        case .idle: return "待"
+        case .result: return "✓"
+        }
+    }
+
     var accent: LiveAccent {
         if stage == .result {
             return state.success == false ? .red : .green
@@ -576,10 +605,30 @@ private struct LiveCompactLeadingSurface: View {
 
     var body: some View {
         ZStack {
-            LiveCompactHalo(presentation: presentation, diameter: 31)
-            LiveCompactGlyph(presentation: presentation, size: 24)
+            Capsule()
+                .fill(presentation.accent.chipFill)
+                .overlay(
+                    Capsule()
+                        .stroke(presentation.accent.dot.opacity(presentation.isInFlight ? 0.42 : 0.20), lineWidth: 1)
+                )
+
+            HStack(spacing: 5) {
+                ZStack {
+                    LiveCompactHalo(presentation: presentation, diameter: 24)
+                    LiveCompactGlyph(presentation: presentation, size: 18)
+                }
+                .frame(width: 24, height: 24)
+
+                Text(presentation.compactTitle)
+                    .font(.system(size: 11, weight: .heavy, design: .rounded))
+                    .foregroundStyle(presentation.accent.glyph)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+                    .contentTransition(.opacity)
+            }
+            .padding(.horizontal, 6)
         }
-        .frame(width: 34, height: 32)
+        .frame(width: 72, height: 30)
     }
 }
 
@@ -594,14 +643,32 @@ private struct LiveCompactTrailingSurface: View {
                 .overlay(
                     Capsule()
                         .stroke(presentation.accent.dot.opacity(presentation.isInFlight ? 0.34 : 0.18), lineWidth: 1)
-                )
+            )
 
-            HStack(spacing: 4) {
-                LiveCompactStatusPulse(presentation: presentation)
-                LiveProgressRing(presentation: presentation, size: 18)
+            HStack(spacing: 5) {
+                Text(presentation.compactStageText)
+                    .font(.system(size: 13, weight: .heavy, design: .rounded))
+                    .foregroundStyle(presentation.accent.glyph)
+                    .frame(width: 14, height: 20)
+                    .contentTransition(.opacity)
+
+                if presentation.isInFlight, let started = presentation.startedAt {
+                    Text(
+                        timerInterval: started...started.addingTimeInterval(3600),
+                        countsDown: false,
+                        showsHours: false
+                    )
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.76))
+                    .lineLimit(1)
+                    .frame(width: 30, alignment: .leading)
+                } else {
+                    LiveProgressRing(presentation: presentation, size: 18)
+                }
             }
+            .padding(.horizontal, 6)
         }
-        .frame(width: 42, height: 28)
+        .frame(width: 66, height: 28)
     }
 }
 
@@ -627,26 +694,6 @@ private struct LiveCompactHalo: View {
                     .stroke(presentation.accent.dot.opacity(0.26 + pulse * 0.30), lineWidth: 1.4)
                     .frame(width: diameter + pulse * 6, height: diameter + pulse * 6)
             }
-        }
-    }
-}
-
-private struct LiveCompactStatusPulse: View {
-    let presentation: LiveIslandPresentation
-
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 0.16, paused: !presentation.isInFlight)) { timeline in
-            let t = timeline.date.timeIntervalSinceReferenceDate
-            let pulse = presentation.isInFlight ? CGFloat((sin(t * 5.2) + 1.0) / 2.0) : 0.0
-            ZStack {
-                Circle()
-                    .fill(presentation.accent.dot.opacity(0.18 + pulse * 0.22))
-                    .frame(width: 10 + pulse * 4, height: 10 + pulse * 4)
-                Circle()
-                    .fill(presentation.accent.dot)
-                    .frame(width: 5.5, height: 5.5)
-            }
-            .frame(width: 13, height: 18)
         }
     }
 }
