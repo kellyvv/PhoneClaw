@@ -7,7 +7,7 @@ import WidgetKit
 //
 // PhoneClaw LIVE 是系统级语音入口, 不是任务看板:
 //   · 监听态只显示横向 6 个点, 用状态过渡表现进入/退出
-//   · Skill 链路使用系统圆形活动指示, 避免 Live Activity 自绘逐帧动画
+//   · Skill 链路使用系统时间驱动圆形进度, 避免 Live Activity 自绘逐帧动画
 //   · 结果态才展示结果符号和一句结果文案
 //   · 所有表面读同一个 LiveIslandPresentation, 保持状态、色彩、过渡一致
 
@@ -100,6 +100,8 @@ private enum LiveIslandVisualPhase {
 }
 
 private struct LiveIslandPresentation {
+    private static let skillProgressDuration: TimeInterval = 32
+
     let state: PhoneClawLiveActivityAttributes.ContentState
 
     var phase: String { state.phase }
@@ -135,6 +137,11 @@ private struct LiveIslandPresentation {
         case .ended, .idle:
             return .idle
         }
+    }
+
+    var skillProgressInterval: ClosedRange<Date> {
+        let start = state.phaseStartedAt ?? state.startedAt ?? Date()
+        return start...start.addingTimeInterval(Self.skillProgressDuration)
     }
 
     var moodText: String {
@@ -208,7 +215,7 @@ private struct LiveIslandCoreVisual: View {
             case .voice:
                 LiveListeningDotWave(presentation: presentation, diameter: diameter)
             case .skill:
-                LiveSystemSkillSpinner(presentation: presentation, diameter: diameter)
+                LiveSystemSkillProgress(presentation: presentation, diameter: diameter)
             case .result:
                 LiveResultMark(presentation: presentation, diameter: diameter)
             case .idle:
@@ -246,7 +253,7 @@ private struct LiveListeningDotWave: View {
     }
 }
 
-private struct LiveSystemSkillSpinner: View {
+private struct LiveSystemSkillProgress: View {
     let presentation: LiveIslandPresentation
     var diameter: CGFloat
 
@@ -256,10 +263,11 @@ private struct LiveSystemSkillSpinner: View {
                 .stroke(.white.opacity(0.10), lineWidth: max(diameter * 0.048, 1.2))
                 .frame(width: diameter * 0.72, height: diameter * 0.72)
 
-            ProgressView()
+            ProgressView(timerInterval: presentation.skillProgressInterval, countsDown: false)
                 .progressViewStyle(.circular)
                 .tint(presentation.accent.glyph)
                 .controlSize(diameter < 30 ? .mini : .small)
+                .labelsHidden()
                 .scaleEffect(max(diameter / 38.0, 0.62))
         }
         .frame(width: diameter, height: diameter)
