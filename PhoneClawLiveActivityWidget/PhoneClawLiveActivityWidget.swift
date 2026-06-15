@@ -6,10 +6,10 @@ import WidgetKit
 // MARK: - 设计语言
 //
 // PhoneClaw LIVE 是系统级语音入口, 不是任务看板:
-//   · 监听态只显示横向 6 个点, 自然循环波浪摆动
-//   · Skill 链路让同一组点形成旋转圆环, 直到结果产生
+//   · 监听态只显示横向 6 个点, 用状态过渡表现进入/退出
+//   · Skill 链路使用系统圆形活动指示, 避免 Live Activity 自绘逐帧动画
 //   · 结果态才展示结果符号和一句结果文案
-//   · 所有表面读同一个 LiveIslandPresentation, 保持状态、色彩、动效一致
+//   · 所有表面读同一个 LiveIslandPresentation, 保持状态、色彩、过渡一致
 
 @main
 struct PhoneClawLiveActivityWidgetBundle: WidgetBundle {
@@ -23,7 +23,6 @@ struct PhoneClawLiveActivityWidgetBundle: WidgetBundle {
 }
 
 private let phoneClawLiveLaunchURL = URL(string: "phoneclaw://live?mode=voice")!
-private let liveIslandFrameInterval: TimeInterval = 1.0 / 30.0
 
 private enum LiveTheme {
     static let surface = Color(red: 0.055, green: 0.052, blue: 0.070)
@@ -207,9 +206,9 @@ private struct LiveIslandCoreVisual: View {
         ZStack {
             switch presentation.visualPhase {
             case .voice:
-                LiveSixDotVoiceWave(presentation: presentation, diameter: diameter)
+                LiveListeningDotWave(presentation: presentation, diameter: diameter)
             case .skill:
-                LiveRotatingSkillDotRing(presentation: presentation, diameter: diameter)
+                LiveSystemSkillSpinner(presentation: presentation, diameter: diameter)
             case .result:
                 LiveResultMark(presentation: presentation, diameter: diameter)
             case .idle:
@@ -222,61 +221,50 @@ private struct LiveIslandCoreVisual: View {
     }
 }
 
-private struct LiveSixDotVoiceWave: View {
+private struct LiveListeningDotWave: View {
     let presentation: LiveIslandPresentation
     var diameter: CGFloat
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: liveIslandFrameInterval)) { timeline in
-            let t = timeline.date.timeIntervalSinceReferenceDate
-            let dot = max(diameter * 0.105, 3.2)
-            let spacing = max(diameter * 0.070, 2.2)
-            let travel = diameter * 0.18
-            HStack(alignment: .center, spacing: spacing) {
-                ForEach(0..<6, id: \.self) { index in
-                    let carrier = (sin(t * 7.0 + Double(index) * 0.72) + 1.0) / 2.0
-                    let envelope = 0.62 + 0.38 * ((sin(t * 2.1) + 1.0) / 2.0)
-                    let level = 0.18 + carrier * envelope
-                    Circle()
-                        .fill(presentation.accent.glyph.opacity(0.42 + level * 0.46))
-                        .frame(width: dot, height: dot)
-                        .scaleEffect(0.82 + CGFloat(level) * 0.50)
-                        .offset(y: CGFloat(0.5 - level) * travel)
-                        .shadow(color: presentation.accent.color.opacity(0.16 + level * 0.26), radius: 2.5)
-                }
+        let dot = max(diameter * 0.105, 3.2)
+        let spacing = max(diameter * 0.070, 2.2)
+        let levels: [CGFloat] = [0.42, 0.72, 1.0, 0.82, 0.56, 0.34]
+        let travel = diameter * 0.11
+
+        HStack(alignment: .center, spacing: spacing) {
+            ForEach(levels.indices, id: \.self) { index in
+                let level = levels[index]
+                Circle()
+                    .fill(presentation.accent.glyph.opacity(0.42 + level * 0.42))
+                    .frame(width: dot, height: dot)
+                    .scaleEffect(0.76 + level * 0.44)
+                    .offset(y: (0.56 - level) * travel)
+                    .shadow(color: presentation.accent.color.opacity(0.14 + level * 0.18), radius: 2.4)
             }
         }
+        .transition(.scale(scale: 0.82).combined(with: .opacity))
     }
 }
 
-private struct LiveRotatingSkillDotRing: View {
+private struct LiveSystemSkillSpinner: View {
     let presentation: LiveIslandPresentation
     var diameter: CGFloat
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: liveIslandFrameInterval)) { timeline in
-            let t = timeline.date.timeIntervalSinceReferenceDate
-            let dot = max(diameter * 0.125, 3.4)
-            let orbit = diameter * 0.31
-            let rotation = t * 1.45
-            ZStack {
-                ForEach(0..<6, id: \.self) { index in
-                    let phase = rotation + Double(index) * .pi * 2.0 / 6.0
-                    let pulse = (sin(t * 4.2 + Double(index) * 0.82) + 1.0) / 2.0
-                    Circle()
-                        .fill(presentation.accent.glyph.opacity(0.58 + pulse * 0.34))
-                        .frame(width: dot, height: dot)
-                        .scaleEffect(0.86 + CGFloat(pulse) * 0.26)
-                        .offset(
-                            x: CGFloat(cos(phase)) * orbit,
-                            y: CGFloat(sin(phase)) * orbit
-                        )
-                        .shadow(color: presentation.accent.color.opacity(0.18 + pulse * 0.28), radius: 2.8)
-                }
-            }
-            .frame(width: diameter, height: diameter)
-            .rotationEffect(.degrees(t * 42.0))
+        ZStack {
+            Circle()
+                .stroke(.white.opacity(0.10), lineWidth: max(diameter * 0.048, 1.2))
+                .frame(width: diameter * 0.72, height: diameter * 0.72)
+
+            ProgressView()
+                .progressViewStyle(.circular)
+                .tint(presentation.accent.glyph)
+                .controlSize(diameter < 30 ? .mini : .small)
+                .scaleEffect(max(diameter / 38.0, 0.62))
         }
+        .frame(width: diameter, height: diameter)
+        .shadow(color: presentation.accent.color.opacity(0.26), radius: max(diameter * 0.055, 1.6))
+        .transition(.scale(scale: 0.86).combined(with: .opacity))
     }
 }
 
