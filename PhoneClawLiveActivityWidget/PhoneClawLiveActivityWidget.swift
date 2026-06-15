@@ -58,11 +58,11 @@ struct PhoneClawLiveActivityWidget: Widget {
                         .padding(.bottom, 6)
                 }
             } compactLeading: {
-                LiveCompactGlyph(presentation: presentation)
+                LiveCompactLeadingSurface(presentation: presentation)
             } compactTrailing: {
-                LiveProgressRing(presentation: presentation)
+                LiveCompactTrailingSurface(presentation: presentation)
             } minimal: {
-                LiveCompactGlyph(presentation: presentation)
+                LiveCompactGlyph(presentation: presentation, size: 22)
             }
             .widgetURL(URL(string: "phoneclaw://live?mode=voice"))
         }
@@ -353,6 +353,13 @@ private struct LiveIslandSurroundingVisual: View {
 
     var body: some View {
         ZStack(alignment: .center) {
+            Capsule()
+                .fill(.white.opacity(0.065))
+                .overlay(
+                    Capsule()
+                        .stroke(presentation.accent.dot.opacity(0.22), lineWidth: 1)
+                )
+
             if presentation.accent.hasGlow {
                 Circle()
                     .fill(presentation.accent.color.opacity(0.28))
@@ -562,9 +569,92 @@ private struct LivePipelineTrack: View {
     }
 }
 
+/// compact 态不是完整自由画布, 但这里会把系统给的 leading slot 用满:
+/// 外圈 pulse 表示 LIVE 正在跑, 中间符号表示 voice / thinking / skill 阶段。
+private struct LiveCompactLeadingSurface: View {
+    let presentation: LiveIslandPresentation
+
+    var body: some View {
+        ZStack {
+            LiveCompactHalo(presentation: presentation, diameter: 31)
+            LiveCompactGlyph(presentation: presentation, size: 24)
+        }
+        .frame(width: 34, height: 32)
+    }
+}
+
+/// compact trailing 负责持续进度: 不再只是一个 13pt 小环, 而是一枚短胶囊。
+private struct LiveCompactTrailingSurface: View {
+    let presentation: LiveIslandPresentation
+
+    var body: some View {
+        ZStack {
+            Capsule()
+                .fill(.white.opacity(0.065))
+                .overlay(
+                    Capsule()
+                        .stroke(presentation.accent.dot.opacity(presentation.isInFlight ? 0.34 : 0.18), lineWidth: 1)
+                )
+
+            HStack(spacing: 4) {
+                LiveCompactStatusPulse(presentation: presentation)
+                LiveProgressRing(presentation: presentation, size: 18)
+            }
+        }
+        .frame(width: 42, height: 28)
+    }
+}
+
+private struct LiveCompactHalo: View {
+    let presentation: LiveIslandPresentation
+    let diameter: CGFloat
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 0.14, paused: !presentation.isInFlight)) { timeline in
+            let t = timeline.date.timeIntervalSinceReferenceDate
+            let pulse = presentation.isInFlight ? CGFloat((sin(t * 4.8) + 1.0) / 2.0) : 0.0
+            ZStack {
+                Circle()
+                    .fill(presentation.accent.chipFill)
+                    .frame(width: diameter - 4, height: diameter - 4)
+
+                Circle()
+                    .fill(presentation.accent.color.opacity(0.14 + pulse * 0.10))
+                    .frame(width: diameter + pulse * 7, height: diameter + pulse * 7)
+                    .blur(radius: 4 + pulse * 2)
+
+                Circle()
+                    .stroke(presentation.accent.dot.opacity(0.26 + pulse * 0.30), lineWidth: 1.4)
+                    .frame(width: diameter + pulse * 6, height: diameter + pulse * 6)
+            }
+        }
+    }
+}
+
+private struct LiveCompactStatusPulse: View {
+    let presentation: LiveIslandPresentation
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 0.16, paused: !presentation.isInFlight)) { timeline in
+            let t = timeline.date.timeIntervalSinceReferenceDate
+            let pulse = presentation.isInFlight ? CGFloat((sin(t * 5.2) + 1.0) / 2.0) : 0.0
+            ZStack {
+                Circle()
+                    .fill(presentation.accent.dot.opacity(0.18 + pulse * 0.22))
+                    .frame(width: 10 + pulse * 4, height: 10 + pulse * 4)
+                Circle()
+                    .fill(presentation.accent.dot)
+                    .frame(width: 5.5, height: 5.5)
+            }
+            .frame(width: 13, height: 18)
+        }
+    }
+}
+
 /// compact 态的微型进度环 — 36px 高度下大形状才可读, 比呆点多一层"在走"的信息。
 private struct LiveProgressRing: View {
     let presentation: LiveIslandPresentation
+    var size: CGFloat = 13
 
     var body: some View {
         let progress = presentation.progress
@@ -579,7 +669,7 @@ private struct LiveProgressRing: View {
                 )
                 .rotationEffect(.degrees(-90))
         }
-        .frame(width: 13, height: 13)
+        .frame(width: size, height: size)
         .animation(.spring(duration: 0.6), value: progress)
     }
 }
@@ -590,6 +680,7 @@ private struct LiveProgressRing: View {
 /// - skill/result: 结果态, 显示具体 Skill 图标。
 private struct LiveCompactGlyph: View {
     let presentation: LiveIslandPresentation
+    var size: CGFloat = 18
 
     var body: some View {
         Group {
@@ -604,6 +695,8 @@ private struct LiveCompactGlyph: View {
             }
         }
         .frame(width: 18, height: 18)
+        .scaleEffect(size / 18.0)
+        .frame(width: size, height: size)
         .contentTransition(.symbolEffect(.replace))
     }
 }
