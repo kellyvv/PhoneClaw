@@ -13,6 +13,8 @@ import WidgetKit
 //   · compact 态用大形状: 符号 + 微型进度环 (Swiggy: 过细的图形在 36px 高度不可读)
 //   · 展开态使用 leading/center/trailing + bottom, 把语音/思考动效做成主视觉;
 //     锁屏横幅继续使用紧凑 LiveCardContent, 灵动岛展开态使用更高的 LIVE 面板
+//   · 流程只在 LiveIslandPresentation 里归一: phase string → stage/accent/progress/icon/status;
+//     compact / expanded / banner 都读同一个呈现模型, 避免各个 View 自己猜状态
 //   · 动效只靠状态切换 transition: symbol replace / blurReplace / 进度弹簧
 
 @main
@@ -31,35 +33,36 @@ private let phoneClawLiveLaunchURL = URL(string: "phoneclaw://live?mode=voice")!
 struct PhoneClawLiveActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: PhoneClawLiveActivityAttributes.self) { context in
-            LiveActivityBannerView(state: context.state)
+            LiveActivityBannerView(presentation: LiveIslandPresentation(state: context.state))
                 .activityBackgroundTint(Color(red: 0.07, green: 0.06, blue: 0.10))
                 .activitySystemActionForegroundColor(.orange)
                 .widgetURL(URL(string: "phoneclaw://live?mode=voice"))
         } dynamicIsland: { context in
-            DynamicIsland {
-                DynamicIslandExpandedRegion(.leading) {
-                    LiveExpandedIslandStageGlyph(state: context.state)
+            let presentation = LiveIslandPresentation(state: context.state)
+            return DynamicIsland {
+                DynamicIslandExpandedRegion(.leading, priority: 2) {
+                    LiveIslandLeadingRail(presentation: presentation)
                         .padding(.leading, 2)
                 }
-                DynamicIslandExpandedRegion(.center) {
-                    LiveExpandedIslandHeader(state: context.state)
+                DynamicIslandExpandedRegion(.center, priority: 1) {
+                    LiveIslandCenterLabel(presentation: presentation)
                 }
-                DynamicIslandExpandedRegion(.trailing) {
-                    LiveExpandedIslandStatus(state: context.state)
+                DynamicIslandExpandedRegion(.trailing, priority: 2) {
+                    LiveIslandTrailingRail(presentation: presentation)
                         .padding(.trailing, 2)
                 }
-                DynamicIslandExpandedRegion(.bottom) {
-                    LiveDynamicIslandExpandedPanel(state: context.state)
+                DynamicIslandExpandedRegion(.bottom, priority: 3) {
+                    LiveIslandBottomPanel(presentation: presentation)
                         .padding(.horizontal, 4)
                         .padding(.top, 4)
                         .padding(.bottom, 6)
                 }
             } compactLeading: {
-                LiveCompactGlyph(state: context.state)
+                LiveCompactGlyph(presentation: presentation)
             } compactTrailing: {
-                LiveProgressRing(state: context.state)
+                LiveProgressRing(presentation: presentation)
             } minimal: {
-                LiveCompactGlyph(state: context.state)
+                LiveCompactGlyph(presentation: presentation)
             }
             .widgetURL(URL(string: "phoneclaw://live?mode=voice"))
         }
@@ -69,10 +72,10 @@ struct PhoneClawLiveActivityWidget: Widget {
 // MARK: - 锁屏 / 横幅卡
 
 private struct LiveActivityBannerView: View {
-    let state: PhoneClawLiveActivityAttributes.ContentState
+    let presentation: LiveIslandPresentation
 
     var body: some View {
-        LiveCardContent(state: state)
+        LiveCardContent(presentation: presentation)
             .padding(.horizontal, 14)
             .padding(.vertical, 11)
             .widgetURL(URL(string: "phoneclaw://live?mode=voice"))
@@ -81,60 +84,216 @@ private struct LiveActivityBannerView: View {
 
 // MARK: - 共享小件
 
-private struct LiveDynamicIslandExpandedPanel: View {
+private enum LiveIslandStage {
+    case starting
+    case voice
+    case thinking
+    case searching
+    case executing
+    case responding
+    case result
+    case ended
+    case idle
+}
+
+private struct LiveIslandPresentation {
     let state: PhoneClawLiveActivityAttributes.ContentState
 
-    var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            LiveExpandedIslandVisualizer(state: state)
+    var phase: String { state.phase }
+    var detail: String { state.detail }
+    var startedAt: Date? { state.startedAt }
+    var phaseStartedAt: Date? { state.phaseStartedAt }
 
-            VStack(alignment: .leading, spacing: 7) {
-                HStack(spacing: 8) {
-                    Text(liveTitle(for: state))
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.white.opacity(0.72))
-                        .lineLimit(1)
-                        .contentTransition(.opacity)
+    var stage: LiveIslandStage {
+        if phase == "skill" { return .result }
+        switch phase {
+        case "starting": return .starting
+        case "listening", "recording": return .voice
+        case "understanding", "processing": return .thinking
+        case "searching": return .searching
+        case "executing": return .executing
+        case "summarizing", "speaking": return .responding
+        case "ended": return .ended
+        default: return .idle
+        }
+    }
 
-                    Spacer(minLength: 0)
+    var title: String {
+        if let skillName = state.skillName, !skillName.isEmpty {
+            return skillName
+        }
+        return "LIVE"
+    }
 
-                    Text(liveStatusText(for: state))
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(liveAccent(for: state).glyph.opacity(0.86))
-                        .lineLimit(1)
-                }
+    var statusText: String {
+        if stage == .result {
+            return state.success == false ? "未完成" : "已完成"
+        }
+        switch phase {
+        case "starting": return "启动中"
+        case "listening": return "待命聆听"
+        case "recording": return "聆听中"
+        case "understanding", "processing": return "理解中"
+        case "searching": return "搜索中"
+        case "executing": return "调用 Skill"
+        case "summarizing": return "整理中"
+        case "speaking": return "回答中"
+        case "ended": return "已结束"
+        default: return "待命"
+        }
+    }
 
-                Text(state.detail)
-                    .font(.callout.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.96))
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.82)
-                    .id(state.detail)
-                    .transition(.blurReplace)
+    var islandCaption: String {
+        switch stage {
+        case .voice: return "VOICE"
+        case .thinking, .searching, .executing: return "THINK"
+        case .responding: return "ANSWER"
+        case .result: return state.success == false ? "FAILED" : "DONE"
+        case .ended: return "ENDED"
+        case .starting: return "START"
+        case .idle: return "LIVE"
+        }
+    }
 
-                LivePipelineTrack(state: state)
-                    .frame(height: 5)
+    var accent: LiveAccent {
+        if stage == .result {
+            return state.success == false ? .red : .green
+        }
+        switch stage {
+        case .voice: return .amber
+        case .thinking, .searching, .executing, .responding, .starting: return .neutral
+        case .ended, .idle: return .dim
+        case .result: return .green
+        }
+    }
 
-                LiveExpandedMilestones(state: state)
+    var iconName: String {
+        if stage == .result {
+            switch state.skillID {
+            case "calendar": return "calendar"
+            case "reminders": return "checklist"
+            case "health": return "heart"
+            case "web-search": return "magnifyingglass"
+            default: return state.success == false ? "xmark" : "checkmark"
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        switch stage {
+        case .voice: return "waveform"
+        case .thinking, .starting: return "ellipsis"
+        case .searching: return "magnifyingglass"
+        case .executing: return "bolt.horizontal.circle"
+        case .responding: return phase == "speaking" ? "speaker.wave.2" : "text.alignleft"
+        case .ended: return "mic.slash"
+        case .idle: return "mic"
+        case .result: return "checkmark"
+        }
+    }
+
+    var progress: Double {
+        if stage == .result { return 1.0 }
+        switch phase {
+        case "starting": return 0.08
+        case "listening": return 0.18
+        case "recording": return 0.3
+        case "understanding", "processing": return 0.55
+        case "searching", "executing": return 0.72
+        case "summarizing": return 0.84
+        case "speaking": return 0.92
+        case "ended": return 1.0
+        default: return 0.12
+        }
+    }
+
+    var nextMilestone: Double {
+        if stage == .result { return 1.0 }
+        switch phase {
+        case "starting", "listening": return 0.3
+        case "recording": return 0.55
+        case "understanding", "processing": return 0.72
+        case "searching", "executing": return 0.84
+        case "summarizing": return 0.92
+        case "speaking": return 1.0
+        default: return 0.3
+        }
+    }
+
+    var phaseEstimate: TimeInterval {
+        switch phase {
+        case "starting": return 8
+        case "listening": return 30
+        case "recording": return 12
+        case "understanding", "processing": return 12
+        case "searching", "executing": return 50
+        case "summarizing": return 35
+        case "speaking": return 20
+        default: return 20
+        }
+    }
+
+    var isInFlight: Bool {
+        switch stage {
+        case .starting, .voice, .thinking, .searching, .executing, .responding:
+            return true
+        case .result, .ended, .idle:
+            return false
+        }
+    }
+
+    var usesVoiceWave: Bool { stage == .voice }
+    var usesThinkingGlyph: Bool {
+        stage == .starting || stage == .thinking || stage == .searching || stage == .executing || stage == .responding
+    }
+    var usesResultGlyph: Bool { stage == .result }
+}
+
+private struct LiveIslandBottomPanel: View {
+    let presentation: LiveIslandPresentation
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text(presentation.title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.68))
+                    .lineLimit(1)
+                    .contentTransition(.opacity)
+
+                Spacer(minLength: 0)
+
+                Text(presentation.statusText)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(presentation.accent.glyph.opacity(0.86))
+                    .lineLimit(1)
+            }
+
+            Text(presentation.detail)
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.96))
+                .lineLimit(2)
+                .minimumScaleFactor(0.82)
+                .id(presentation.detail)
+                .transition(.blurReplace)
+
+            LivePipelineTrack(presentation: presentation, height: 5)
+
+            LiveExpandedMilestones(presentation: presentation)
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .frame(maxWidth: .infinity, minHeight: 92, alignment: .center)
+        .padding(.vertical, 9)
+        .frame(maxWidth: .infinity, minHeight: 82, alignment: .center)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(.white.opacity(0.075))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .stroke(.white.opacity(0.10), lineWidth: 1)
                 )
         )
     }
 }
 
-private struct LiveExpandedIslandHeader: View {
-    let state: PhoneClawLiveActivityAttributes.ContentState
+private struct LiveIslandCenterLabel: View {
+    let presentation: LiveIslandPresentation
 
     var body: some View {
         VStack(spacing: 1) {
@@ -142,7 +301,7 @@ private struct LiveExpandedIslandHeader: View {
                 .font(.caption2.weight(.bold))
                 .foregroundStyle(.white.opacity(0.82))
                 .lineLimit(1)
-            Text(liveStatusText(for: state))
+            Text(presentation.islandCaption)
                 .font(.caption2.weight(.medium))
                 .foregroundStyle(.white.opacity(0.48))
                 .lineLimit(1)
@@ -151,15 +310,15 @@ private struct LiveExpandedIslandHeader: View {
     }
 }
 
-private struct LiveExpandedIslandStatus: View {
-    let state: PhoneClawLiveActivityAttributes.ContentState
+private struct LiveIslandTrailingRail: View {
+    let presentation: LiveIslandPresentation
 
     var body: some View {
-        HStack(spacing: 5) {
-            Circle()
-                .fill(liveAccent(for: state).dot)
-                .frame(width: 6, height: 6)
-            if liveIsInFlight(state), let started = state.startedAt {
+        HStack(spacing: 7) {
+            LiveProgressRing(presentation: presentation)
+                .frame(width: 16, height: 16)
+
+            if presentation.isInFlight, let started = presentation.startedAt {
                 Text(
                     timerInterval: started...started.addingTimeInterval(3600),
                     countsDown: false,
@@ -170,62 +329,55 @@ private struct LiveExpandedIslandStatus: View {
                 .lineLimit(1)
                 .frame(width: 38, alignment: .leading)
             } else {
-                Image(systemName: liveIconName(for: state))
+                Image(systemName: presentation.iconName)
                     .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(liveAccent(for: state).glyph)
+                    .foregroundStyle(presentation.accent.glyph)
                     .contentTransition(.symbolEffect(.replace))
             }
         }
+        .frame(width: 72, height: 32, alignment: .trailing)
     }
 }
 
-private struct LiveExpandedIslandStageGlyph: View {
-    let state: PhoneClawLiveActivityAttributes.ContentState
+private struct LiveIslandLeadingRail: View {
+    let presentation: LiveIslandPresentation
 
     var body: some View {
-        ZStack {
-            Circle()
-                .fill(liveAccent(for: state).chipFill)
-                .frame(width: 34, height: 34)
-            LiveCompactGlyph(state: state)
-                .frame(width: 22, height: 22)
-        }
+        LiveIslandSurroundingVisual(presentation: presentation)
+            .frame(width: 78, height: 42, alignment: .leading)
     }
 }
 
-private struct LiveExpandedIslandVisualizer: View {
-    let state: PhoneClawLiveActivityAttributes.ContentState
+private struct LiveIslandSurroundingVisual: View {
+    let presentation: LiveIslandPresentation
 
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(liveAccent(for: state).chipFill)
-            if liveAccent(for: state).hasGlow {
+        ZStack(alignment: .center) {
+            if presentation.accent.hasGlow {
                 Circle()
-                    .fill(liveAccent(for: state).color.opacity(0.28))
-                    .frame(width: 58, height: 58)
-                    .blur(radius: 13)
+                    .fill(presentation.accent.color.opacity(0.28))
+                    .frame(width: 50, height: 50)
+                    .blur(radius: 12)
             }
 
-            if liveIsVoiceInputPhase(state.phase) {
-                LiveExpandedVoiceWave(state: state)
-            } else if liveIsThinkingPhase(state.phase) {
+            if presentation.usesVoiceWave {
+                LiveExpandedVoiceWave(presentation: presentation)
+            } else if presentation.usesThinkingGlyph {
                 LiveExpandedThinkingGlyph()
-            } else if state.phase == "skill" {
-                LiveExpandedSkillGlyph(state: state)
+            } else if presentation.usesResultGlyph {
+                LiveExpandedSkillGlyph(presentation: presentation)
             } else {
-                Image(systemName: liveIconName(for: state))
-                    .font(.system(size: 28, weight: .semibold))
-                    .foregroundStyle(liveAccent(for: state).glyph)
+                Image(systemName: presentation.iconName)
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundStyle(presentation.accent.glyph)
                     .contentTransition(.symbolEffect(.replace))
             }
         }
-        .frame(width: 72, height: 58)
     }
 }
 
 private struct LiveExpandedVoiceWave: View {
-    let state: PhoneClawLiveActivityAttributes.ContentState
+    let presentation: LiveIslandPresentation
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 0.10, paused: false)) { timeline in
@@ -235,9 +387,9 @@ private struct LiveExpandedVoiceWave: View {
                     let wave = (sin(t * 7.6 + Double(index) * 0.62) + 1.0) / 2.0
                     let height = 11.0 + wave * 30.0
                     Capsule()
-                        .fill(liveAccent(for: state).glyph.opacity(0.54 + wave * 0.46))
+                        .fill(presentation.accent.glyph.opacity(0.54 + wave * 0.46))
                         .frame(width: 3.6, height: height)
-                        .shadow(color: liveAccent(for: state).color.opacity(wave * 0.42), radius: 3)
+                        .shadow(color: presentation.accent.color.opacity(wave * 0.42), radius: 3)
                 }
             }
             .frame(width: 60, height: 46)
@@ -272,7 +424,7 @@ private struct LiveExpandedThinkingGlyph: View {
 }
 
 private struct LiveExpandedSkillGlyph: View {
-    let state: PhoneClawLiveActivityAttributes.ContentState
+    let presentation: LiveIslandPresentation
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 0.16, paused: false)) { timeline in
@@ -280,12 +432,12 @@ private struct LiveExpandedSkillGlyph: View {
             let pulse = (sin(t * 4.8) + 1.0) / 2.0
             ZStack {
                 Circle()
-                    .stroke(liveAccent(for: state).dot.opacity(0.30 + pulse * 0.42), lineWidth: 2)
+                    .stroke(presentation.accent.dot.opacity(0.30 + pulse * 0.42), lineWidth: 2)
                     .frame(width: 38 + pulse * 10, height: 38 + pulse * 10)
                     .blur(radius: pulse * 2.2)
-                Image(systemName: liveIconName(for: state))
+                Image(systemName: presentation.iconName)
                     .font(.system(size: 26, weight: .bold))
-                    .foregroundStyle(liveAccent(for: state).glyph)
+                    .foregroundStyle(presentation.accent.glyph)
                     .scaleEffect(0.94 + pulse * 0.12)
             }
             .frame(width: 54, height: 54)
@@ -294,14 +446,14 @@ private struct LiveExpandedSkillGlyph: View {
 }
 
 private struct LiveExpandedMilestones: View {
-    let state: PhoneClawLiveActivityAttributes.ContentState
+    let presentation: LiveIslandPresentation
 
     var body: some View {
         HStack(spacing: 6) {
-            milestone("听", active: liveProgress(for: state) >= 0.18)
-            milestone("想", active: liveProgress(for: state) >= 0.55)
-            milestone("做", active: liveProgress(for: state) >= 0.72)
-            milestone("答", active: liveProgress(for: state) >= 0.84)
+            milestone("听", active: presentation.progress >= 0.18)
+            milestone("想", active: presentation.progress >= 0.55)
+            milestone("做", active: presentation.progress >= 0.72)
+            milestone("答", active: presentation.progress >= 0.84)
         }
     }
 
@@ -319,15 +471,15 @@ private struct LiveExpandedMilestones: View {
 
 /// 锁屏 / 横幅的紧凑结果卡: chip + 标题·状态行 + 正文。
 private struct LiveCardContent: View {
-    let state: PhoneClawLiveActivityAttributes.ContentState
+    let presentation: LiveIslandPresentation
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
-            LiveIconChip(state: state)
+            LiveIconChip(presentation: presentation)
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
-                    Text(liveTitle(for: state))
+                    Text(presentation.title)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.white.opacity(0.88))
                         .lineLimit(1)
@@ -335,18 +487,18 @@ private struct LiveCardContent: View {
 
                     Spacer(minLength: 0)
 
-                    LiveStatusTag(state: state)
+                    LiveStatusTag(presentation: presentation)
                 }
 
                 // 结果/进展文案是这张卡的主角 — 最亮、最大的一行。
-                Text(state.detail)
+                Text(presentation.detail)
                     .font(.subheadline)
                     .foregroundStyle(.white.opacity(0.95))
                     .lineLimit(2)
-                    .id(state.detail)
+                    .id(presentation.detail)
                     .transition(.blurReplace)
 
-                LivePipelineTrack(state: state)
+                LivePipelineTrack(presentation: presentation)
                     .padding(.top, 3)
             }
         }
@@ -358,10 +510,11 @@ private struct LiveCardContent: View {
 /// 两次推送之间靠 ProgressView(timerInterval:) 让轨头前方持续向下一里程碑爬行 —
 /// 系统驱动、零更新推送, 任务再久画面也一直在动。
 private struct LivePipelineTrack: View {
-    let state: PhoneClawLiveActivityAttributes.ContentState
+    let presentation: LiveIslandPresentation
+    var height: CGFloat = 3
 
     private var trackFill: Color {
-        switch liveAccent(for: state) {
+        switch presentation.accent {
         case .amber, .neutral: return .white.opacity(0.42)
         case .green: return LiveAccent.green.color.opacity(0.8)
         case .red: return LiveAccent.red.color.opacity(0.8)
@@ -370,11 +523,11 @@ private struct LivePipelineTrack: View {
     }
 
     var body: some View {
-        let progress = liveProgress(for: state)
-        let inFlight = liveIsInFlight(state)
+        let progress = presentation.progress
+        let inFlight = presentation.isInFlight
         GeometryReader { geo in
             let solidWidth = max(geo.size.width * progress, 5)
-            let crawlWidth = max(geo.size.width * (liveNextMilestone(for: state) - progress), 0)
+            let crawlWidth = max(geo.size.width * (presentation.nextMilestone - progress), 0)
             ZStack(alignment: .leading) {
                 Capsule()
                     .fill(.white.opacity(0.14))
@@ -382,9 +535,9 @@ private struct LivePipelineTrack: View {
                     Rectangle()
                         .fill(trackFill)
                         .frame(width: solidWidth)
-                    if inFlight, crawlWidth > 1, let phaseStart = state.phaseStartedAt {
+                    if inFlight, crawlWidth > 1, let phaseStart = presentation.phaseStartedAt {
                         ProgressView(
-                            timerInterval: phaseStart...phaseStart.addingTimeInterval(livePhaseEstimate(for: state)),
+                            timerInterval: phaseStart...phaseStart.addingTimeInterval(presentation.phaseEstimate),
                             countsDown: false,
                             label: { EmptyView() },
                             currentValueLabel: { EmptyView() }
@@ -394,34 +547,34 @@ private struct LivePipelineTrack: View {
                         .frame(width: crawlWidth)
                     }
                 }
-                .frame(height: 3)
+                .frame(height: height)
                 .clipShape(Capsule())
                 if inFlight, progress < 1 {
                     Circle()
                         .fill(Color.orange)
-                        .frame(width: 5, height: 5)
-                        .offset(x: max(solidWidth - 5, 0))
+                        .frame(width: height + 2, height: height + 2)
+                        .offset(x: max(solidWidth - height - 2, 0))
                 }
             }
         }
-        .frame(height: 3)
+        .frame(height: height)
         .animation(.spring(duration: 0.6), value: progress)
     }
 }
 
 /// compact 态的微型进度环 — 36px 高度下大形状才可读, 比呆点多一层"在走"的信息。
 private struct LiveProgressRing: View {
-    let state: PhoneClawLiveActivityAttributes.ContentState
+    let presentation: LiveIslandPresentation
 
     var body: some View {
-        let progress = liveProgress(for: state)
+        let progress = presentation.progress
         ZStack {
             Circle()
                 .stroke(.white.opacity(0.16), lineWidth: 2)
             Circle()
                 .trim(from: 0, to: progress)
                 .stroke(
-                    liveAccent(for: state).dot,
+                    presentation.accent.dot,
                     style: StrokeStyle(lineWidth: 2, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))
@@ -436,18 +589,18 @@ private struct LiveProgressRing: View {
 /// - understanding/searching/executing/summarizing: 思考/调用态, 类 Siri AI 小 spinner;
 /// - skill/result: 结果态, 显示具体 Skill 图标。
 private struct LiveCompactGlyph: View {
-    let state: PhoneClawLiveActivityAttributes.ContentState
+    let presentation: LiveIslandPresentation
 
     var body: some View {
         Group {
-            if liveIsVoiceInputPhase(state.phase) {
-                LiveVoiceIslandGlyph(state: state)
-            } else if liveIsThinkingPhase(state.phase) {
+            if presentation.usesVoiceWave {
+                LiveVoiceIslandGlyph(presentation: presentation)
+            } else if presentation.usesThinkingGlyph {
                 LiveThinkingIslandGlyph()
-            } else if state.phase == "skill" {
-                LiveSkillIslandGlyph(state: state)
+            } else if presentation.usesResultGlyph {
+                LiveSkillIslandGlyph(presentation: presentation)
             } else {
-                LiveStaticIslandGlyph(state: state)
+                LiveStaticIslandGlyph(presentation: presentation)
             }
         }
         .frame(width: 18, height: 18)
@@ -456,14 +609,14 @@ private struct LiveCompactGlyph: View {
 }
 
 private struct LiveVoiceIslandGlyph: View {
-    let state: PhoneClawLiveActivityAttributes.ContentState
+    let presentation: LiveIslandPresentation
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 0.12, paused: false)) { timeline in
             let t = timeline.date.timeIntervalSinceReferenceDate
             ZStack {
                 Circle()
-                    .fill(liveAccent(for: state).color.opacity(0.24))
+                    .fill(presentation.accent.color.opacity(0.24))
                     .frame(width: 19, height: 19)
                     .blur(radius: 3)
 
@@ -472,7 +625,7 @@ private struct LiveVoiceIslandGlyph: View {
                         let wave = (sin(t * 8.0 + Double(index) * 0.85) + 1.0) / 2.0
                         let height = 5.0 + wave * 9.0
                         Capsule()
-                            .fill(liveAccent(for: state).glyph.opacity(0.68 + wave * 0.32))
+                            .fill(presentation.accent.glyph.opacity(0.68 + wave * 0.32))
                             .frame(width: 2.1, height: height)
                     }
                 }
@@ -514,7 +667,7 @@ private struct LiveThinkingIslandGlyph: View {
 }
 
 private struct LiveSkillIslandGlyph: View {
-    let state: PhoneClawLiveActivityAttributes.ContentState
+    let presentation: LiveIslandPresentation
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 0.16, paused: false)) { timeline in
@@ -522,13 +675,13 @@ private struct LiveSkillIslandGlyph: View {
             let pulse = (sin(t * 5.5) + 1.0) / 2.0
             ZStack {
                 Circle()
-                    .stroke(liveAccent(for: state).dot.opacity(0.30 + pulse * 0.35), lineWidth: 1.4)
+                    .stroke(presentation.accent.dot.opacity(0.30 + pulse * 0.35), lineWidth: 1.4)
                     .frame(width: 15 + pulse * 4, height: 15 + pulse * 4)
                     .blur(radius: pulse * 1.5)
 
-                Image(systemName: liveIconName(for: state))
+                Image(systemName: presentation.iconName)
                     .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(liveAccent(for: state).glyph)
+                    .foregroundStyle(presentation.accent.glyph)
                     .scaleEffect(0.92 + pulse * 0.12)
             }
             .frame(width: 20, height: 20)
@@ -537,26 +690,26 @@ private struct LiveSkillIslandGlyph: View {
 }
 
 private struct LiveStaticIslandGlyph: View {
-    let state: PhoneClawLiveActivityAttributes.ContentState
+    let presentation: LiveIslandPresentation
 
     var body: some View {
-        Image(systemName: liveIconName(for: state))
+        Image(systemName: presentation.iconName)
             .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(liveAccent(for: state).glyph)
+            .foregroundStyle(presentation.accent.glyph)
             .symbolEffect(
                 .variableColor.iterative,
                 options: .repeating,
-                isActive: liveIsInFlight(state)
+                isActive: presentation.isInFlight
             )
     }
 }
 
 /// 圆角方块 icon chip — 跟 app 内 Skill 卡同款 (26~28pt, tint 0.16)。
 private struct LiveIconChip: View {
-    let state: PhoneClawLiveActivityAttributes.ContentState
+    let presentation: LiveIslandPresentation
 
     var body: some View {
-        let accent = liveAccent(for: state)
+        let accent = presentation.accent
         ZStack {
             if accent.hasGlow {
                 Circle()
@@ -567,14 +720,14 @@ private struct LiveIconChip: View {
             RoundedRectangle(cornerRadius: 7, style: .continuous)
                 .fill(accent.chipFill)
                 .frame(width: 28, height: 28)
-            Image(systemName: liveIconName(for: state))
+            Image(systemName: presentation.iconName)
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(accent.glyph)
                 .contentTransition(.symbolEffect(.replace))
                 .symbolEffect(
                     .variableColor.iterative,
                     options: .repeating,
-                    isActive: liveIsInFlight(state)
+                    isActive: presentation.isInFlight
                 )
         }
         .frame(width: 30, height: 30)
@@ -583,20 +736,20 @@ private struct LiveIconChip: View {
 
 /// 状态点 + 低对比文字。
 private struct LiveStatusTag: View {
-    let state: PhoneClawLiveActivityAttributes.ContentState
+    let presentation: LiveIslandPresentation
 
     var body: some View {
         HStack(spacing: 4) {
             Circle()
-                .fill(liveAccent(for: state).dot)
+                .fill(presentation.accent.dot)
                 .frame(width: 5, height: 5)
-            Text(liveStatusText(for: state))
+            Text(presentation.statusText)
                 .font(.caption2.weight(.medium))
                 .foregroundStyle(.white.opacity(0.55))
                 .lineLimit(1)
                 .contentTransition(.opacity)
             // 执行中实时走秒 — 系统驱动的滚动计时, 不静止的"还在干活"凭证。
-            if liveIsInFlight(state), let started = state.startedAt {
+            if presentation.isInFlight, let started = presentation.startedAt {
                 Text(
                     timerInterval: started...started.addingTimeInterval(3600),
                     countsDown: false,
@@ -659,127 +812,6 @@ private enum LiveAccent {
         case .amber, .green, .red: return true
         case .neutral, .dim: return false
         }
-    }
-}
-
-private func liveAccent(for state: PhoneClawLiveActivityAttributes.ContentState) -> LiveAccent {
-    if state.phase == "skill" {
-        return state.success == false ? .red : .green
-    }
-    switch state.phase {
-    case "listening", "recording": return .amber
-    case "understanding", "processing", "searching", "summarizing", "executing", "speaking": return .neutral
-    case "ended": return .dim
-    default: return .dim
-    }
-}
-
-private func liveIconName(for state: PhoneClawLiveActivityAttributes.ContentState) -> String {
-    if state.phase == "skill" {
-        switch state.skillID {
-        case "calendar": return "calendar"
-        case "reminders": return "checklist"
-        case "health": return "heart"
-        case "web-search": return "magnifyingglass"
-        default: return state.success == false ? "xmark" : "checkmark"
-        }
-    }
-    switch state.phase {
-    case "listening", "recording": return "waveform"
-    case "understanding", "processing": return "ellipsis"
-    case "searching": return "magnifyingglass"
-    case "summarizing": return "text.alignleft"
-    case "executing": return "bolt.horizontal.circle"
-    case "speaking": return "speaker.wave.2"
-    case "ended": return "mic.slash"
-    default: return "mic"
-    }
-}
-
-/// 阶段→进度比例 — 中段三档 (0.55/0.72/0.84) 与 LiveBackgroundContinuation
-/// 上报系统的进度百分比同源, 两个表面讲同一个故事。
-private func liveProgress(for state: PhoneClawLiveActivityAttributes.ContentState) -> Double {
-    if state.phase == "skill" { return 1.0 }
-    switch state.phase {
-    case "listening": return 0.18
-    case "recording": return 0.3
-    case "understanding", "processing": return 0.55
-    case "searching", "executing": return 0.72
-    case "summarizing": return 0.84
-    case "speaking": return 0.92
-    case "ended": return 1.0
-    default: return 0.12
-    }
-}
-
-/// 执行中 = 持续动效开 (流光/走秒/爬行); 结果与待机态静止。
-private func liveIsInFlight(_ state: PhoneClawLiveActivityAttributes.ContentState) -> Bool {
-    switch liveAccent(for: state) {
-    case .amber, .neutral: return true
-    case .green, .red, .dim: return false
-    }
-}
-
-/// 当前阶段的爬行目标 — 下一个里程碑比例。
-private func liveNextMilestone(for state: PhoneClawLiveActivityAttributes.ContentState) -> Double {
-    if state.phase == "skill" { return 1.0 }
-    switch state.phase {
-    case "listening": return 0.3
-    case "recording": return 0.55
-    case "understanding", "processing": return 0.72
-    case "searching", "executing": return 0.84
-    case "summarizing": return 0.92
-    case "speaking": return 1.0
-    default: return 0.3
-    }
-}
-
-/// 阶段时长的展示预估 (秒) — 只决定爬行速度, 跑满即停在下一档前, 不影响真实进度。
-private func livePhaseEstimate(for state: PhoneClawLiveActivityAttributes.ContentState) -> TimeInterval {
-    switch state.phase {
-    case "listening": return 30
-    case "recording": return 12
-    case "understanding", "processing": return 12
-    case "searching", "executing": return 50
-    case "summarizing": return 35
-    case "speaking": return 20
-    default: return 20
-    }
-}
-
-private func liveIsVoiceInputPhase(_ phase: String) -> Bool {
-    phase == "listening" || phase == "recording"
-}
-
-private func liveIsThinkingPhase(_ phase: String) -> Bool {
-    switch phase {
-    case "understanding", "processing", "searching", "executing", "summarizing":
-        return true
-    default:
-        return false
-    }
-}
-
-private func liveTitle(for state: PhoneClawLiveActivityAttributes.ContentState) -> String {
-    if let skillName = state.skillName, !skillName.isEmpty {
-        return skillName
-    }
-    return "LIVE"
-}
-
-private func liveStatusText(for state: PhoneClawLiveActivityAttributes.ContentState) -> String {
-    if state.phase == "skill" {
-        return state.success == false ? "未完成" : "已完成"
-    }
-    switch state.phase {
-    case "recording": return "聆听中"
-    case "understanding", "processing": return "理解中"
-    case "searching": return "搜索中"
-    case "summarizing": return "总结中"
-    case "executing": return "执行中"
-    case "speaking": return "回答中"
-    case "ended": return "已结束"
-    default: return "待命"
     }
 }
 
