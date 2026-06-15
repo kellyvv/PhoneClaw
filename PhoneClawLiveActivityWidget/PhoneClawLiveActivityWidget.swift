@@ -23,6 +23,7 @@ struct PhoneClawLiveActivityWidgetBundle: WidgetBundle {
 }
 
 private let phoneClawLiveLaunchURL = URL(string: "phoneclaw://live?mode=voice")!
+private let liveIslandFrameInterval: TimeInterval = 1.0 / 30.0
 
 private enum LiveTheme {
     static let surface = Color(red: 0.055, green: 0.052, blue: 0.070)
@@ -226,7 +227,7 @@ private struct LiveSixDotVoiceWave: View {
     var diameter: CGFloat
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 0.08, paused: false)) { timeline in
+        TimelineView(.periodic(from: .now, by: liveIslandFrameInterval)) { timeline in
             let t = timeline.date.timeIntervalSinceReferenceDate
             let dot = max(diameter * 0.105, 3.2)
             let spacing = max(diameter * 0.070, 2.2)
@@ -253,7 +254,7 @@ private struct LiveRotatingSkillDotRing: View {
     var diameter: CGFloat
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 0.016, paused: false)) { timeline in
+        TimelineView(.periodic(from: .now, by: liveIslandFrameInterval)) { timeline in
             let t = timeline.date.timeIntervalSinceReferenceDate
             let dot = max(diameter * 0.125, 3.4)
             let orbit = diameter * 0.31
