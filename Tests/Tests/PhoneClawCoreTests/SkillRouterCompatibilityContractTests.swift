@@ -207,8 +207,14 @@ final class SkillRouterCompatibilityContractTests: XCTestCase {
         XCTAssertTrue(widget.contains("LiveCompactGlyph(state: context.state)"))
         XCTAssertTrue(widget.contains("private struct LiveVoiceIslandGlyph: View"))
         XCTAssertTrue(widget.contains("private struct LiveThinkingIslandGlyph: View"))
-        XCTAssertTrue(widget.contains("ProgressView()"))
-        XCTAssertTrue(widget.contains("Image(systemName: \"waveform\")"))
+        XCTAssertTrue(widget.contains("private struct LiveSkillIslandGlyph: View"))
+        XCTAssertTrue(widget.contains("TimelineView(.animation(minimumInterval: 0.12"))
+        XCTAssertTrue(widget.contains("TimelineView(.animation(minimumInterval: 0.08"))
+        XCTAssertTrue(widget.contains("TimelineView(.animation(minimumInterval: 0.16"))
+        XCTAssertTrue(widget.contains("ForEach(0..<5"))
+        XCTAssertTrue(widget.contains("ForEach(0..<8"))
+        XCTAssertTrue(widget.contains("sin(t * 8.0"))
+        XCTAssertTrue(widget.contains(".rotationEffect(.degrees(t * 160.0))"))
         XCTAssertTrue(widget.contains("private func liveIsVoiceInputPhase(_ phase: String) -> Bool"))
         XCTAssertTrue(widget.contains("phase == \"listening\" || phase == \"recording\""))
         XCTAssertTrue(widget.contains("private func liveIsThinkingPhase(_ phase: String) -> Bool"))
@@ -217,6 +223,29 @@ final class SkillRouterCompatibilityContractTests: XCTestCase {
         XCTAssertTrue(widget.contains("case \"listening\": return 0.18"))
         XCTAssertTrue(widget.contains("case \"listening\": return 0.3"))
         XCTAssertTrue(widget.contains("case \"listening\": return 30"))
+    }
+
+    func testLiveDynamicIslandExpandedModeUsesLargeLivePanel() throws {
+        let widget = try source("PhoneClawLiveActivityWidget/PhoneClawLiveActivityWidget.swift")
+
+        XCTAssertTrue(widget.contains("DynamicIslandExpandedRegion(.leading)"))
+        XCTAssertTrue(widget.contains("DynamicIslandExpandedRegion(.center)"))
+        XCTAssertTrue(widget.contains("DynamicIslandExpandedRegion(.trailing)"))
+        XCTAssertTrue(widget.contains("DynamicIslandExpandedRegion(.bottom)"))
+        XCTAssertTrue(widget.contains("LiveDynamicIslandExpandedPanel(state: context.state)"))
+        XCTAssertTrue(widget.contains("private struct LiveExpandedIslandVisualizer: View"))
+        XCTAssertTrue(widget.contains("private struct LiveExpandedVoiceWave: View"))
+        XCTAssertTrue(widget.contains("private struct LiveExpandedThinkingGlyph: View"))
+        XCTAssertTrue(widget.contains("private struct LiveExpandedSkillGlyph: View"))
+        XCTAssertTrue(widget.contains("private struct LiveExpandedMilestones: View"))
+        XCTAssertTrue(widget.contains(".frame(width: 72, height: 58)"))
+        XCTAssertTrue(widget.contains(".frame(maxWidth: .infinity, minHeight: 92"))
+        XCTAssertTrue(widget.contains("ForEach(0..<9"))
+        XCTAssertTrue(widget.contains("ForEach(0..<12"))
+        XCTAssertTrue(widget.contains("milestone(\"听\""))
+        XCTAssertTrue(widget.contains("milestone(\"想\""))
+        XCTAssertTrue(widget.contains("milestone(\"做\""))
+        XCTAssertTrue(widget.contains("milestone(\"答\""))
     }
 
     func testLiveASRReusesMainAgentSkillChain() throws {
