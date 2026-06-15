@@ -6,8 +6,8 @@ import WidgetKit
 // MARK: - 设计语言
 //
 // PhoneClaw LIVE 是系统级语音入口, 不是任务看板:
-//   · 监听态只显示 6 个点, 像声波一样轻微起伏
-//   · Skill 链路只显示一个旋转圆环, 直到结果产生
+//   · 监听态只显示横向 6 个点, 自然循环波浪摆动
+//   · Skill 链路让同一组点形成旋转圆环, 直到结果产生
 //   · 结果态才展示结果符号和一句结果文案
 //   · 所有表面读同一个 LiveIslandPresentation, 保持状态、色彩、动效一致
 
@@ -208,7 +208,7 @@ private struct LiveIslandCoreVisual: View {
             case .voice:
                 LiveSixDotVoiceWave(presentation: presentation, diameter: diameter)
             case .skill:
-                LiveRotatingSkillRing(presentation: presentation, diameter: diameter)
+                LiveRotatingSkillDotRing(presentation: presentation, diameter: diameter)
             case .result:
                 LiveResultMark(presentation: presentation, diameter: diameter)
             case .idle:
@@ -248,27 +248,33 @@ private struct LiveSixDotVoiceWave: View {
     }
 }
 
-private struct LiveRotatingSkillRing: View {
+private struct LiveRotatingSkillDotRing: View {
     let presentation: LiveIslandPresentation
     var diameter: CGFloat
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 0.016, paused: false)) { timeline in
             let t = timeline.date.timeIntervalSinceReferenceDate
+            let dot = max(diameter * 0.125, 3.4)
+            let orbit = diameter * 0.31
+            let rotation = t * 1.45
             ZStack {
-                Circle()
-                    .stroke(.white.opacity(0.12), lineWidth: max(diameter * 0.045, 1.2))
-                    .frame(width: diameter * 0.72, height: diameter * 0.72)
-                Circle()
-                    .trim(from: 0.10, to: 0.82)
-                    .stroke(
-                        presentation.accent.glyph,
-                        style: StrokeStyle(lineWidth: max(diameter * 0.070, 1.8), lineCap: .round)
-                    )
-                    .frame(width: diameter * 0.72, height: diameter * 0.72)
-                    .rotationEffect(.degrees(t * 180.0))
-                    .shadow(color: presentation.accent.color.opacity(0.32), radius: max(diameter * 0.08, 2.0))
+                ForEach(0..<6, id: \.self) { index in
+                    let phase = rotation + Double(index) * .pi * 2.0 / 6.0
+                    let pulse = (sin(t * 4.2 + Double(index) * 0.82) + 1.0) / 2.0
+                    Circle()
+                        .fill(presentation.accent.glyph.opacity(0.58 + pulse * 0.34))
+                        .frame(width: dot, height: dot)
+                        .scaleEffect(0.86 + CGFloat(pulse) * 0.26)
+                        .offset(
+                            x: CGFloat(cos(phase)) * orbit,
+                            y: CGFloat(sin(phase)) * orbit
+                        )
+                        .shadow(color: presentation.accent.color.opacity(0.18 + pulse * 0.28), radius: 2.8)
+                }
             }
+            .frame(width: diameter, height: diameter)
+            .rotationEffect(.degrees(t * 42.0))
         }
     }
 }
