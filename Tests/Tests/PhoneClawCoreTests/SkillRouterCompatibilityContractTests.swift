@@ -121,6 +121,28 @@ final class SkillRouterCompatibilityContractTests: XCTestCase {
         XCTAssertTrue(continuation.contains("case \"summarizing\": return 84"))
     }
 
+    func testLiveActivityDismissalStopsLiveSession() throws {
+        let bridge = try source("Live/Activity/LiveActivityBridge.swift")
+        let liveModeEngine = try source("Live/Core/LiveModeEngine.swift")
+        let liveModeUI = try source("Live/UI/LiveModeUI.swift")
+
+        XCTAssertTrue(bridge.contains("func waitForDismissal() async -> Bool"))
+        XCTAssertTrue(bridge.contains("activity.activityStateUpdates"))
+        XCTAssertTrue(bridge.contains("case .dismissed:"))
+        XCTAssertTrue(bridge.contains("dismissed by user"))
+
+        XCTAssertTrue(liveModeEngine.contains("endedByLiveActivityDismissal"))
+        XCTAssertTrue(liveModeEngine.contains("liveActivityDismissalTask"))
+        XCTAssertTrue(liveModeEngine.contains("observeLiveActivityDismissal()"))
+        XCTAssertTrue(liveModeEngine.contains("await self.liveActivity.waitForDismissal()"))
+        XCTAssertTrue(liveModeEngine.contains("stopFromLiveActivityDismissal()"))
+        XCTAssertTrue(liveModeEngine.contains("await stopLegacy()"))
+        XCTAssertTrue(liveModeEngine.contains("cancelLiveActivityDismissalObservation()"))
+
+        XCTAssertTrue(liveModeUI.contains(".onChange(of: liveEngine.endedByLiveActivityDismissal)"))
+        XCTAssertTrue(liveModeUI.contains("isPresented = false"))
+    }
+
     func testLiveAppIntentCanExecuteSkillsWithoutOpeningMainChat() throws {
         let shortcuts = try source("App/LiveModeShortcuts.swift")
         let agentEngine = try source("Agent/AgentEngine.swift")

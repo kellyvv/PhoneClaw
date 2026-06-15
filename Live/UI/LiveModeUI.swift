@@ -254,6 +254,11 @@ struct LiveModeView: View {
                 await restoreRuntimeAfterLive(backend: restoreBackend)
             }
         }
+        .onChange(of: liveEngine.endedByLiveActivityDismissal) { _, dismissed in
+            guard dismissed else { return }
+            camera.stop()
+            isPresented = false
+        }
         .alert(
             tr("需要相机权限", "Camera Access Needed"),
             isPresented: $showCameraPermissionAlert

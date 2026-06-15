@@ -148,6 +148,7 @@ class LiveModeEngine {
     private(set) var lastSkillInfo: LiveSkillInfoOutput?
     private(set) var liveProgressHeadline: String?
     private(set) var liveCaption: String = ""
+    private(set) var endedByLiveActivityDismissal = false
     private(set) var inputLevel: Double = 0
     private(set) var statusMessage: String = LiveLocale.zhCN.config.statusStrings.preparingLive
 
@@ -170,6 +171,7 @@ class LiveModeEngine {
     private var turnPhase: TurnPhase = .inactive
     private var turnGeneration: UInt64 = 0
     private var liveActivityListeningRefreshTask: Task<Void, Never>?
+    private var liveActivityDismissalTask: Task<Void, Never>?
 
     private var synthesisPipeline: AsyncStream<String>.Continuation?
     private var synthesisTask: Task<Void, Never>?
@@ -284,6 +286,7 @@ class LiveModeEngine {
         }
         guard turnPhase == .inactive else { return }
         turnPhase = .starting
+        endedByLiveActivityDismissal = false
         // state 保持 .idle — orb 暗色, 用户看到 "加载中"。
         // 历史 bug: 这里本来过早把 state 设成 .listening, 跟下面 line ~405
         // 注释里的"state 保持 .idle"意图相反。UI 上 camera/麦克风入口如果按
@@ -507,6 +510,7 @@ class LiveModeEngine {
         print("[LiveAgent] using MAIN AgentEngine; persistent live LLM conversation skipped")
         backgroundContinuation.begin()
         await liveActivity.startSession()
+        observeLiveActivityDismissal()
         turnPhase = .listening
         state = .listening
         inputLevel = 0
@@ -530,6 +534,7 @@ class LiveModeEngine {
         guard turnPhase != .stopping, turnPhase != .inactive else { return }
         turnPhase = .stopping
         cancelLiveActivityListeningRefresh()
+        cancelLiveActivityDismissalObservation()
 
         vad.stopListening()
         await cancelActiveGeneration()
@@ -1000,6 +1005,29 @@ class LiveModeEngine {
         statusMessage = liveStrings.listeningPrompt
         scheduleLiveActivityListeningRefresh(afterResultGeneration: gen)
         print("[Live] 👂 Listening...")
+    }
+
+    private func observeLiveActivityDismissal() {
+        cancelLiveActivityDismissalObservation()
+        liveActivityDismissalTask = Task { [weak self] in
+            guard let self else { return }
+            let dismissed = await self.liveActivity.waitForDismissal()
+            guard dismissed, !Task.isCancelled else { return }
+            await self.stopFromLiveActivityDismissal()
+        }
+    }
+
+    private func cancelLiveActivityDismissalObservation() {
+        liveActivityDismissalTask?.cancel()
+        liveActivityDismissalTask = nil
+    }
+
+    @MainActor
+    private func stopFromLiveActivityDismissal() async {
+        guard turnPhase != .inactive, turnPhase != .stopping else { return }
+        endedByLiveActivityDismissal = true
+        print("[LiveActivity] user dismissed Dynamic Island; stopping LIVE")
+        await stopLegacy()
     }
 
     private func cancelLiveActivityListeningRefresh() {

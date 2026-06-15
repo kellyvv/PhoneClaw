@@ -64,6 +64,32 @@ actor LiveActivityBridge {
         #endif
     }
 
+    func waitForDismissal() async -> Bool {
+        #if canImport(ActivityKit)
+        guard #available(iOS 16.2, *), let activity else { return false }
+        let activityID = activity.id
+
+        for await state in activity.activityStateUpdates {
+            switch state {
+            case .dismissed:
+                if self.activity?.id == activityID {
+                    self.activity = nil
+                }
+                print("[LiveActivity] dismissed by user id=\(activityID)")
+                return true
+            case .ended:
+                if self.activity?.id == activityID {
+                    self.activity = nil
+                }
+                return false
+            default:
+                break
+            }
+        }
+        #endif
+        return false
+    }
+
     func update(
         phase: String,
         headline: String,
