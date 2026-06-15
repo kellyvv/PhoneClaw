@@ -5,17 +5,11 @@ import WidgetKit
 
 // MARK: - 设计语言
 //
-// 参考 Flighty (ADA 2023) / Citymapper / Swiggy 的灵动岛复盘 + Apple 官方设计专文:
-//   · 签名元素 = 流水线进度轨 (收音→理解→检索→总结→完成), 对位 Flighty 的航线进度条;
-//     进度比例镜像 LiveBackgroundContinuation 的 55/72/84 阶段映射, 跨表面一致
-//   · 关键信息 front and center — 结果文案是主角 (subheadline 0.95), 标签才是配角
-//   · 品牌琥珀只出现一次 — 进行中的轨头/活跃点; 完成柔绿, 失败柔红, 其余白系分层
-//   · compact 态用大形状: 符号 + 微型进度环 (Swiggy: 过细的图形在 36px 高度不可读)
-//   · 展开态使用 leading/center/trailing + bottom, 把语音/思考动效做成主视觉;
-//     锁屏横幅继续使用紧凑 LiveCardContent, 灵动岛展开态使用更高的 LIVE 面板
-//   · 流程只在 LiveIslandPresentation 里归一: phase string → stage/accent/progress/icon/status;
-//     compact / expanded / banner 都读同一个呈现模型, 避免各个 View 自己猜状态
-//   · 动效只靠状态切换 transition: symbol replace / blurReplace / 进度弹簧
+// PhoneClaw LIVE 是系统级语音入口, 不是任务看板:
+//   · 一个主状态、一句主正文、一条细进度, 避免灵动岛信息过载
+//   · 进行中统一使用 warm signal, 完成/失败仅在结果态低饱和提示
+//   · compact 只表达「LIVE 还在运行」和当前状态, expanded 才显示正文
+//   · 所有表面读同一个 LiveIslandPresentation, 保持状态、色彩、动效一致
 
 @main
 struct PhoneClawLiveActivityWidgetBundle: WidgetBundle {
@@ -30,11 +24,21 @@ struct PhoneClawLiveActivityWidgetBundle: WidgetBundle {
 
 private let phoneClawLiveLaunchURL = URL(string: "phoneclaw://live?mode=voice")!
 
+private enum LiveTheme {
+    static let surface = Color(red: 0.055, green: 0.052, blue: 0.070)
+    static let surfaceRaised = Color(red: 0.080, green: 0.076, blue: 0.100)
+    static let line = Color.white.opacity(0.11)
+    static let primaryText = Color.white.opacity(0.94)
+    static let secondaryText = Color.white.opacity(0.58)
+    static let tertiaryText = Color.white.opacity(0.36)
+    static let signal = Color(red: 1.00, green: 0.62, blue: 0.32)
+}
+
 struct PhoneClawLiveActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: PhoneClawLiveActivityAttributes.self) { context in
             LiveActivityBannerView(presentation: LiveIslandPresentation(state: context.state))
-                .activityBackgroundTint(Color(red: 0.07, green: 0.06, blue: 0.10))
+                .activityBackgroundTint(LiveTheme.surface)
                 .activitySystemActionForegroundColor(.orange)
                 .widgetURL(URL(string: "phoneclaw://live?mode=voice"))
         } dynamicIsland: { context in
@@ -101,7 +105,6 @@ private struct LiveIslandPresentation {
 
     var phase: String { state.phase }
     var detail: String { state.detail }
-    var startedAt: Date? { state.startedAt }
     var phaseStartedAt: Date? { state.phaseStartedAt }
 
     var stage: LiveIslandStage {
@@ -118,11 +121,25 @@ private struct LiveIslandPresentation {
         }
     }
 
-    var title: String {
-        if let skillName = state.skillName, !skillName.isEmpty {
-            return skillName
+    var primaryLine: String {
+        let trimmed = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? moodText : trimmed
+    }
+
+    var moodText: String {
+        if stage == .result {
+            return state.success == false ? "未完成" : "已完成"
         }
-        return "LIVE"
+        switch stage {
+        case .starting: return "启动"
+        case .voice: return phase == "recording" ? "聆听" : "待命"
+        case .thinking, .searching: return "思考"
+        case .executing: return "执行"
+        case .responding: return "回应"
+        case .ended: return "结束"
+        case .idle: return "待命"
+        case .result: return "完成"
+        }
     }
 
     var statusText: String {
@@ -130,28 +147,14 @@ private struct LiveIslandPresentation {
             return state.success == false ? "未完成" : "已完成"
         }
         switch phase {
-        case "starting": return "启动中"
-        case "listening": return "待命聆听"
-        case "recording": return "聆听中"
-        case "understanding", "processing": return "理解中"
-        case "searching": return "搜索中"
-        case "executing": return "调用 Skill"
-        case "summarizing": return "整理中"
-        case "speaking": return "回答中"
-        case "ended": return "已结束"
+        case "starting": return "启动"
+        case "listening": return "待命"
+        case "recording": return "聆听"
+        case "understanding", "processing", "searching": return "思考"
+        case "executing": return "执行"
+        case "summarizing", "speaking": return "回应"
+        case "ended": return "结束"
         default: return "待命"
-        }
-    }
-
-    var islandCaption: String {
-        switch stage {
-        case .voice: return "VOICE"
-        case .thinking, .searching, .executing: return "THINK"
-        case .responding: return "ANSWER"
-        case .result: return state.success == false ? "FAILED" : "DONE"
-        case .ended: return "ENDED"
-        case .starting: return "START"
-        case .idle: return "LIVE"
         }
     }
 
@@ -189,8 +192,7 @@ private struct LiveIslandPresentation {
             return state.success == false ? .red : .green
         }
         switch stage {
-        case .voice: return .amber
-        case .thinking, .searching, .executing, .responding, .starting: return .neutral
+        case .voice, .thinking, .searching, .executing, .responding, .starting: return .amber
         case .ended, .idle: return .dim
         case .result: return .green
         }
@@ -275,49 +277,83 @@ private struct LiveIslandPresentation {
     var usesResultGlyph: Bool { stage == .result }
 }
 
+private struct LiveSignalDot: View {
+    let presentation: LiveIslandPresentation
+    var size: CGFloat = 5
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 0.18, paused: !presentation.isInFlight)) { timeline in
+            let t = timeline.date.timeIntervalSinceReferenceDate
+            let pulse = presentation.isInFlight ? CGFloat((sin(t * 4.2) + 1.0) / 2.0) : 0.0
+            Circle()
+                .fill(presentation.accent.dot)
+                .frame(width: size, height: size)
+                .shadow(
+                    color: presentation.accent.color.opacity(0.28 + pulse * 0.26),
+                    radius: presentation.isInFlight ? 3 + pulse * 4 : 1
+                )
+        }
+    }
+}
+
+private struct LiveAuroraCapsuleBackground: View {
+    let presentation: LiveIslandPresentation
+    var cornerRadius: CGFloat
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        shape
+            .fill(LiveTheme.surfaceRaised.opacity(0.92))
+            .overlay(alignment: .topLeading) {
+                if presentation.accent.hasGlow {
+                    Capsule()
+                        .fill(presentation.accent.color.opacity(0.16))
+                        .frame(width: 118, height: 42)
+                        .blur(radius: 18)
+                        .offset(x: -36, y: -16)
+                }
+            }
+            .overlay(
+                shape.stroke(LiveTheme.line, lineWidth: 1)
+            )
+            .clipShape(shape)
+    }
+}
+
 private struct LiveIslandBottomPanel: View {
     let presentation: LiveIslandPresentation
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Text(presentation.title)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.68))
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 6) {
+                LiveSignalDot(presentation: presentation, size: 6)
+                Text(presentation.moodText)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(LiveTheme.secondaryText)
                     .lineLimit(1)
                     .contentTransition(.opacity)
-
                 Spacer(minLength: 0)
-
-                Text(presentation.statusText)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(presentation.accent.glyph.opacity(0.86))
+                Text("PhoneClaw")
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(LiveTheme.tertiaryText)
                     .lineLimit(1)
             }
 
-            Text(presentation.detail)
-                .font(.callout.weight(.semibold))
-                .foregroundStyle(.white.opacity(0.96))
+            Text(presentation.primaryLine)
+                .font(.callout.weight(.medium))
+                .foregroundStyle(LiveTheme.primaryText)
                 .lineLimit(2)
-                .minimumScaleFactor(0.82)
-                .id(presentation.detail)
+                .minimumScaleFactor(0.86)
+                .id(presentation.primaryLine)
                 .transition(.blurReplace)
 
-            LivePipelineTrack(presentation: presentation, height: 5)
-
-            LiveExpandedMilestones(presentation: presentation)
+            LivePipelineTrack(presentation: presentation, height: 3)
+                .padding(.top, 2)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
-        .frame(maxWidth: .infinity, minHeight: 82, alignment: .center)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(.white.opacity(0.075))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(.white.opacity(0.10), lineWidth: 1)
-                )
-        )
+        .padding(.horizontal, 13)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, minHeight: 76, alignment: .center)
+        .background(LiveAuroraCapsuleBackground(presentation: presentation, cornerRadius: 17))
     }
 }
 
@@ -325,17 +361,12 @@ private struct LiveIslandCenterLabel: View {
     let presentation: LiveIslandPresentation
 
     var body: some View {
-        VStack(spacing: 1) {
-            Text("PhoneClaw LIVE")
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(.white.opacity(0.82))
-                .lineLimit(1)
-            Text(presentation.islandCaption)
-                .font(.caption2.weight(.medium))
-                .foregroundStyle(.white.opacity(0.48))
-                .lineLimit(1)
-        }
-        .frame(maxWidth: 104)
+        Text(presentation.moodText)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(LiveTheme.secondaryText)
+            .lineLimit(1)
+            .contentTransition(.opacity)
+            .frame(maxWidth: 82)
     }
 }
 
@@ -343,28 +374,16 @@ private struct LiveIslandTrailingRail: View {
     let presentation: LiveIslandPresentation
 
     var body: some View {
-        HStack(spacing: 7) {
-            LiveProgressRing(presentation: presentation)
-                .frame(width: 16, height: 16)
+        HStack(spacing: 6) {
+            Text(presentation.compactStageText)
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .foregroundStyle(presentation.accent.glyph)
+                .frame(width: 16)
+                .contentTransition(.opacity)
 
-            if presentation.isInFlight, let started = presentation.startedAt {
-                Text(
-                    timerInterval: started...started.addingTimeInterval(3600),
-                    countsDown: false,
-                    showsHours: false
-                )
-                .font(.caption2.weight(.semibold).monospacedDigit())
-                .foregroundStyle(.white.opacity(0.70))
-                .lineLimit(1)
-                .frame(width: 38, alignment: .leading)
-            } else {
-                Image(systemName: presentation.iconName)
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(presentation.accent.glyph)
-                    .contentTransition(.symbolEffect(.replace))
-            }
+            LiveProgressRing(presentation: presentation, size: 17)
         }
-        .frame(width: 72, height: 32, alignment: .trailing)
+        .frame(width: 48, height: 32, alignment: .trailing)
     }
 }
 
@@ -373,7 +392,7 @@ private struct LiveIslandLeadingRail: View {
 
     var body: some View {
         LiveIslandSurroundingVisual(presentation: presentation)
-            .frame(width: 78, height: 42, alignment: .leading)
+            .frame(width: 68, height: 40, alignment: .leading)
     }
 }
 
@@ -382,18 +401,13 @@ private struct LiveIslandSurroundingVisual: View {
 
     var body: some View {
         ZStack(alignment: .center) {
-            Capsule()
-                .fill(.white.opacity(0.065))
-                .overlay(
-                    Capsule()
-                        .stroke(presentation.accent.dot.opacity(0.22), lineWidth: 1)
-                )
+            LiveAuroraCapsuleBackground(presentation: presentation, cornerRadius: 20)
 
             if presentation.accent.hasGlow {
                 Circle()
-                    .fill(presentation.accent.color.opacity(0.28))
-                    .frame(width: 50, height: 50)
-                    .blur(radius: 12)
+                    .fill(presentation.accent.color.opacity(0.18))
+                    .frame(width: 42, height: 42)
+                    .blur(radius: 14)
             }
 
             if presentation.usesVoiceWave {
@@ -418,17 +432,17 @@ private struct LiveExpandedVoiceWave: View {
     var body: some View {
         TimelineView(.animation(minimumInterval: 0.10, paused: false)) { timeline in
             let t = timeline.date.timeIntervalSinceReferenceDate
-            HStack(alignment: .center, spacing: 2.4) {
-                ForEach(0..<9, id: \.self) { index in
-                    let wave = (sin(t * 7.6 + Double(index) * 0.62) + 1.0) / 2.0
-                    let height = 11.0 + wave * 30.0
+            HStack(alignment: .center, spacing: 3.0) {
+                ForEach(0..<6, id: \.self) { index in
+                    let wave = (sin(t * 6.4 + Double(index) * 0.78) + 1.0) / 2.0
+                    let height = 10.0 + wave * 22.0
                     Capsule()
-                        .fill(presentation.accent.glyph.opacity(0.54 + wave * 0.46))
-                        .frame(width: 3.6, height: height)
-                        .shadow(color: presentation.accent.color.opacity(wave * 0.42), radius: 3)
+                        .fill(presentation.accent.glyph.opacity(0.48 + wave * 0.42))
+                        .frame(width: 3.2, height: height)
+                        .shadow(color: presentation.accent.color.opacity(wave * 0.34), radius: 3)
                 }
             }
-            .frame(width: 60, height: 46)
+            .frame(width: 48, height: 40)
         }
     }
 }
@@ -438,23 +452,25 @@ private struct LiveExpandedThinkingGlyph: View {
         TimelineView(.animation(minimumInterval: 0.08, paused: false)) { timeline in
             let t = timeline.date.timeIntervalSinceReferenceDate
             ZStack {
-                ForEach(0..<12, id: \.self) { index in
-                    let angle = Double(index) / 12.0 * 2.0 * Double.pi
-                    let phase = (t * 10.0 - Double(index)).truncatingRemainder(dividingBy: 12.0)
-                    let normalized = (phase + 12.0).truncatingRemainder(dividingBy: 12.0) / 12.0
+                Circle()
+                    .stroke(.white.opacity(0.12), lineWidth: 1)
+                    .frame(width: 34, height: 34)
+
+                ForEach(0..<3, id: \.self) { index in
+                    let angle = t * 2.2 + Double(index) / 3.0 * 2.0 * Double.pi
+                    let normalized = (sin(t * 2.6 + Double(index)) + 1.0) / 2.0
                     let intensity = 1.0 - normalized
                     Circle()
-                        .fill(.white.opacity(0.20 + intensity * 0.80))
-                        .frame(width: 4.6 + intensity * 4.4, height: 4.6 + intensity * 4.4)
+                        .fill(.white.opacity(0.42 + intensity * 0.42))
+                        .frame(width: 4.8 + intensity * 2.8, height: 4.8 + intensity * 2.8)
                         .offset(
-                            x: cos(angle) * 18.0,
-                            y: sin(angle) * 18.0
+                            x: cos(angle) * 17.0,
+                            y: sin(angle) * 17.0
                         )
-                        .shadow(color: .white.opacity(intensity * 0.65), radius: 4)
+                        .shadow(color: .white.opacity(intensity * 0.45), radius: 4)
                 }
             }
-            .rotationEffect(.degrees(t * 150.0))
-            .frame(width: 50, height: 50)
+            .frame(width: 46, height: 46)
         }
     }
 }
@@ -468,76 +484,48 @@ private struct LiveExpandedSkillGlyph: View {
             let pulse = (sin(t * 4.8) + 1.0) / 2.0
             ZStack {
                 Circle()
-                    .stroke(presentation.accent.dot.opacity(0.30 + pulse * 0.42), lineWidth: 2)
-                    .frame(width: 38 + pulse * 10, height: 38 + pulse * 10)
-                    .blur(radius: pulse * 2.2)
+                    .stroke(presentation.accent.dot.opacity(0.18 + pulse * 0.26), lineWidth: 1.6)
+                    .frame(width: 34 + pulse * 8, height: 34 + pulse * 8)
+                    .blur(radius: pulse * 1.8)
                 Image(systemName: presentation.iconName)
-                    .font(.system(size: 26, weight: .bold))
+                    .font(.system(size: 24, weight: .semibold))
                     .foregroundStyle(presentation.accent.glyph)
-                    .scaleEffect(0.94 + pulse * 0.12)
+                    .scaleEffect(0.96 + pulse * 0.08)
             }
-            .frame(width: 54, height: 54)
+            .frame(width: 48, height: 48)
         }
     }
 }
 
-private struct LiveExpandedMilestones: View {
-    let presentation: LiveIslandPresentation
-
-    var body: some View {
-        HStack(spacing: 6) {
-            milestone("听", active: presentation.progress >= 0.18)
-            milestone("想", active: presentation.progress >= 0.55)
-            milestone("做", active: presentation.progress >= 0.72)
-            milestone("答", active: presentation.progress >= 0.84)
-        }
-    }
-
-    private func milestone(_ text: String, active: Bool) -> some View {
-        Text(text)
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(active ? .white.opacity(0.78) : .white.opacity(0.28))
-            .frame(width: 18, height: 16)
-            .background(
-                Capsule()
-                    .fill(active ? .white.opacity(0.13) : .white.opacity(0.055))
-            )
-    }
-}
-
-/// 锁屏 / 横幅的紧凑结果卡: chip + 标题·状态行 + 正文。
+/// 锁屏 / 横幅: 一个入口符号 + 一个状态词 + 一句主文案。
 private struct LiveCardContent: View {
     let presentation: LiveIslandPresentation
 
     var body: some View {
-        HStack(alignment: .center, spacing: 10) {
+        HStack(alignment: .center, spacing: 11) {
             LiveIconChip(presentation: presentation)
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 6) {
-                    Text(presentation.title)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.white.opacity(0.88))
+                    Text("PhoneClaw LIVE")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(LiveTheme.secondaryText)
                         .lineLimit(1)
-                        .contentTransition(.opacity)
-
-                    Spacer(minLength: 0)
-
                     LiveStatusTag(presentation: presentation)
+                    Spacer(minLength: 0)
                 }
 
-                // 结果/进展文案是这张卡的主角 — 最亮、最大的一行。
-                Text(presentation.detail)
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.95))
+                Text(presentation.primaryLine)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(LiveTheme.primaryText)
                     .lineLimit(2)
-                    .id(presentation.detail)
+                    .id(presentation.primaryLine)
                     .transition(.blurReplace)
 
                 LivePipelineTrack(presentation: presentation)
-                    .padding(.top, 3)
             }
         }
+        .padding(.horizontal, 1)
     }
 }
 
@@ -551,10 +539,10 @@ private struct LivePipelineTrack: View {
 
     private var trackFill: Color {
         switch presentation.accent {
-        case .amber, .neutral: return .white.opacity(0.42)
-        case .green: return LiveAccent.green.color.opacity(0.8)
-        case .red: return LiveAccent.red.color.opacity(0.8)
-        case .dim: return .white.opacity(0.22)
+        case .amber: return presentation.accent.color.opacity(0.72)
+        case .green: return LiveAccent.green.color.opacity(0.74)
+        case .red: return LiveAccent.red.color.opacity(0.74)
+        case .dim: return .white.opacity(0.20)
         }
     }
 
@@ -566,7 +554,7 @@ private struct LivePipelineTrack: View {
             let crawlWidth = max(geo.size.width * (presentation.nextMilestone - progress), 0)
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(.white.opacity(0.14))
+                    .fill(.white.opacity(0.10))
                 HStack(spacing: 0) {
                     Rectangle()
                         .fill(trackFill)
@@ -587,8 +575,8 @@ private struct LivePipelineTrack: View {
                 .clipShape(Capsule())
                 if inFlight, progress < 1 {
                     Circle()
-                        .fill(Color.orange)
-                        .frame(width: height + 2, height: height + 2)
+                        .fill(presentation.accent.color)
+                        .frame(width: height + 1.6, height: height + 1.6)
                         .offset(x: max(solidWidth - height - 2, 0))
                 }
             }
@@ -605,12 +593,7 @@ private struct LiveCompactLeadingSurface: View {
 
     var body: some View {
         ZStack {
-            Capsule()
-                .fill(presentation.accent.chipFill)
-                .overlay(
-                    Capsule()
-                        .stroke(presentation.accent.dot.opacity(presentation.isInFlight ? 0.42 : 0.20), lineWidth: 1)
-                )
+            LiveAuroraCapsuleBackground(presentation: presentation, cornerRadius: 15)
 
             HStack(spacing: 5) {
                 ZStack {
@@ -638,37 +621,20 @@ private struct LiveCompactTrailingSurface: View {
 
     var body: some View {
         ZStack {
-            Capsule()
-                .fill(.white.opacity(0.065))
-                .overlay(
-                    Capsule()
-                        .stroke(presentation.accent.dot.opacity(presentation.isInFlight ? 0.34 : 0.18), lineWidth: 1)
-            )
+            LiveAuroraCapsuleBackground(presentation: presentation, cornerRadius: 14)
 
-            HStack(spacing: 5) {
+            HStack(spacing: 6) {
                 Text(presentation.compactStageText)
                     .font(.system(size: 13, weight: .heavy, design: .rounded))
                     .foregroundStyle(presentation.accent.glyph)
                     .frame(width: 14, height: 20)
                     .contentTransition(.opacity)
 
-                if presentation.isInFlight, let started = presentation.startedAt {
-                    Text(
-                        timerInterval: started...started.addingTimeInterval(3600),
-                        countsDown: false,
-                        showsHours: false
-                    )
-                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.76))
-                    .lineLimit(1)
-                    .frame(width: 30, alignment: .leading)
-                } else {
-                    LiveProgressRing(presentation: presentation, size: 18)
-                }
+                LiveProgressRing(presentation: presentation, size: 18)
             }
             .padding(.horizontal, 6)
         }
-        .frame(width: 66, height: 28)
+        .frame(width: 50, height: 28)
     }
 }
 
@@ -752,20 +718,20 @@ private struct LiveVoiceIslandGlyph: View {
     let presentation: LiveIslandPresentation
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 0.12, paused: false)) { timeline in
+        TimelineView(.animation(minimumInterval: 0.14, paused: false)) { timeline in
             let t = timeline.date.timeIntervalSinceReferenceDate
             ZStack {
                 Circle()
-                    .fill(presentation.accent.color.opacity(0.24))
+                    .fill(presentation.accent.color.opacity(0.18))
                     .frame(width: 19, height: 19)
                     .blur(radius: 3)
 
                 HStack(alignment: .center, spacing: 1.6) {
                     ForEach(0..<5, id: \.self) { index in
-                        let wave = (sin(t * 8.0 + Double(index) * 0.85) + 1.0) / 2.0
-                        let height = 5.0 + wave * 9.0
+                        let wave = (sin(t * 6.8 + Double(index) * 0.86) + 1.0) / 2.0
+                        let height = 5.0 + wave * 8.0
                         Capsule()
-                            .fill(presentation.accent.glyph.opacity(0.68 + wave * 0.32))
+                            .fill(presentation.accent.glyph.opacity(0.60 + wave * 0.34))
                             .frame(width: 2.1, height: height)
                     }
                 }
@@ -777,30 +743,27 @@ private struct LiveVoiceIslandGlyph: View {
 
 private struct LiveThinkingIslandGlyph: View {
     var body: some View {
-        TimelineView(.animation(minimumInterval: 0.08, paused: false)) { timeline in
+        TimelineView(.animation(minimumInterval: 0.10, paused: false)) { timeline in
             let t = timeline.date.timeIntervalSinceReferenceDate
             ZStack {
                 Circle()
-                    .fill(.white.opacity(0.16))
+                    .fill(.white.opacity(0.10))
                     .frame(width: 20, height: 20)
                     .blur(radius: 4)
 
-                ForEach(0..<8, id: \.self) { index in
-                    let angle = Double(index) / 8.0 * 2.0 * Double.pi
-                    let phase = (t * 9.0 - Double(index)).truncatingRemainder(dividingBy: 8.0)
-                    let normalized = (phase + 8.0).truncatingRemainder(dividingBy: 8.0) / 8.0
-                    let intensity = 1.0 - normalized
+                ForEach(0..<4, id: \.self) { index in
+                    let angle = t * 3.2 + Double(index) / 4.0 * 2.0 * Double.pi
+                    let intensity = (sin(t * 3.4 + Double(index)) + 1.0) / 2.0
                     Circle()
-                        .fill(.white.opacity(0.24 + intensity * 0.76))
-                        .frame(width: 3.2 + intensity * 2.1, height: 3.2 + intensity * 2.1)
+                        .fill(.white.opacity(0.26 + intensity * 0.50))
+                        .frame(width: 3.0 + intensity * 1.7, height: 3.0 + intensity * 1.7)
                         .offset(
-                            x: cos(angle) * 6.4,
-                            y: sin(angle) * 6.4
+                            x: cos(angle) * 6.2,
+                            y: sin(angle) * 6.2
                         )
-                        .shadow(color: .white.opacity(intensity * 0.65), radius: 2.4)
+                        .shadow(color: .white.opacity(intensity * 0.42), radius: 2)
                 }
             }
-            .rotationEffect(.degrees(t * 160.0))
             .frame(width: 20, height: 20)
         }
     }
@@ -853,13 +816,17 @@ private struct LiveIconChip: View {
         ZStack {
             if accent.hasGlow {
                 Circle()
-                    .fill(accent.color.opacity(0.22))
+                    .fill(accent.color.opacity(0.18))
                     .frame(width: 30, height: 30)
-                    .blur(radius: 7)
+                    .blur(radius: 8)
             }
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(accent.chipFill)
                 .frame(width: 28, height: 28)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(LiveTheme.line, lineWidth: 1)
+                )
             Image(systemName: presentation.iconName)
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(accent.glyph)
@@ -880,77 +847,59 @@ private struct LiveStatusTag: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            Circle()
-                .fill(presentation.accent.dot)
-                .frame(width: 5, height: 5)
+            LiveSignalDot(presentation: presentation)
             Text(presentation.statusText)
                 .font(.caption2.weight(.medium))
-                .foregroundStyle(.white.opacity(0.55))
+                .foregroundStyle(LiveTheme.tertiaryText)
                 .lineLimit(1)
                 .contentTransition(.opacity)
-            // 执行中实时走秒 — 系统驱动的滚动计时, 不静止的"还在干活"凭证。
-            if presentation.isInFlight, let started = presentation.startedAt {
-                Text(
-                    timerInterval: started...started.addingTimeInterval(3600),
-                    countsDown: false,
-                    showsHours: false
-                )
-                .font(.caption2.weight(.medium).monospacedDigit())
-                .foregroundStyle(.white.opacity(0.40))
-                .lineLimit(1)
-                .frame(maxWidth: 44, alignment: .leading)
-            }
         }
     }
 }
 
 // MARK: - 状态映射
 
-/// 强调色档位 — 琥珀只给"收音中", 结果只用柔和绿/红, 其余白系。
+/// 强调色档位 — 进行中统一 warm signal, 结果只用柔和绿/红。
 private enum LiveAccent {
     case amber
     case green
     case red
-    case neutral
     case dim
 
     var color: Color {
         switch self {
-        case .amber: return .orange
-        case .green: return Color(red: 0.42, green: 0.78, blue: 0.55)
-        case .red: return Color(red: 0.93, green: 0.46, blue: 0.42)
-        case .neutral: return .white
+        case .amber: return LiveTheme.signal
+        case .green: return Color(red: 0.48, green: 0.78, blue: 0.58)
+        case .red: return Color(red: 0.90, green: 0.42, blue: 0.38)
         case .dim: return .white
         }
     }
 
     var glyph: Color {
         switch self {
-        case .neutral, .dim: return .white.opacity(0.78)
+        case .dim: return LiveTheme.secondaryText
         default: return color
         }
     }
 
     var chipFill: Color {
         switch self {
-        case .neutral, .dim: return .white.opacity(0.10)
-        default: return color.opacity(0.16)
+        case .dim: return .white.opacity(0.08)
+        default: return color.opacity(0.14)
         }
     }
 
     var dot: Color {
         switch self {
         case .amber, .green, .red: return color
-        case .neutral: return .white.opacity(0.45)
-        case .dim: return .white.opacity(0.25)
+        case .dim: return LiveTheme.tertiaryText
         }
     }
 
-    /// 有彩度的状态才点光晕 — 白系阶段保持纯平, 光只属于"活着/有结果"。
     var hasGlow: Bool {
         switch self {
         case .amber, .green, .red: return true
-        case .neutral, .dim: return false
+        case .dim: return false
         }
     }
 }
