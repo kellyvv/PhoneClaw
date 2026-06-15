@@ -6,8 +6,8 @@ import WidgetKit
 // MARK: - 设计语言
 //
 // PhoneClaw LIVE 是系统级语音入口, 不是任务看板:
-//   · 监听态只显示横向 6 个点, 由 ContentState motion tick 驱动波峰移动
-//   · Skill 链路让同一组点进入圆形轨道, 由 ContentState motion tick 驱动旋转
+//   · 监听态只显示横向 6 个点, 视图层按 30fps 描述自然波浪
+//   · Skill 链路让同一组点进入圆形轨道, 视图层旋转, 不刷 Activity 状态
 //   · 结果态才展示结果符号和一句结果文案
 //   · 所有表面读同一个 LiveIslandPresentation, 保持状态、色彩、过渡一致
 
@@ -104,7 +104,6 @@ private struct LiveIslandPresentation {
 
     var phase: String { state.phase }
     var detail: String { state.detail }
-    var motionTick: Int { state.motionTick }
 
     var stage: LiveIslandStage {
         if phase == "skill" { return .result }
@@ -203,40 +202,62 @@ private struct LiveIslandCoreVisual: View {
     let presentation: LiveIslandPresentation
     var diameter: CGFloat
 
+    private var shouldAnimate: Bool {
+        switch presentation.visualPhase {
+        case .voice, .skill:
+            return true
+        case .result, .idle:
+            return false
+        }
+    }
+
     var body: some View {
+        Group {
+            if shouldAnimate {
+                TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
+                    frame(seconds: context.date.timeIntervalSinceReferenceDate)
+                }
+            } else {
+                frame(seconds: 0)
+            }
+        }
+        .frame(width: diameter, height: diameter)
+        .contentTransition(.symbolEffect(.replace))
+        .animation(.spring(duration: 0.34), value: presentation.visualPhase)
+        .accessibilityLabel(Text(presentation.moodText))
+    }
+
+    @ViewBuilder
+    private func frame(seconds: TimeInterval) -> some View {
         ZStack {
             switch presentation.visualPhase {
             case .voice:
-                LiveListeningDotWave(presentation: presentation, diameter: diameter)
+                LiveListeningDotWave(presentation: presentation, diameter: diameter, seconds: seconds)
             case .skill:
-                LiveTickDrivenSkillRing(presentation: presentation, diameter: diameter)
+                LiveTickDrivenSkillRing(presentation: presentation, diameter: diameter, seconds: seconds)
             case .result:
                 LiveResultMark(presentation: presentation, diameter: diameter)
             case .idle:
                 LiveIdleMark(presentation: presentation, diameter: diameter)
             }
         }
-        .frame(width: diameter, height: diameter)
-        .contentTransition(.symbolEffect(.replace))
-        .animation(.easeInOut(duration: 0.54), value: presentation.motionTick)
-        .accessibilityLabel(Text(presentation.moodText))
     }
 }
 
 private struct LiveListeningDotWave: View {
     let presentation: LiveIslandPresentation
     var diameter: CGFloat
+    var seconds: TimeInterval
 
     var body: some View {
         let dot = max(diameter * 0.105, 3.2)
         let spacing = max(diameter * 0.070, 2.2)
-        let levels: [CGFloat] = [0.42, 0.72, 1.0, 0.82, 0.56, 0.34]
         let travel = diameter * 0.11
-        let shift = presentation.motionTick % levels.count
 
         HStack(alignment: .center, spacing: spacing) {
-            ForEach(levels.indices, id: \.self) { index in
-                let level = levels[(index + shift) % levels.count]
+            ForEach(0..<6, id: \.self) { index in
+                let wave = 0.5 + 0.5 * sin(seconds * 6.4 - Double(index) * 0.72)
+                let level = CGFloat(0.34 + wave * 0.66)
                 Circle()
                     .fill(presentation.accent.glyph.opacity(0.42 + level * 0.42))
                     .frame(width: dot, height: dot)
@@ -252,23 +273,25 @@ private struct LiveListeningDotWave: View {
 private struct LiveTickDrivenSkillRing: View {
     let presentation: LiveIslandPresentation
     var diameter: CGFloat
+    var seconds: TimeInterval
 
     var body: some View {
         let dot = max(diameter * 0.118, 3.4)
         let orbit = diameter * 0.30
-        let rotation = Angle.degrees(Double(presentation.motionTick % 24) * 15.0)
+        let rotation = seconds * 1.9
 
         ZStack {
             ForEach(0..<6, id: \.self) { index in
-                let phase = Angle.degrees(Double(index) * 60.0) + rotation
-                let level = CGFloat(index == presentation.motionTick % 6 ? 1.0 : 0.56)
+                let phase = Double(index) * .pi / 3.0 + rotation
+                let pulse = 0.5 + 0.5 * sin(seconds * 7.2 - Double(index) * 0.86)
+                let level = CGFloat(0.50 + pulse * 0.50)
                 Circle()
                     .fill(presentation.accent.glyph.opacity(0.45 + level * 0.38))
                     .frame(width: dot, height: dot)
                     .scaleEffect(0.82 + level * 0.28)
                     .offset(
-                        x: CGFloat(cos(phase.radians)) * orbit,
-                        y: CGFloat(sin(phase.radians)) * orbit
+                        x: CGFloat(cos(phase)) * orbit,
+                        y: CGFloat(sin(phase)) * orbit
                     )
                     .shadow(color: presentation.accent.color.opacity(0.16 + level * 0.22), radius: 2.6)
             }
