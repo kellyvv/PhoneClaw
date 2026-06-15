@@ -6,8 +6,8 @@ import WidgetKit
 // MARK: - 设计语言
 //
 // PhoneClaw LIVE 是系统级语音入口, 不是任务看板:
-//   · 监听态只显示横向 6 个点, 用状态过渡表现进入/退出
-//   · Skill 链路使用系统时间驱动圆形进度, 避免 Live Activity 自绘逐帧动画
+//   · 监听态只显示横向 6 个点, 由 ContentState motion tick 驱动波峰移动
+//   · Skill 链路让同一组点进入圆形轨道, 由 ContentState motion tick 驱动旋转
 //   · 结果态才展示结果符号和一句结果文案
 //   · 所有表面读同一个 LiveIslandPresentation, 保持状态、色彩、过渡一致
 
@@ -100,12 +100,11 @@ private enum LiveIslandVisualPhase {
 }
 
 private struct LiveIslandPresentation {
-    private static let skillProgressDuration: TimeInterval = 32
-
     let state: PhoneClawLiveActivityAttributes.ContentState
 
     var phase: String { state.phase }
     var detail: String { state.detail }
+    var motionTick: Int { state.motionTick }
 
     var stage: LiveIslandStage {
         if phase == "skill" { return .result }
@@ -137,11 +136,6 @@ private struct LiveIslandPresentation {
         case .ended, .idle:
             return .idle
         }
-    }
-
-    var skillProgressInterval: ClosedRange<Date> {
-        let start = state.phaseStartedAt ?? state.startedAt ?? Date()
-        return start...start.addingTimeInterval(Self.skillProgressDuration)
     }
 
     var moodText: String {
@@ -215,7 +209,7 @@ private struct LiveIslandCoreVisual: View {
             case .voice:
                 LiveListeningDotWave(presentation: presentation, diameter: diameter)
             case .skill:
-                LiveSystemSkillProgress(presentation: presentation, diameter: diameter)
+                LiveTickDrivenSkillRing(presentation: presentation, diameter: diameter)
             case .result:
                 LiveResultMark(presentation: presentation, diameter: diameter)
             case .idle:
@@ -224,6 +218,7 @@ private struct LiveIslandCoreVisual: View {
         }
         .frame(width: diameter, height: diameter)
         .contentTransition(.symbolEffect(.replace))
+        .animation(.easeInOut(duration: 0.54), value: presentation.motionTick)
         .accessibilityLabel(Text(presentation.moodText))
     }
 }
@@ -237,10 +232,11 @@ private struct LiveListeningDotWave: View {
         let spacing = max(diameter * 0.070, 2.2)
         let levels: [CGFloat] = [0.42, 0.72, 1.0, 0.82, 0.56, 0.34]
         let travel = diameter * 0.11
+        let shift = presentation.motionTick % levels.count
 
         HStack(alignment: .center, spacing: spacing) {
             ForEach(levels.indices, id: \.self) { index in
-                let level = levels[index]
+                let level = levels[(index + shift) % levels.count]
                 Circle()
                     .fill(presentation.accent.glyph.opacity(0.42 + level * 0.42))
                     .frame(width: dot, height: dot)
@@ -253,22 +249,29 @@ private struct LiveListeningDotWave: View {
     }
 }
 
-private struct LiveSystemSkillProgress: View {
+private struct LiveTickDrivenSkillRing: View {
     let presentation: LiveIslandPresentation
     var diameter: CGFloat
 
     var body: some View {
-        ZStack {
-            Circle()
-                .stroke(.white.opacity(0.10), lineWidth: max(diameter * 0.048, 1.2))
-                .frame(width: diameter * 0.72, height: diameter * 0.72)
+        let dot = max(diameter * 0.118, 3.4)
+        let orbit = diameter * 0.30
+        let rotation = Angle.degrees(Double(presentation.motionTick % 24) * 15.0)
 
-            ProgressView(timerInterval: presentation.skillProgressInterval, countsDown: false)
-                .progressViewStyle(.circular)
-                .tint(presentation.accent.glyph)
-                .controlSize(diameter < 30 ? .mini : .small)
-                .labelsHidden()
-                .scaleEffect(max(diameter / 38.0, 0.62))
+        ZStack {
+            ForEach(0..<6, id: \.self) { index in
+                let phase = Angle.degrees(Double(index) * 60.0) + rotation
+                let level = CGFloat(index == presentation.motionTick % 6 ? 1.0 : 0.56)
+                Circle()
+                    .fill(presentation.accent.glyph.opacity(0.45 + level * 0.38))
+                    .frame(width: dot, height: dot)
+                    .scaleEffect(0.82 + level * 0.28)
+                    .offset(
+                        x: CGFloat(cos(phase.radians)) * orbit,
+                        y: CGFloat(sin(phase.radians)) * orbit
+                    )
+                    .shadow(color: presentation.accent.color.opacity(0.16 + level * 0.22), radius: 2.6)
+            }
         }
         .frame(width: diameter, height: diameter)
         .shadow(color: presentation.accent.color.opacity(0.26), radius: max(diameter * 0.055, 1.6))
