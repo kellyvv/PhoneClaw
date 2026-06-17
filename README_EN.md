@@ -12,6 +12,31 @@ A local AI Agent for iPhone. Offline. Private. Native.
 
 </div>
 
+<p align="center">
+  <a href="https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=PhoneClaw">
+    <img src="./assets/atlas-cloud-logo.png" alt="Atlas Cloud" width="200">
+  </a>
+</p>
+
+> 🎁 **[Atlas Cloud](https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=PhoneClaw)** — when on-device models aren't enough, plug Atlas Cloud into the Mac-side PhoneClaw Gateway as a cloud LLM upstream: OpenAI-compatible, one key for 59 models (Claude / GPT / Qwen / DeepSeek …), while the phone keeps its native experience. — [coding plan](https://www.atlascloud.ai/console/coding-plan)
+
+<details>
+<summary>All Atlas Cloud LLM models (59)</summary>
+
+- Anthropic: `anthropic/claude-haiku-4.5-20251001`, `anthropic/claude-opus-4.8`, `anthropic/claude-sonnet-4.6`
+- OpenAI: `openai/gpt-5.4`, `openai/gpt-5.5`
+- Google Gemini: `google/gemini-3.1-flash-lite`, `google/gemini-3.1-pro-preview`, `google/gemini-3.5-flash`
+- Qwen: `qwen/qwen2.5-7b-instruct`, `Qwen/Qwen3-235B-A22B-Instruct-2507`, `qwen/qwen3-235b-a22b-thinking-2507`, `qwen/qwen3-30b-a3b`, `Qwen/Qwen3-30B-A3B-Instruct-2507`, `qwen/qwen3-30b-a3b-thinking-2507`, `qwen/qwen3-32b`, `qwen/qwen3-8b`, `Qwen/Qwen3-Coder`, `qwen/qwen3-coder-next`, `qwen/qwen3-max-2026-01-23`, `Qwen/Qwen3-Next-80B-A3B-Instruct`, `Qwen/Qwen3-Next-80B-A3B-Thinking`, `Qwen/Qwen3-VL-235B-A22B-Instruct`, `qwen/qwen3-vl-235b-a22b-thinking`, `qwen/qwen3-vl-30b-a3b-instruct`, `qwen/qwen3-vl-30b-a3b-thinking`, `qwen/qwen3-vl-8b-instruct`, `qwen/qwen3.5-122b-a10b`, `qwen/qwen3.5-27b`, `qwen/qwen3.5-35b-a3b`, `qwen/qwen3.5-397b-a17b`, `qwen/qwen3.6-35b-a3b`, `qwen/qwen3.6-plus`
+- DeepSeek: `deepseek-ai/deepseek-ocr`, `deepseek-ai/deepseek-r1-0528`, `deepseek-ai/DeepSeek-V3-0324`, `deepseek-ai/DeepSeek-V3.1`, `deepseek-ai/DeepSeek-V3.1-Terminus`, `deepseek-ai/deepseek-v3.2`, `deepseek-ai/DeepSeek-V3.2-Exp`, `deepseek-ai/deepseek-v4-flash`, `deepseek-ai/deepseek-v4-pro`
+- Kimi: `moonshotai/Kimi-K2-Instruct`, `moonshotai/Kimi-K2-Instruct-0905`, `moonshotai/Kimi-K2-Thinking`, `moonshotai/kimi-k2.5`, `moonshotai/kimi-k2.6`
+- GLM: `zai-org/GLM-4.6`, `zai-org/glm-4.7`, `zai-org/glm-5`, `zai-org/glm-5-turbo`, `zai-org/glm-5.1`, `zai-org/glm-5v-turbo`
+- MiniMax: `MiniMaxAI/MiniMax-M2`, `minimaxai/minimax-m2.1`, `minimaxai/minimax-m2.5`, `minimaxai/minimax-m2.7`
+- xAI: `xai/grok-4.3`
+- KAT: `kwaipilot/kat-coder-pro-v2`
+- Other: `owl`
+
+</details>
+
 <div align="center">
 
 [Core Features](#core-features) · [Built-in Skills](#built-in-skill-examples) · [Technical Notes](#technical-notes) · [Quick Start](#quick-start) · [Mac Remote](#7-use-the-mac-client-for-remote-inference) · [Custom Skills](#custom-skills) · [FAQ](#faq) · [Roadmap](#roadmap)
@@ -363,14 +388,15 @@ The source-built app also needs macOS Local Network permission.
 **Configure the Mac runtime source**
 
 1. Open `PhoneClawGateway.app`
-2. Choose a runtime source in the main window: Ollama, Codex CLI, or Antigravity CLI
+2. Choose a runtime source in the main window: Ollama, Codex CLI, Antigravity CLI, or Atlas Cloud
 3. If you use Ollama, install and start Ollama first, then pull a model, for example:
 
 ```bash
 ollama pull gemma3:4b
 ```
 
-4. Return to Gateway, scan, and confirm that the model appears in the list
+4. If you use **Atlas Cloud** (an OpenAI-compatible cloud upstream, no local large model required): pick "Atlas Cloud" as the runtime source — the API URL is prefilled as `https://api.atlascloud.ai/v1`, paste your Atlas Cloud API key ([get one in the console](https://www.atlascloud.ai/console)), and the model list comes prefilled with `deepseek-ai/deepseek-v4-pro` and more, which you can edit as needed
+5. Return to Gateway, scan, and confirm that the model appears in the list
 
 **Pair from the iPhone**
 
