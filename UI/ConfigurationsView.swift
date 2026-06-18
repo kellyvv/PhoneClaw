@@ -1440,6 +1440,7 @@ struct ConfigurationsView: View {
                 await MainActor.run {
                     engine.installer.refreshInstallStates()
                     selectModelIfCurrentUnavailable(model)
+                    loadInstalledModelIfNeeded(model)
                 }
             } catch is CancellationError {
                 await MainActor.run {
@@ -1624,6 +1625,17 @@ struct ConfigurationsView: View {
         }
 
         selectedModelID = model.id
+    }
+
+    private func loadInstalledModelIfNeeded(_ model: ModelDescriptor) {
+        guard selectedModelID == model.id,
+              !engine.isModelLoaded,
+              engine.installer.artifactPath(for: model) != nil else {
+            return
+        }
+
+        engine.config.selectedModelID = model.id
+        engine.loadSelectedModelIfInstalled(refreshInstallStates: false)
     }
 
     private func runtimeNeedsLoad(for modelID: String) -> Bool {

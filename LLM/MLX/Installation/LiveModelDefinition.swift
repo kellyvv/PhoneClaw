@@ -2,17 +2,38 @@ import Foundation
 
 // MARK: - LIVE Model Asset Definitions
 //
-// ASR (sherpa-onnx-streaming-zipformer-zh) + TTS (vits-zh-hf-keqing) + VAD (Silero) 的元信息。
+// ASR + TTS + VAD 的元信息。
 // 用于手机端按需下载 LIVE 语音模型，与 LLM 下载基础设施并列但独立。
-// VAD 也纳入统一下载流程 (hf-mirror → huggingface.co)，不再由 FluidAudio 自行管理。
+// 中英文 + VAD 资产托管在我们自己的 LIVE 仓库:
+//   ModelScope: kilywei/LIVE
+//   HuggingFace: kellyxiaowei/LIVE
+// 下载时优先 ModelScope, 再回退 HuggingFace。
+
+struct LiveModelManifestFile: ExpressibleByStringLiteral, Sendable {
+    let path: String
+    let expectedSize: Int64?
+
+    init(_ path: String, expectedSize: Int64? = nil) {
+        self.path = path
+        self.expectedSize = expectedSize
+    }
+
+    init(stringLiteral value: String) {
+        self.init(value)
+    }
+}
 
 struct LiveModelAsset: Sendable {
     let id: String
     let displayName: String
     let directoryName: String
+    /// Hugging Face repo id used as the fallback download source.
     let repositoryID: String
+    /// ModelScope repo id. nil means this asset is not mirrored to ModelScope yet.
+    let modelScopeRepositoryID: String?
     /// 如果 repo 是多模型仓 (e.g. argmaxinc/whisperkit-coreml 里同时有 tiny/base/small/large),
-    /// 用这个 prefix 限定只下载 prefix 子目录, 本地存储时 prefix 自动剥掉.
+    /// 或统一托管仓 (e.g. kellyxiaowei/LIVE 下每个资产有自己的目录), 用这个 prefix
+    /// 限定只下载 prefix 子目录, 本地存储时 prefix 自动剥掉.
     /// 例: prefix="openai_whisper-base" → 只取 repo/openai_whisper-base/* 的文件,
     ///     存到 Documents/models/<directoryName>/* (没有重复 prefix).
     /// nil = 整个 repo 都下载, 路径直存。
@@ -22,27 +43,29 @@ struct LiveModelAsset: Sendable {
     let requiredFiles: [String]
     /// 从 repo 中排除的文件模式 (不下载). 路径是 repository 相对.
     let excludePatterns: [String]
-    /// 完整文件清单 (local 相对路径, 即 prefix 已剥掉)。非 nil 时 planner **跳过 HF tree API**,
+    /// 完整文件清单 (local 相对路径, 即 prefix 已剥掉)。非 nil 时 planner **跳过 tree API**,
     /// 直接按此清单拼 `/resolve/main/{file}` 直连下载 —— 跟 LLM 模型下载 (`ModelDownloader`) 一致。
-    /// 动机: hf-mirror.com 只镜像文件下载 `/resolve/`, 不镜像列目录 `/api/.../tree`
-    /// (该接口会 308 重定向到 huggingface.co, 国内被墙) → tree-listing 是 LIVE 下载卡顿的根因。
+    /// 可选 expectedSize 用于按真实字节数计算下载百分比; 省略时回退到文件数进度。
+    /// 动机: 我们的 LIVE 仓库文件清单固定, 不需要每次安装前访问远端 tree API。
     /// nil = 走 tree API 动态发现 (多变体仓 / 清单易变的 asset 用这条)。
-    let downloadManifest: [String]?
+    let downloadManifest: [LiveModelManifestFile]?
 
     init(
         id: String,
         displayName: String,
         directoryName: String,
         repositoryID: String,
+        modelScopeRepositoryID: String? = nil,
         repositoryPathPrefix: String? = nil,
         requiredFiles: [String],
         excludePatterns: [String],
-        downloadManifest: [String]? = nil
+        downloadManifest: [LiveModelManifestFile]? = nil
     ) {
         self.id = id
         self.displayName = displayName
         self.directoryName = directoryName
         self.repositoryID = repositoryID
+        self.modelScopeRepositoryID = modelScopeRepositoryID
         self.repositoryPathPrefix = repositoryPathPrefix
         self.requiredFiles = requiredFiles
         self.excludePatterns = excludePatterns
@@ -59,7 +82,9 @@ enum LiveModelDefinition {
         id: "live-asr",
         displayName: "语音识别 (ASR)",
         directoryName: "sherpa-asr-zh",
-        repositoryID: "csukuangfj/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30",
+        repositoryID: "kellyxiaowei/LIVE",
+        modelScopeRepositoryID: "kilywei/LIVE",
+        repositoryPathPrefix: "sherpa-asr-zh",
         requiredFiles: [
             "encoder.int8.onnx",
             "decoder.onnx",
@@ -70,6 +95,12 @@ enum LiveModelDefinition {
             ".gitattributes",
             "README.md",
             "test_wavs/"
+        ],
+        downloadManifest: [
+            .init("decoder.onnx", expectedSize: 5_165_083),
+            .init("encoder.int8.onnx", expectedSize: 161_141_793),
+            .init("joiner.int8.onnx", expectedSize: 1_033_416),
+            .init("tokens.txt", expectedSize: 20_628)
         ]
     )
 
@@ -107,7 +138,9 @@ enum LiveModelDefinition {
         id: "live-tts",
         displayName: "语音合成 (TTS)",
         directoryName: "vits-zh-hf-keqing",
-        repositoryID: "csukuangfj/vits-zh-hf-keqing",
+        repositoryID: "kellyxiaowei/LIVE",
+        modelScopeRepositoryID: "kilywei/LIVE",
+        repositoryPathPrefix: "vits-zh-hf-keqing",
         requiredFiles: [
             "keqing.onnx",
             "lexicon.txt",
@@ -117,6 +150,25 @@ enum LiveModelDefinition {
         excludePatterns: [
             ".gitattributes",
             "README.md"
+        ],
+        downloadManifest: [
+            .init("date.fst", expectedSize: 59_154),
+            .init("dict/README.md", expectedSize: 683),
+            .init("dict/hmm_model.utf8", expectedSize: 519_739),
+            .init("dict/idf.utf8", expectedSize: 5_998_717),
+            .init("dict/jieba.dict.utf8", expectedSize: 5_071_204),
+            .init("dict/pos_dict/char_state_tab.utf8", expectedSize: 327_139),
+            .init("dict/pos_dict/prob_emit.utf8", expectedSize: 1_687_686),
+            .init("dict/pos_dict/prob_start.utf8", expectedSize: 4_347),
+            .init("dict/pos_dict/prob_trans.utf8", expectedSize: 124_159),
+            .init("dict/stop_words.utf8", expectedSize: 8_974),
+            .init("dict/user.dict.utf8", expectedSize: 49),
+            .init("keqing.onnx", expectedSize: 121_913_906),
+            .init("lexicon.txt", expectedSize: 2_764_076),
+            .init("new_heteronym.fst", expectedSize: 21_974),
+            .init("number.fst", expectedSize: 64_482),
+            .init("phone.fst", expectedSize: 88_630),
+            .init("tokens.txt", expectedSize: 268)
         ]
     )
 
@@ -124,7 +176,9 @@ enum LiveModelDefinition {
         id: "live-vad",
         displayName: "语音检测 (VAD)",
         directoryName: "silero-vad-coreml",
-        repositoryID: "FluidInference/silero-vad-coreml",
+        repositoryID: "kellyxiaowei/LIVE",
+        modelScopeRepositoryID: "kilywei/LIVE",
+        repositoryPathPrefix: "silero-vad-coreml",
         requiredFiles: [
             "silero-vad-unified-256ms-v6.0.0.mlmodelc"
         ],
@@ -142,11 +196,11 @@ enum LiveModelDefinition {
             "silero_vad_se_trained_4bit.mlmodelc/"
         ],
         downloadManifest: [
-            "silero-vad-unified-256ms-v6.0.0.mlmodelc/analytics/coremldata.bin",
-            "silero-vad-unified-256ms-v6.0.0.mlmodelc/coremldata.bin",
-            "silero-vad-unified-256ms-v6.0.0.mlmodelc/metadata.json",
-            "silero-vad-unified-256ms-v6.0.0.mlmodelc/model.mil",
-            "silero-vad-unified-256ms-v6.0.0.mlmodelc/weights/weight.bin"
+            .init("silero-vad-unified-256ms-v6.0.0.mlmodelc/analytics/coremldata.bin", expectedSize: 243),
+            .init("silero-vad-unified-256ms-v6.0.0.mlmodelc/coremldata.bin", expectedSize: 625),
+            .init("silero-vad-unified-256ms-v6.0.0.mlmodelc/metadata.json", expectedSize: 3_335),
+            .init("silero-vad-unified-256ms-v6.0.0.mlmodelc/model.mil", expectedSize: 176_918),
+            .init("silero-vad-unified-256ms-v6.0.0.mlmodelc/weights/weight.bin", expectedSize: 882_304)
         ]
     )
 
@@ -160,7 +214,9 @@ enum LiveModelDefinition {
         id: "live-asr-en",
         displayName: "English ASR",
         directoryName: "sherpa-asr-en",
-        repositoryID: "csukuangfj/sherpa-onnx-streaming-zipformer-en-2023-06-21",
+        repositoryID: "kellyxiaowei/LIVE",
+        modelScopeRepositoryID: "kilywei/LIVE",
+        repositoryPathPrefix: "sherpa-asr-en",
         requiredFiles: [
             "encoder-epoch-99-avg-1.int8.onnx",
             "decoder-epoch-99-avg-1.onnx",         // 注: decoder 不做 int8 量化, 跟 zh-only 一致
@@ -177,6 +233,12 @@ enum LiveModelDefinition {
             "joiner-epoch-99-avg-1.onnx",
             // int8 decoder 比 fp32 大 (量化反而劣化, 5 MB → 1 MB), 但精度损失明显, 用 fp32
             "decoder-epoch-99-avg-1.int8.onnx"
+        ],
+        downloadManifest: [
+            .init("decoder-epoch-99-avg-1.onnx", expectedSize: 2_092_566),
+            .init("encoder-epoch-99-avg-1.int8.onnx", expectedSize: 187_823_992),
+            .init("joiner-epoch-99-avg-1.int8.onnx", expectedSize: 259_335),
+            .init("tokens.txt", expectedSize: 5_048)
         ]
     )
 
@@ -200,7 +262,9 @@ enum LiveModelDefinition {
         id: "live-tts-en",
         displayName: "English TTS",
         directoryName: "vits-piper-en_US-libritts_r-medium",
-        repositoryID: "csukuangfj/vits-piper-en_US-libritts_r-medium",
+        repositoryID: "kellyxiaowei/LIVE",
+        modelScopeRepositoryID: "kilywei/LIVE",
+        repositoryPathPrefix: "vits-piper-en_US-libritts_r-medium",
         requiredFiles: [
             "en_US-libritts_r-medium.onnx",
             "en_US-libritts_r-medium.onnx.json",
@@ -226,6 +290,19 @@ enum LiveModelDefinition {
             // 目录排除: voices variant + 其他 lang 子目录 (en* 在 requiredFiles, 仍下载)
             "espeak-ng-data/voices/",
             "espeak-ng-data/lang/"
+        ],
+        downloadManifest: [
+            .init("en_US-libritts_r-medium.onnx", expectedSize: 78_581_047),
+            .init("en_US-libritts_r-medium.onnx.json", expectedSize: 20_123),
+            .init("espeak-ng-data/en_dict", expectedSize: 166_944),
+            .init("espeak-ng-data/intonations", expectedSize: 2_040),
+            .init("espeak-ng-data/lang/gmw/en", expectedSize: 140),
+            .init("espeak-ng-data/lang/gmw/en-US", expectedSize: 257),
+            .init("espeak-ng-data/phondata", expectedSize: 550_424),
+            .init("espeak-ng-data/phondata-manifest", expectedSize: 21_821),
+            .init("espeak-ng-data/phonindex", expectedSize: 39_074),
+            .init("espeak-ng-data/phontab", expectedSize: 55_796),
+            .init("tokens.txt", expectedSize: 954)
         ]
     )
 

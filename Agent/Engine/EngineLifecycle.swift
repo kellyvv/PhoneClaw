@@ -285,6 +285,33 @@ extension AgentEngine {
         }
     }
 
+    func loadSelectedModelIfInstalled(refreshInstallStates: Bool = true) {
+        if refreshInstallStates {
+            installer.refreshInstallStates()
+        }
+
+        let selectedModelID = config.selectedModelID
+        guard !selectedModelID.hasPrefix("remote::"),
+              let selectedModel = availableModels.first(where: { $0.id == selectedModelID }),
+              installer.artifactPath(for: selectedModel) != nil,
+              shouldLoadRuntimeModel(selectedModelID) else {
+            return
+        }
+
+        reloadModel()
+    }
+
+    private func shouldLoadRuntimeModel(_ modelID: String) -> Bool {
+        switch coordinator.sessionState {
+        case .idle, .failed:
+            return true
+        case .ready(let activeModelID, _), .generating(let activeModelID, _):
+            return activeModelID != modelID
+        case .loading, .switching, .unloading:
+            return false
+        }
+    }
+
     func removeModel(_ model: ModelDescriptor) async {
         let wasRuntimeModel = coordinator.sessionState.activeModelID == model.id
             || catalog.loadedModel?.id == model.id
