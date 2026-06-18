@@ -8,6 +8,8 @@ struct PhoneClawLiveActivityAttributes: ActivityAttributes {
         var phase: String
         var headline: String
         var detail: String
+        /// Activity 所属入口。liveLand 用于系统入口常驻监听，liveMode 用于 App 内 LIVE Mode。
+        var entryPoint: String?
         var skillID: String?
         var skillName: String?
         var toolName: String?

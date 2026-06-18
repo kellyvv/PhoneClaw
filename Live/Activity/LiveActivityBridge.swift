@@ -8,6 +8,8 @@ actor LiveActivityBridge {
     #if canImport(ActivityKit)
     @available(iOS 16.2, *)
     private var activity: Activity<PhoneClawLiveActivityAttributes>?
+    @available(iOS 16.2, *)
+    private var transientResultActivity: Activity<PhoneClawLiveActivityAttributes>?
     #endif
 
     /// 执行中的阶段集合 — 进入即起表, 离开 (skill/listening/ended) 即停表。
@@ -19,6 +21,7 @@ actor LiveActivityBridge {
     private var turnStartedAt: Date?
     private var phaseStartedAt: Date?
     private var lastPhase: String?
+    private var entryPoint = "liveMode"
 
     private func stampTimestamps(for phase: String) -> (started: Date?, phaseStarted: Date?) {
         let now = Date()
@@ -34,17 +37,28 @@ actor LiveActivityBridge {
         return (turnStartedAt, phaseStartedAt)
     }
 
-    func startSession() async {
+    func startSession(
+        headline: String = "PhoneClaw LIVE",
+        detail: String = "正在启动",
+        entryPoint: String = "liveMode"
+    ) async {
         #if canImport(ActivityKit)
         guard #available(iOS 16.2, *) else { return }
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
         guard activity == nil else { return }
+        self.entryPoint = entryPoint
+        await endExistingActivitiesBeforeRequest(
+            headline: headline,
+            detail: detail,
+            entryPoint: entryPoint
+        )
 
         let attributes = PhoneClawLiveActivityAttributes(sessionID: UUID().uuidString)
         let state = PhoneClawLiveActivityAttributes.ContentState(
             phase: "starting",
-            headline: "PhoneClaw LIVE",
-            detail: "正在启动",
+            headline: headline,
+            detail: detail,
+            entryPoint: entryPoint,
             skillID: nil,
             skillName: nil,
             toolName: nil,
@@ -63,6 +77,33 @@ actor LiveActivityBridge {
         }
         #endif
     }
+
+    #if canImport(ActivityKit)
+    @available(iOS 16.2, *)
+    private func endExistingActivitiesBeforeRequest(
+        headline: String,
+        detail: String,
+        entryPoint: String
+    ) async {
+        for existing in Activity<PhoneClawLiveActivityAttributes>.activities {
+            let finalState = PhoneClawLiveActivityAttributes.ContentState(
+                phase: "ended",
+                headline: headline,
+                detail: detail,
+                entryPoint: entryPoint,
+                skillID: nil,
+                skillName: nil,
+                toolName: nil,
+                success: nil
+            )
+            await existing.end(
+                ActivityContent(state: finalState, staleDate: nil),
+                dismissalPolicy: .immediate
+            )
+            print("[LiveActivity] ended stale activity before request id=\(existing.id)")
+        }
+    }
+    #endif
 
     func waitForDismissal() async -> Bool {
         #if canImport(ActivityKit)
@@ -90,6 +131,92 @@ actor LiveActivityBridge {
         return false
     }
 
+    func presentTransientResult(
+        headline: String,
+        detail: String,
+        skillID: String? = nil,
+        skillName: String? = nil,
+        toolName: String? = nil,
+        success: Bool? = nil,
+        entryPoint: String? = nil,
+        allowTransientRequest: Bool = true
+    ) async -> Bool {
+        #if canImport(ActivityKit)
+        guard #available(iOS 16.2, *) else { return false }
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return false }
+
+        let state = PhoneClawLiveActivityAttributes.ContentState(
+            phase: "result",
+            headline: clipped(headline, limit: 40),
+            detail: clipped(detail, limit: detailLimit(for: "result", skillID: skillID, toolName: toolName)),
+            entryPoint: entryPoint ?? self.entryPoint,
+            skillID: skillID,
+            skillName: skillName.map { clipped($0, limit: 28) },
+            toolName: toolName.map { clipped($0, limit: 36) },
+            success: success,
+            startedAt: nil,
+            phaseStartedAt: Date()
+        )
+        let content = ActivityContent(
+            state: state,
+            staleDate: Date().addingTimeInterval(30),
+            relevanceScore: 100
+        )
+
+        if let transientResultActivity {
+            await transientResultActivity.end(content, dismissalPolicy: .immediate)
+            self.transientResultActivity = nil
+        }
+
+        if await publishExpandedResultAlert(content: content) {
+            return true
+        }
+
+        guard allowTransientRequest else {
+            print("[LiveActivity] transient result blocked by caller")
+            return false
+        }
+
+        guard #available(iOS 18.0, *) else {
+            print("[LiveActivity] transient result unavailable before iOS 18")
+            return false
+        }
+
+        do {
+            transientResultActivity = try Activity.request(
+                attributes: PhoneClawLiveActivityAttributes(sessionID: UUID().uuidString),
+                content: content,
+                pushType: nil,
+                style: .transient
+            )
+            print("[LiveActivity] transient result started id=\(transientResultActivity?.id ?? "unknown")")
+            return true
+        } catch {
+            print("[LiveActivity] transient result start failed: \(error)")
+            return false
+        }
+        #else
+        return false
+        #endif
+    }
+
+    #if canImport(ActivityKit)
+    @available(iOS 16.2, *)
+    private func publishExpandedResultAlert(
+        content: ActivityContent<PhoneClawLiveActivityAttributes.ContentState>
+    ) async -> Bool {
+        guard let activity else { return false }
+        let alertConfiguration = AlertConfiguration(
+            title: LocalizedStringResource(stringLiteral: clipped(content.state.headline, limit: 36)),
+            body: LocalizedStringResource(stringLiteral: clipped(content.state.detail, limit: 90)),
+            sound: .default
+        )
+        await activity.update(content, alertConfiguration: alertConfiguration)
+        print("[LiveActivity] result expanded alert update id=\(activity.id)")
+        return true
+    }
+    #endif
+
     func update(
         phase: String,
         headline: String,
@@ -98,6 +225,7 @@ actor LiveActivityBridge {
         skillName: String? = nil,
         toolName: String? = nil,
         success: Bool? = nil,
+        entryPoint: String? = nil,
         alertTitle: String? = nil,
         alertBody: String? = nil
     ) async {
@@ -106,10 +234,12 @@ actor LiveActivityBridge {
         guard let activity else { return }
 
         let stamps = stampTimestamps(for: phase)
+        let detailLimit = detailLimit(for: phase, skillID: skillID, toolName: toolName)
         let state = PhoneClawLiveActivityAttributes.ContentState(
             phase: phase,
             headline: clipped(headline, limit: 40),
-            detail: clipped(detail, limit: 90),
+            detail: clipped(detail, limit: detailLimit),
+            entryPoint: entryPoint ?? self.entryPoint,
             skillID: skillID,
             skillName: skillName.map { clipped($0, limit: 28) },
             toolName: toolName.map { clipped($0, limit: 36) },
@@ -135,26 +265,54 @@ actor LiveActivityBridge {
         #endif
     }
 
-    func endSession() async {
+    private func detailLimit(for phase: String, skillID: String?, toolName: String?) -> Int {
+        if phase == "skill" || phase == "result" {
+            return 1_200
+        }
+        let sourceKeys = [skillID, toolName]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+        if sourceKeys.contains(where: { $0.contains("web") || $0.contains("search") || $0.contains("fetch") }) {
+            return 320
+        }
+        return 140
+    }
+
+    func endSession(
+        headline: String = "PhoneClaw LIVE",
+        detail: String = "已结束",
+        entryPoint: String? = nil
+    ) async {
         #if canImport(ActivityKit)
         guard #available(iOS 16.2, *) else { return }
-        guard let activity else { return }
 
         let finalState = PhoneClawLiveActivityAttributes.ContentState(
             phase: "ended",
-            headline: "PhoneClaw LIVE",
-            detail: "已结束",
+            headline: headline,
+            detail: detail,
+            entryPoint: entryPoint ?? self.entryPoint,
             skillID: nil,
             skillName: nil,
             toolName: nil,
             success: nil
         )
-        await activity.end(
-            ActivityContent(state: finalState, staleDate: nil),
-            dismissalPolicy: .immediate
-        )
-        self.activity = nil
-        print("[LiveActivity] ended")
+        let content = ActivityContent(state: finalState, staleDate: nil)
+        guard activity != nil || transientResultActivity != nil else { return }
+        if let activity {
+            await activity.end(
+                content,
+                dismissalPolicy: .immediate
+            )
+            self.activity = nil
+            print("[LiveActivity] ended")
+        }
+        if let transientResultActivity {
+            await transientResultActivity.end(
+                content,
+                dismissalPolicy: .immediate
+            )
+            self.transientResultActivity = nil
+            print("[LiveActivity] transient result ended")
+        }
         #endif
     }
 

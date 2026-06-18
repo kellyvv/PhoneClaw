@@ -38,7 +38,7 @@
 		44E858BC1F79BDD31F923BBC /* (null) in Sources */ = {isa = PBXBuildFile; };
 		45B7FEC6C4D055F44A87BFA9 /* PhoneClawApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DD9808FE93325C3CE4CFA00 /* PhoneClawApp.swift */; };
 		45B7FEC6C4D055F44A87BFAA /* LiveLaunchRouting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DD9808FE93325C3CE4CFAA1 /* LiveLaunchRouting.swift */; };
-		45B7FEC6C4D055F44A87BFAB /* LiveModeShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DD9808FE93325C3CE4CFAA2 /* LiveModeShortcuts.swift */; };
+		45B7FEC6C4D055F44A87BFAB /* LiveLandShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DD9808FE93325C3CE4CFAA2 /* LiveLandShortcuts.swift */; };
 		4A99F468A0CDF3F577738F6C /* (null) in Sources */ = {isa = PBXBuildFile; };
 		4C01A62B1E57D91C45FFEEA8 /* LiveTurnProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BCB3AA5590B964AC46945D5 /* LiveTurnProcessor.swift */; };
 		4DD9808FE93325C3CE4CFAA4 /* LiveSkillRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DD9808FE93325C3CE4CFAA3 /* LiveSkillRuntime.swift */; };
@@ -223,6 +223,7 @@
 		A7C100000000000000000003 /* PhoneClawLiveActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C200000000000000000003 /* PhoneClawLiveActivityWidget.swift */; };
 		A7C100000000000000000004 /* PhoneClawLiveActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C200000000000000000001 /* PhoneClawLiveActivityAttributes.swift */; };
 		A7C100000000000000000005 /* PhoneClawLiveActivityWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A7C200000000000000000005 /* PhoneClawLiveActivityWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		BB7100000000000000000002 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BB7100000000000000000001 /* Assets.xcassets */; };
 		A7C100000000000000000006 /* LiveWarmPool.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C200000000000000000006 /* LiveWarmPool.swift */; };
 		A7C100000000000000000007 /* LiveBackgroundContinuation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C200000000000000000007 /* LiveBackgroundContinuation.swift */; };
 		A7C100000000000000000008 /* LiveTurnTokenSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C200000000000000000008 /* LiveTurnTokenSource.swift */; };
@@ -269,7 +270,7 @@
 		4628E2A5FD49247E1D6BE283 /* ResponseUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ResponseUI.swift; path = UI/ResponseUI.swift; sourceTree = SOURCE_ROOT; };
 		4DD9808FE93325C3CE4CFA00 /* PhoneClawApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneClawApp.swift; sourceTree = "<group>"; };
 		4DD9808FE93325C3CE4CFAA1 /* LiveLaunchRouting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveLaunchRouting.swift; sourceTree = "<group>"; };
-		4DD9808FE93325C3CE4CFAA2 /* LiveModeShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveModeShortcuts.swift; sourceTree = "<group>"; };
+		4DD9808FE93325C3CE4CFAA2 /* LiveLandShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveLandShortcuts.swift; sourceTree = "<group>"; };
 		4DD9808FE93325C3CE4CFAA3 /* LiveSkillRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveSkillRuntime.swift; path = Live/Turn/LiveSkillRuntime.swift; sourceTree = SOURCE_ROOT; };
 		4F4ACB3F4531FF61E0AADA07 /* libPods-PhoneClaw.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-PhoneClaw.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		52F30C6348B834E5D157205F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -413,6 +414,7 @@
 		A7C200000000000000000003 /* PhoneClawLiveActivityWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneClawLiveActivityWidget.swift; sourceTree = "<group>"; };
 		A7C200000000000000000004 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A7C200000000000000000005 /* PhoneClawLiveActivityWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = PhoneClawLiveActivityWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		BB7100000000000000000001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A7C200000000000000000006 /* LiveWarmPool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveWarmPool.swift; path = Live/Core/LiveWarmPool.swift; sourceTree = SOURCE_ROOT; };
 		A7C200000000000000000007 /* LiveBackgroundContinuation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveBackgroundContinuation.swift; path = Live/Core/LiveBackgroundContinuation.swift; sourceTree = SOURCE_ROOT; };
 		A7C200000000000000000008 /* LiveTurnTokenSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveTurnTokenSource.swift; path = Live/Turn/LiveTurnTokenSource.swift; sourceTree = SOURCE_ROOT; };
@@ -480,7 +482,7 @@
 			children = (
 				4DD9808FE93325C3CE4CFA00 /* PhoneClawApp.swift */,
 				4DD9808FE93325C3CE4CFAA1 /* LiveLaunchRouting.swift */,
-				4DD9808FE93325C3CE4CFAA2 /* LiveModeShortcuts.swift */,
+				4DD9808FE93325C3CE4CFAA2 /* LiveLandShortcuts.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -810,6 +812,7 @@
 			children = (
 				A7C200000000000000000003 /* PhoneClawLiveActivityWidget.swift */,
 				A7C200000000000000000004 /* Info.plist */,
+				BB7100000000000000000001 /* Assets.xcassets */,
 			);
 			path = PhoneClawLiveActivityWidget;
 			sourceTree = "<group>";
@@ -949,6 +952,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				BB7100000000000000000002 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1164,7 +1168,7 @@
 				AA1000000000000000000202 /* MLXLocalLLMService+KVReuse.swift in Sources */,
 				45B7FEC6C4D055F44A87BFA9 /* PhoneClawApp.swift in Sources */,
 				45B7FEC6C4D055F44A87BFAA /* LiveLaunchRouting.swift in Sources */,
-				45B7FEC6C4D055F44A87BFAB /* LiveModeShortcuts.swift in Sources */,
+				45B7FEC6C4D055F44A87BFAB /* LiveLandShortcuts.swift in Sources */,
 				5084E1CD2E831BC05F5E4374 /* PromptBuilder.swift in Sources */,
 				C1A2B3D4E5F607182930A1B2 /* SkillLoader.swift in Sources */,
 				C1A2B3D4E5F607182930A1C2 /* SkillRegistry.swift in Sources */,

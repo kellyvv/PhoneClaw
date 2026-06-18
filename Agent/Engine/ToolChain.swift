@@ -2392,6 +2392,12 @@ extension AgentEngine {
         }
 
         messages[cardIndex].update(role: .system, content: "executing:\(call.name)", skillName: displayName)
+        await publishSkillActivityEvent(
+            skillID: ownerSkillId,
+            skillName: displayName,
+            toolName: call.name,
+            phase: .executing
+        )
 
         do {
             var executionArguments = call.arguments
@@ -2526,6 +2532,12 @@ extension AgentEngine {
             // grounded-sources contract, generate headlessly: the card keeps the
             // typing placeholder until the finalized answer is written exactly
             // once. Non-grounded tool follow-ups keep streaming for live feedback.
+            await publishSkillActivityEvent(
+                skillID: ownerSkillId,
+                skillName: displayName,
+                toolName: followUpToolName,
+                phase: .summarizing
+            )
             let groundedWebFollowUp = usesGroundedSourcesContract(followUpToolName)
             let nextTextResult = groundedWebFollowUp
                 ? await streamLLM(prompt: selectedFollowUpPrompt, images: images)

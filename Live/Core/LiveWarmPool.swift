@@ -32,4 +32,9 @@ final class LiveWarmPool {
             self?.prewarmTask = nil
         }
     }
+
+    func cancelPrewarm() {
+        prewarmTask?.cancel()
+        prewarmTask = nil
+    }
 }

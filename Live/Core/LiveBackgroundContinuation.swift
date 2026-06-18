@@ -15,6 +15,8 @@ final class LiveBackgroundContinuation {
     private var sessionActive = false
     private var activeTask: AnyObject?
     private var activeRequestIdentifier: String?
+    private var activeTitle = "PhoneClaw LIVE"
+    private var activeSubtitle = "Listening"
 
     private init() {}
 
@@ -52,7 +54,7 @@ final class LiveBackgroundContinuation {
         #endif
     }
 
-    func begin() {
+    func begin(title: String = "PhoneClaw LIVE", subtitle: String = "Listening") {
         #if canImport(BackgroundTasks)
         guard #available(iOS 26.0, *) else {
             print("[LiveBackground] continuous task unavailable before iOS 26")
@@ -64,6 +66,8 @@ final class LiveBackgroundContinuation {
         lock.lock()
         let canSubmit = registrationAccepted
         sessionActive = true
+        activeTitle = title
+        activeSubtitle = subtitle
         let existing = activeTask
         let existingIdentifier = activeRequestIdentifier
         lock.unlock()
@@ -74,7 +78,7 @@ final class LiveBackgroundContinuation {
         }
 
         if let existing = existing as? BGContinuedProcessingTask {
-            update(task: existing, phase: "starting", detail: "PhoneClaw LIVE is starting")
+            update(task: existing, phase: "starting", detail: subtitle)
             print("[LiveBackground] begin reuse id=\(existingIdentifier ?? "unknown")")
             return
         }
@@ -82,8 +86,8 @@ final class LiveBackgroundContinuation {
         let requestIdentifier = Self.taskIdentifier
         let request = BGContinuedProcessingTaskRequest(
             identifier: requestIdentifier,
-            title: "PhoneClaw LIVE",
-            subtitle: "Listening"
+            title: title,
+            subtitle: subtitle
         )
         request.strategy = .fail
 
@@ -130,12 +134,15 @@ final class LiveBackgroundContinuation {
         let task = activeTask
         activeTask = nil
         activeRequestIdentifier = nil
+        let title = activeTitle
         lock.unlock()
+
+        BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: Self.taskIdentifier)
 
         guard let task = task as? BGContinuedProcessingTask else { return }
         task.progress.totalUnitCount = 100
         task.progress.completedUnitCount = success ? 100 : max(task.progress.completedUnitCount, 1)
-        task.updateTitle("PhoneClaw LIVE", subtitle: success ? "Ended" : "Stopped")
+        task.updateTitle(title, subtitle: success ? "Ended" : "Stopped")
         task.setTaskCompleted(success: success)
         print("[LiveBackground] completed success=\(success)")
         #endif
@@ -153,6 +160,7 @@ final class LiveBackgroundContinuation {
         activeTask = continuedTask
         let keepRunning = sessionActive
         let requestIdentifier = activeRequestIdentifier ?? task.identifier
+        let subtitle = activeSubtitle
         lock.unlock()
 
         continuedTask.expirationHandler = { [weak self, weak continuedTask] in
@@ -160,7 +168,7 @@ final class LiveBackgroundContinuation {
             self?.expire(task: continuedTask)
         }
         continuedTask.progress.totalUnitCount = 100
-        update(task: continuedTask, phase: "starting", detail: "PhoneClaw LIVE")
+        update(task: continuedTask, phase: "starting", detail: subtitle)
         print("[LiveBackground] handler id=\(requestIdentifier) active=\(keepRunning)")
 
         if !keepRunning {
@@ -178,6 +186,7 @@ final class LiveBackgroundContinuation {
         lock.lock()
         sessionActive = false
         let isActiveTask = activeTask === task
+        let title = activeTitle
         if isActiveTask {
             activeTask = nil
             activeRequestIdentifier = nil
@@ -191,19 +200,23 @@ final class LiveBackgroundContinuation {
 
         task.progress.totalUnitCount = 100
         task.progress.completedUnitCount = success ? 100 : max(task.progress.completedUnitCount, 1)
-        task.updateTitle("PhoneClaw LIVE", subtitle: success ? "Ended" : "Stopped")
+        task.updateTitle(title, subtitle: success ? "Ended" : "Stopped")
         task.setTaskCompleted(success: success)
         print("[LiveBackground] completed success=\(success) reason=\(reason)")
     }
 
     @available(iOS 26.0, *)
     private func update(task: BGContinuedProcessingTask, phase: String, detail: String) {
+        lock.lock()
+        let title = activeTitle
+        lock.unlock()
+
         task.progress.totalUnitCount = 100
         task.progress.completedUnitCount = max(
             task.progress.completedUnitCount,
             progressUnit(for: phase)
         )
-        task.updateTitle("PhoneClaw LIVE", subtitle: clipped(detail))
+        task.updateTitle(title, subtitle: clipped(detail))
     }
     #endif
 
@@ -217,6 +230,7 @@ final class LiveBackgroundContinuation {
         case "searching", "executing": return 72
         case "summarizing": return 84
         case "skill": return 90
+        case "result": return 95
         default: return 10
         }
     }

@@ -985,7 +985,7 @@ class LiveModeEngine {
         }
 
         await liveActivity.update(
-            phase: "skill",
+            phase: "result",
             headline: output.displayName,
             detail: displayText,
             skillID: output.skillID,
@@ -995,7 +995,7 @@ class LiveModeEngine {
             alertTitle: output.success ? "Skill 已完成" : "Skill 未完成",
             alertBody: displayText
         )
-        backgroundContinuation.update(phase: "skill", detail: displayText)
+        backgroundContinuation.update(phase: "result", detail: displayText)
         print("[LiveAgent] info output skill=\(output.skillID) tool=\(output.toolName ?? "none") success=\(output.success)")
         print(metrics.summary())
 

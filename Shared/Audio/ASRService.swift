@@ -351,8 +351,13 @@ class ASRService {
     }
 
     private func transcribeWithSherpa(samples: [Float], sampleRate: Int = 16000) -> String {
-        guard let recognizer = fullTurnRecognizer else { return "" }
+        guard let recognizer = fullTurnRecognizer else {
+            print("[ASR] Sherpa full-turn recognizer unavailable; empty transcript")
+            return ""
+        }
 
+        let start = CFAbsoluteTimeGetCurrent()
+        print("[ASR] Sherpa transcribe start: \(samples.count) samples @ \(sampleRate)Hz (\(String(format: "%.2f", Double(samples.count) / Double(sampleRate)))s)")
         // Reset for new utterance
         recognizer.reset()
 
@@ -369,7 +374,10 @@ class ASRService {
         }
 
         let result = recognizer.getResult()
-        return result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let asrMs = (CFAbsoluteTimeGetCurrent() - start) * 1000
+        print("[ASR] Sherpa transcribe done: \(String(format: "%.0f", asrMs))ms, text=\"\(text)\"")
+        return text
     }
 
     /// 开始一个新的流式识别 session。

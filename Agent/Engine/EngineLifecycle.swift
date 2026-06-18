@@ -92,13 +92,17 @@ extension AgentEngine {
         // MTP 偏好需要在 coordinator.load() 之前同步 — coordinator 内部不管 MTP,
         // 但 inference.load() 读取这个设置来构造 engine.
         inference.setEnableSpeculativeDecoding(config.enableSpeculativeDecoding)
-        Task {
-            // Coordinator handles: setPreferredBackend → inference.load
-            // 同时维护 RuntimeSessionState: idle → loading → ready | failed
-            try? await coordinator.load(
-                modelID: config.selectedModelID,
-                backend: config.preferredBackend
-            )
+        if selectedModelCanLoad() {
+            Task {
+                // Coordinator handles: setPreferredBackend → inference.load
+                // 同时维护 RuntimeSessionState: idle → loading → ready | failed
+                try? await coordinator.load(
+                    modelID: config.selectedModelID,
+                    backend: config.preferredBackend
+                )
+            }
+        } else {
+            log("[Model] selected model \(config.selectedModelID) is not installed; waiting for user selection/download")
         }
     }
 
@@ -198,6 +202,18 @@ extension AgentEngine {
         return catalog.select(modelID: config.selectedModelID)
     }
 
+    func selectedModelCanLoad() -> Bool {
+        modelCanLoad(config.selectedModelID)
+    }
+
+    func modelCanLoad(_ modelID: String) -> Bool {
+        if modelID.hasPrefix("remote::") {
+            return true
+        }
+        let state = installer.installState(for: modelID)
+        return state == .downloaded || state == .bundled
+    }
+
     func installedModelID(preferredIDs: [String?]) -> String? {
         for modelID in preferredIDs.compactMap({ $0 }) {
             guard let model = availableModels.first(where: { $0.id == modelID }),
@@ -254,6 +270,10 @@ extension AgentEngine {
         let selectedModelID = config.selectedModelID
         let backend = config.preferredBackend
         let speculative = config.enableSpeculativeDecoding
+        guard modelCanLoad(selectedModelID) else {
+            log("[Model] reload skipped: \(selectedModelID) is not installed")
+            return
+        }
         // 持久化用户选择 — 单一入口, 任何 caller (ConfigurationsView.applySettings,
         // 未来其它切模型路径) 调 reloadModel 后, UserDefaults 自动同步,
         // 下次 app 启动 ModelConfig.selectedModelID 能恢复正确值.

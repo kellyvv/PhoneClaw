@@ -84,6 +84,8 @@ struct ContentView: View {
     @State private var showConfigurations = false
     @State private var showHistory = false
     @State private var showLiveMode = false
+    @State private var showLiveLand = false
+    @State private var liveLandRuntime = LiveLandVoiceRuntime()
     @State private var showModelSwitcher = false
     /// 记录每个 skill 卡片的展开状态（key = SkillCard.id）
     @State private var expandedSkills: Set<UUID> = []
@@ -126,7 +128,21 @@ struct ContentView: View {
         cachedDisplayItems
     }
 
+    private var visibleConversationIsEmpty: Bool {
+        engine.isLiveLandTurnActive ? cachedDisplayItems.isEmpty : engine.messages.isEmpty
+    }
+
     private var scrollSignal: ScrollSignal {
+        if engine.isLiveLandTurnActive {
+            return ScrollSignal(
+                lastMessageID: cachedDisplayMessageIDs.last,
+                lastMessageRole: nil,
+                messageCount: cachedDisplayMessageIDs.count,
+                lastMessageContentCount: 0,
+                isProcessing: false
+            )
+        }
+
         let lastMessage = engine.messages.last
         return ScrollSignal(
             lastMessageID: lastMessage?.id,
@@ -231,7 +247,7 @@ struct ContentView: View {
     }
 
     private var shouldShowStarterActions: Bool {
-        engine.messages.isEmpty
+        visibleConversationIsEmpty
             && inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && selectedImages.isEmpty
             && importedAudioSnapshot == nil
@@ -246,15 +262,15 @@ struct ContentView: View {
 
             ZStack {
                 chatList
-                    .opacity(engine.messages.isEmpty ? 0 : 1)
-                    .allowsHitTesting(!engine.messages.isEmpty)
-                    .accessibilityHidden(engine.messages.isEmpty)
+                    .opacity(visibleConversationIsEmpty ? 0 : 1)
+                    .allowsHitTesting(!visibleConversationIsEmpty)
+                    .accessibilityHidden(visibleConversationIsEmpty)
 
                 welcomeView
-                    .opacity(engine.messages.isEmpty ? 1 : 0)
-                    .scaleEffect(engine.messages.isEmpty ? 1 : 0.985)
-                    .allowsHitTesting(engine.messages.isEmpty)
-                    .accessibilityHidden(!engine.messages.isEmpty)
+                    .opacity(visibleConversationIsEmpty ? 1 : 0)
+                    .scaleEffect(visibleConversationIsEmpty ? 1 : 0.985)
+                    .allowsHitTesting(visibleConversationIsEmpty)
+                    .accessibilityHidden(!visibleConversationIsEmpty)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipped()
@@ -262,7 +278,7 @@ struct ContentView: View {
             composerDock
         }
         .background(Theme.bg.ignoresSafeArea())
-        .animation(.easeInOut(duration: 0.28), value: engine.messages.isEmpty)
+        .animation(.easeInOut(duration: 0.28), value: visibleConversationIsEmpty)
         .overlay {
             voiceModelPromptOverlay
         }
@@ -270,7 +286,7 @@ struct ContentView: View {
             guard !ProcessInfo.processInfo.isRunningXCTest else { return }
             engine.setup()
             refreshDisplayItems()
-            if !consumePendingLiveLaunchIfNeeded() {
+            if !consumePendingLiveLandLaunchIfNeeded(), !consumePendingLiveLaunchIfNeeded() {
                 prewarmLiveIfPossible()
             }
             // 不在这里 initialize hold-to-talk ASR. 改为用户第一次按住说话时
@@ -282,14 +298,26 @@ struct ContentView: View {
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
                 audioCapture.refreshPermissionStatus()
-                if !consumePendingLiveLaunchIfNeeded() {
+                if showLiveLand {
+                    Task {
+                        await liveLandRuntime.restoreRuntimeForForeground()
+                    }
+                }
+                if !consumePendingLiveLandLaunchIfNeeded(), !consumePendingLiveLaunchIfNeeded() {
                     prewarmLiveIfPossible()
                 }
                 return
             }
             engine.flushPendingSessionSave()
+            if showLiveLand {
+                if newPhase == .background {
+                    liveLandRuntime.prepareForAppBackground()
+                }
+                print("[UI] Scene inactive while LiveLand is running; preserving audio and inference session")
+                return
+            }
             if showLiveMode {
-                print("[UI] Scene inactive while LIVE is running; preserving LIVE audio and inference session")
+                print("[UI] Scene inactive while live audio is running; preserving audio and inference session")
                 return
             }
             engine.cancelActiveGeneration()
@@ -299,6 +327,7 @@ struct ContentView: View {
             handleExternalLaunchURL(url)
         }
         .onChange(of: engine.messages.isEmpty) { wasEmpty, isEmpty in
+            guard !engine.isLiveLandTurnActive else { return }
             // 新会话: 卸载 hold-to-talk ASR 以释放内存 (zh ~160MB / en ~180MB). 下次按住说话会 lazy 重新加载.
             // 注意 onChange 只在**变化**时 fire, 初次 render 不会触发. wasEmpty 参数
             // 保证我们只响应 "有消息 -> 清空" 这个方向, 忽略新开一条消息的方向.
@@ -310,9 +339,11 @@ struct ContentView: View {
             }
         }
         .onChange(of: engine.messagesRevision) { _, _ in
+            guard !engine.isLiveLandTurnActive else { return }
             refreshDisplayItems()
         }
         .onChange(of: engine.isProcessing) { _, _ in
+            guard !engine.isLiveLandTurnActive else { return }
             refreshDisplayItems()
         }
         .onChange(of: isInputFocused) { _, focused in
@@ -1309,7 +1340,7 @@ struct ContentView: View {
     // (圆形浅底),输入框无自身背景。
     private var inputAreaBackground: some View {
         Group {
-            if !engine.messages.isEmpty {
+            if !visibleConversationIsEmpty {
                 LinearGradient(
                     stops: [
                         .init(color: Theme.bg.opacity(colorScheme == .dark ? 0.10 : 0.16), location: 0),
@@ -1728,7 +1759,7 @@ struct ContentView: View {
                     }
                 }
             }
-            .padding(.bottom, engine.messages.isEmpty ? 8 : 0)
+            .padding(.bottom, visibleConversationIsEmpty ? 8 : 0)
         }
     }
 
@@ -1823,7 +1854,7 @@ struct ContentView: View {
     private var shouldShowComposerPromptCarousel: Bool {
         inputText.isEmpty
             && !hasComposedInput
-            && engine.messages.isEmpty
+            && visibleConversationIsEmpty
             && !engine.isProcessing
             && !engine.isModelGenerating
     }
@@ -1905,6 +1936,7 @@ struct ContentView: View {
             return
         }
 
+        stopLiveLand()
         showLiveMode = true
 
         engine.cancelActiveGeneration()
@@ -1916,10 +1948,72 @@ struct ContentView: View {
         showAttachmentTray = false
     }
 
+    private func enterLiveLand() {
+        guard liveVoiceModelsReady else {
+            showVoiceModelsRequiredPrompt()
+            return
+        }
+        guard engine.isModelLoaded else {
+            showTransientTopNotice(tr("请先下载模型", "Download a model first", "先にモデルをダウンロード"))
+            return
+        }
+        guard !showLiveLand else { return }
+
+        showLiveMode = false
+        showLiveLand = true
+        LiveWarmPool.shared.cancelPrewarm()
+
+        engine.cancelActiveGeneration()
+        if audioCapture.isCapturing {
+            _ = audioCapture.stopCapture()
+        }
+        _ = audioCapture.consumeLatestSnapshot()
+        isInputFocused = false
+        showAttachmentTray = false
+
+        liveLandRuntime.onStatusChanged = nil
+        liveLandRuntime.onTranscriptChanged = nil
+        liveLandRuntime.onResultChanged = nil
+        liveLandRuntime.onDismissRequested = {
+            showLiveLand = false
+        }
+        Task {
+            await engine.coordinator.cancelCurrentGeneration()
+            await liveLandRuntime.start(agentEngine: engine)
+        }
+    }
+
+    private func stopLiveLand(endLiveActivity: Bool = true) {
+        guard showLiveLand else { return }
+        showLiveLand = false
+        Task {
+            await liveLandRuntime.stop(endLiveActivity: endLiveActivity)
+        }
+    }
+
     private func handleExternalLaunchURL(_ url: URL) {
-        guard LiveLaunchRoute.parse(url) == .voice else { return }
-        LiveLaunchRequestStore.requestVoiceLaunch()
-        consumePendingLiveLaunchIfNeeded()
+        switch LiveLaunchRoute.parse(url) {
+        case .liveLand:
+            LiveLaunchRequestStore.requestLiveLandLaunch()
+            consumePendingLiveLandLaunchIfNeeded()
+        case .voice:
+            LiveLaunchRequestStore.requestVoiceLaunch()
+            consumePendingLiveLaunchIfNeeded()
+        case nil:
+            return
+        }
+    }
+
+    @discardableResult
+    private func consumePendingLiveLandLaunchIfNeeded() -> Bool {
+        guard LiveLaunchRequestStore.consumeLiveLandLaunchRequest() else { return false }
+        showHistory = false
+        showConfigurations = false
+        showModelSwitcher = false
+        showAttachmentTray = false
+        isVoiceInputMode = false
+        enterLiveLand()
+        return true
     }
 
     @discardableResult
@@ -1928,12 +2022,13 @@ struct ContentView: View {
         showHistory = false
         showConfigurations = false
         showModelSwitcher = false
+        showLiveLand = false
         enterLiveMode()
         return true
     }
 
     private func prewarmLiveIfPossible() {
-        guard !showLiveMode, engine.isModelReady else { return }
+        guard !showLiveMode, !showLiveLand, engine.isModelReady else { return }
         LiveWarmPool.shared.prewarmIfPossible(
             inference: engine.inference,
             userSystemPrompt: engine.config.systemPrompt

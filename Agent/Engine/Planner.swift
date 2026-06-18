@@ -504,6 +504,12 @@ extension AgentEngine {
                     )
 
                     messages[cardIndex].update(role: .system, content: "executing:\(step.skill)", skillName: displayName)
+                    await publishSkillActivityEvent(
+                        skillID: step.skill,
+                        skillName: displayName,
+                        toolName: nil,
+                        phase: .executing
+                    )
 
                     guard let rawOutput = await streamLLM(prompt: contentPrompt, images: images) else {
                         messages[cardIndex].update(role: .system, content: "done", skillName: displayName)
@@ -594,6 +600,12 @@ extension AgentEngine {
                     content: "executing:\(step.tool)",
                     skillName: displayName
                 )
+                await publishSkillActivityEvent(
+                    skillID: step.skill,
+                    skillName: displayName,
+                    toolName: step.tool,
+                    phase: .executing
+                )
 
                 do {
                     let canonicalResult: CanonicalToolResult
@@ -657,6 +669,15 @@ extension AgentEngine {
 
         messages.append(ChatMessage(role: .assistant, content: "▍"))
         let followUpIndex = messages.count - 1
+
+        if let lastStep = completedSteps.last {
+            await publishSkillActivityEvent(
+                skillID: lastStep.step.skill,
+                skillName: loadedDisplayNames[lastStep.step.skill],
+                toolName: lastStep.step.tool,
+                phase: .summarizing
+            )
+        }
 
         guard let nextText = await streamLLM(prompt: followUpPrompt, msgIndex: followUpIndex, images: images) else {
             markSkillsDone(Array(loadedDisplayNames.values))

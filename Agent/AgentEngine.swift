@@ -20,6 +20,22 @@ func log(_ message: String) {
     PCLog.debug(message)
 }
 
+struct AgentActivityEvent: Sendable, Equatable {
+    enum Phase: String, Sendable {
+        case searching
+        case executing
+        case processing
+        case summarizing
+    }
+
+    let phase: Phase
+    let headline: String
+    let detail: String
+    let skillID: String?
+    let skillName: String?
+    let toolName: String?
+}
+
 // MARK: - Agent Engine
 //
 // 核心类: 持有所有运行时依赖 (inference / catalog / coordinator / sessionStore),
@@ -71,6 +87,8 @@ class AgentEngine {
     @ObservationIgnored private var pendingStreamingContentByMessageID: [UUID: String] = [:]
     @ObservationIgnored private var streamingUIFlushTask: Task<Void, Never>?
     @ObservationIgnored private var isSessionPersistenceEnabled = true
+    @ObservationIgnored var isLiveLandTurnActive = false
+    @ObservationIgnored var activityEventSink: ((AgentActivityEvent) async -> Void)?
 
     // MARK: - Skill System
 
@@ -155,6 +173,151 @@ class AgentEngine {
         if !enabled {
             sessionStore.cancelPendingSave()
         }
+    }
+
+    func processLiveLandCommand(_ text: String) async -> [ChatMessage] {
+        guard !isProcessing else {
+            return liveLandSystemMessages("LiveLand 正在处理上一条指令，请稍后再试。")
+        }
+
+        if let modelIssue = await ensureLiveLandModelReady() {
+            return liveLandSystemMessages(modelIssue)
+        }
+
+        let savedMessages = messages
+        let wasSessionPersistenceEnabled = isSessionPersistenceEnabled
+
+        isLiveLandTurnActive = true
+        isSessionPersistenceEnabled = false
+        sessionStore.cancelPendingSave()
+        messages = []
+        resetPromptPipelineState()
+        clearRecentImageFollowUpContexts()
+
+        defer {
+            flushPendingStreamingMessageContentUpdates()
+            isLiveLandTurnActive = false
+            messages = savedMessages
+            isSessionPersistenceEnabled = wasSessionPersistenceEnabled
+            if !wasSessionPersistenceEnabled {
+                sessionStore.cancelPendingSave()
+            }
+            resetPromptPipelineState()
+            clearRecentImageFollowUpContexts()
+        }
+
+        await processInput(text)
+        await waitForLiveLandCommandCompletion()
+        flushPendingStreamingMessageContentUpdates()
+        return messages
+    }
+
+    private func liveLandSystemMessages(_ content: String) -> [ChatMessage] {
+        [ChatMessage(role: .system, content: content)]
+    }
+
+    private func ensureLiveLandModelReady() async -> String? {
+        if coordinator.sessionState.canGenerate { return nil }
+
+        installer.refreshInstallStates()
+        _ = reconcileSelectedModelIfUnavailable()
+        _ = applyModelSelection()
+
+        if !config.selectedModelID.hasPrefix("remote::") {
+            let state = installer.installState(for: config.selectedModelID)
+            guard state == .downloaded || state == .bundled else {
+                log("[LiveLand] model unavailable: \(config.selectedModelID) state=\(state)")
+                return "请先在设置里下载模型，LiveLand 需要模型才能调用技能。"
+            }
+        }
+
+        if await waitForLiveLandModelReadyIfLoading() {
+            return nil
+        }
+
+        guard coordinator.sessionState.isStable else {
+            log("[LiveLand] model runtime busy: \(coordinator.sessionState)")
+            return "模型正在切换或加载，请稍后再试。"
+        }
+
+        do {
+            try await coordinator.load(
+                modelID: config.selectedModelID,
+                backend: config.preferredBackend
+            )
+            return nil
+        } catch {
+            log("[LiveLand] model load failed: \(error.localizedDescription)")
+            return "模型启动失败：\(error.localizedDescription)"
+        }
+    }
+
+    private func waitForLiveLandModelReadyIfLoading(timeout: TimeInterval = 20) async -> Bool {
+        guard !coordinator.sessionState.canGenerate,
+              !coordinator.sessionState.isStable else {
+            return coordinator.sessionState.canGenerate
+        }
+
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if coordinator.sessionState.canGenerate {
+                return true
+            }
+            if coordinator.sessionState.isStable {
+                return false
+            }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        return coordinator.sessionState.canGenerate
+    }
+
+    private func waitForLiveLandCommandCompletion(timeout: TimeInterval = 180) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            guard isProcessing || isModelGenerating || inference.isGenerating else {
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+
+        log("[LiveLand] main Agent turn timed out after \(Int(timeout))s")
+        cancelActiveGeneration()
+    }
+
+    func publishSkillActivityEvent(
+        skillID: String?,
+        skillName: String?,
+        toolName: String?,
+        phase: AgentActivityEvent.Phase
+    ) async {
+        guard let activityEventSink else { return }
+
+        let normalizedToolName = toolName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedSkillID = skillID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedSkillName = skillName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let detail: String = {
+            switch phase {
+            case .searching:
+                return "正在查询"
+            case .executing:
+                return "正在执行"
+            case .processing:
+                return "正在处理"
+            case .summarizing:
+                return "正在整理"
+            }
+        }()
+
+        await activityEventSink(
+            AgentActivityEvent(
+                phase: phase,
+                headline: "正在执行",
+                detail: detail,
+                skillID: normalizedSkillID?.isEmpty == false ? normalizedSkillID : nil,
+                skillName: normalizedSkillName?.isEmpty == false ? normalizedSkillName : nil,
+                toolName: normalizedToolName?.isEmpty == false ? normalizedToolName : nil
+            )
+        )
     }
 
     var availableModels: [ModelDescriptor] {
