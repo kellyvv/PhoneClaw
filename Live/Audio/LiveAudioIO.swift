@@ -72,11 +72,6 @@ class LiveAudioIO {
         try startEngine()
     }
 
-    func startForLiveLand() async throws {
-        try await Self.configureAndActivateAudioSessionOffMainThread()
-        try startEngine()
-    }
-
     private static func configureAndActivateAudioSession() throws {
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playAndRecord, mode: .voiceChat,

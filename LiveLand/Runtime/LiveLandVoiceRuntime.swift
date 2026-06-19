@@ -1,158 +1,4 @@
-import AppIntents
-import CoreHaptics
 import Foundation
-import UIKit
-
-struct LiveLandAgentResult: Equatable {
-    let success: Bool
-    let dialog: String
-    let skillID: String?
-    let toolName: String?
-}
-
-struct StartPhoneClawLiveModeIntent: AppIntent {
-    static var title: LocalizedStringResource = "Start PhoneClaw LIVE Mode"
-    static var description = IntentDescription("Open PhoneClaw in the realtime LIVE voice mode.")
-    static var openAppWhenRun: Bool = true
-
-    @MainActor
-    func perform() async throws -> some IntentResult {
-        LiveLaunchRequestStore.requestVoiceLaunch()
-        return .result()
-    }
-}
-
-struct OpenLiveLandIntent: AppIntent {
-    static var title: LocalizedStringResource = "Open LiveLand"
-    static var description = IntentDescription("Open PhoneClaw and start LiveLand microphone listening in Dynamic Island.")
-    static var openAppWhenRun: Bool = true
-
-    @MainActor
-    func perform() async throws -> some IntentResult {
-        LiveLaunchRequestStore.requestLiveLandLaunch()
-        return .result()
-    }
-}
-
-struct PhoneClawAppShortcuts: AppShortcutsProvider {
-    static var shortcutTileColor: ShortcutTileColor = .orange
-
-    static var appShortcuts: [AppShortcut] {
-        AppShortcut(
-            intent: OpenLiveLandIntent(),
-            phrases: [
-                "Open \(.applicationName) LiveLand",
-                "Launch \(.applicationName) LiveLand",
-                "打开 \(.applicationName) LiveLand",
-                "启动 \(.applicationName) LiveLand"
-            ],
-            shortTitle: "LiveLand",
-            systemImageName: "waveform"
-        )
-        AppShortcut(
-            intent: StartPhoneClawLiveModeIntent(),
-            phrases: [
-                "Start \(.applicationName) LIVE Mode",
-                "Open \(.applicationName) LIVE Mode",
-                "开始 \(.applicationName) 实时语音",
-                "打开 \(.applicationName) LIVE 模式",
-                "和 \(.applicationName) 实时对话",
-                "用 \(.applicationName) 开始 LIVE 模式"
-            ],
-            shortTitle: "LIVE Mode",
-            systemImageName: "waveform"
-        )
-    }
-}
-
-@MainActor
-private final class LiveLandSkillPromptHaptics {
-    private static let supportedDetails: Set<String> = [
-        "正在查询",
-        "正在执行",
-        "正在处理",
-        "正在整理",
-        "结果展示"
-    ]
-
-    private let impactFallback = UIImpactFeedbackGenerator(style: .rigid)
-    private var engine: CHHapticEngine?
-
-    func prepare() {
-        impactFallback.prepare()
-        prepareEngineIfNeeded()
-    }
-
-    func play(for detail: String) {
-        guard Self.supportedDetails.contains(detail) else { return }
-        if !playUnlockClickPattern() {
-            impactFallback.impactOccurred(intensity: 1.0)
-        }
-        prepare()
-    }
-
-    private func prepareEngineIfNeeded() {
-        guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else { return }
-        if engine == nil {
-            do {
-                let engine = try CHHapticEngine()
-                engine.isAutoShutdownEnabled = true
-                engine.stoppedHandler = { [weak self] _ in
-                    Task { @MainActor in
-                        self?.engine = nil
-                    }
-                }
-                engine.resetHandler = { [weak self] in
-                    Task { @MainActor in
-                        self?.prepareEngineIfNeeded()
-                    }
-                }
-                self.engine = engine
-            } catch {
-                self.engine = nil
-                return
-            }
-        }
-
-        do {
-            try engine?.start()
-        } catch {
-            engine = nil
-        }
-    }
-
-    private func playUnlockClickPattern() -> Bool {
-        guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else { return false }
-        prepareEngineIfNeeded()
-        guard let engine else { return false }
-
-        do {
-            let hardClick = CHHapticEvent(
-                eventType: .hapticTransient,
-                parameters: [
-                    CHHapticEventParameter(parameterID: .hapticIntensity, value: 1.0),
-                    CHHapticEventParameter(parameterID: .hapticSharpness, value: 1.0)
-                ],
-                relativeTime: 0
-            )
-            let latchReturn = CHHapticEvent(
-                eventType: .hapticTransient,
-                parameters: [
-                    CHHapticEventParameter(parameterID: .hapticIntensity, value: 0.34),
-                    CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.92)
-                ],
-                relativeTime: 0.045
-            )
-            let pattern = try CHHapticPattern(events: [hardClick, latchReturn], parameters: [])
-            let player = try engine.makePlayer(with: pattern)
-            try player.start(atTime: CHHapticTimeImmediate)
-            return true
-        } catch {
-            self.engine = nil
-            return false
-        }
-    }
-}
 
 @MainActor
 final class LiveLandVoiceRuntime {
@@ -206,14 +52,14 @@ final class LiveLandVoiceRuntime {
     var onResultChanged: ((String) -> Void)?
     var onDismissRequested: (() -> Void)?
 
-    private let liveActivity = LiveActivityBridge()
-    private let backgroundContinuation = LiveBackgroundContinuation.shared
+    private let liveActivity = LiveLandActivityBridge()
+    private let backgroundContinuation = LiveLandBackgroundContinuation.shared
     private let skillPromptHaptics = LiveLandSkillPromptHaptics()
-    private let vad = VADService()
+    private let vad = LiveLandVADService()
     private let asr = ASRService()
-    private let turnController = VoiceTurnController()
+    private let turnController = LiveLandTurnController()
     private weak var agentEngine: AgentEngine?
-    private var audioIO: LiveAudioIO?
+    private var audioIO: LiveLandAudioIO?
     private var phase: Phase = .idle
     private var turnGeneration: UInt64 = 0
     private var listeningRefreshTask: Task<Void, Never>?
@@ -256,7 +102,7 @@ final class LiveLandVoiceRuntime {
             detail: "正在启动麦克风监听"
         )
 
-        let io = LiveAudioIO()
+        let io = LiveLandAudioIO()
         do {
             try await io.startForLiveLand()
             skillPromptHaptics.prepare()

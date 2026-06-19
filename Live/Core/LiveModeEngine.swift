@@ -122,7 +122,7 @@ class LiveModeEngine {
         case speaking
     }
 
-    private enum TurnPhase {
+    enum TurnPhase {
         case inactive
         case starting
         case listening
@@ -132,7 +132,7 @@ class LiveModeEngine {
         case stopping
     }
 
-    private struct LiveAgentProgressSnapshot: Equatable {
+    struct LiveAgentProgressSnapshot: Equatable {
         let key: String
         let phase: String
         let headline: String
@@ -142,15 +142,15 @@ class LiveModeEngine {
         let toolName: String?
     }
 
-    private(set) var state: State = .idle
+    var state: State = .idle
     private(set) var lastTranscript: String = ""
-    private(set) var lastReply: String = ""
-    private(set) var lastSkillInfo: LiveSkillInfoOutput?
-    private(set) var liveProgressHeadline: String?
-    private(set) var liveCaption: String = ""
+    var lastReply: String = ""
+    var lastSkillInfo: LiveSkillInfoOutput?
+    var liveProgressHeadline: String?
+    var liveCaption: String = ""
     private(set) var endedByLiveActivityDismissal = false
-    private(set) var inputLevel: Double = 0
-    private(set) var statusMessage: String = LiveLocale.zhCN.config.statusStrings.preparingLive
+    var inputLevel: Double = 0
+    var statusMessage: String = LiveLocale.zhCN.config.statusStrings.preparingLive
 
     /// 可视化音频分析器（由 OrbSceneView 弱引用）
     /// start() 前为 nil，stop() 后清零。@Observable 无需额外通知机制。
@@ -158,18 +158,18 @@ class LiveModeEngine {
     private(set) var outputAnalyser: OrbAudioAnalyser? = nil
 
     private let vad = VADService()
-    private let tts = TTSService()
+    let tts = TTSService()
     private let asr = ASRService()
-    private let liveActivity = LiveActivityBridge()
-    private let backgroundContinuation = LiveBackgroundContinuation.shared
+    let liveActivity = LiveActivityBridge()
+    let backgroundContinuation = LiveBackgroundContinuation.shared
     private var audioIO: LiveAudioIO?
-    private var ttsQueue: AudioPlaybackQueue?
+    var ttsQueue: AudioPlaybackQueue?
     private weak var inference: (any InferenceService)?
-    private var agentEngine: AgentEngine?
+    var agentEngine: AgentEngine?
     private var didEnterLLMLiveMode = false
 
-    private var turnPhase: TurnPhase = .inactive
-    private var turnGeneration: UInt64 = 0
+    var turnPhase: TurnPhase = .inactive
+    var turnGeneration: UInt64 = 0
     private var liveActivityListeningRefreshTask: Task<Void, Never>?
     private var liveActivityDismissalTask: Task<Void, Never>?
 
@@ -195,19 +195,19 @@ class LiveModeEngine {
 
     private var liveHistory: [ChatMessage] = []
     private let maxLiveHistoryDepth = 4  // incomplete marker + follow-up 会让一次交互超过 2 条消息
-    private let mainAgentTurnTimeout: TimeInterval = 180
+    let mainAgentTurnTimeout: TimeInterval = 180
 
     // MARK: - Echo Suppression
 
     /// Timestamp when the last assistant playback finished.
     /// Used for diagnostics and potential future echo-window gating.
-    private var lastAssistantPlaybackEndTime: CFAbsoluteTime = 0
+    var lastAssistantPlaybackEndTime: CFAbsoluteTime = 0
 
     // MARK: - Metrics
 
     /// Shared reference so enqueueForPlayback can stamp ttsFirstChunkAt
     /// on the same metrics struct that processAudio prints.
-    private var currentTurnMetrics: LiveTurnMetrics?
+    var currentTurnMetrics: LiveTurnMetrics?
 
     // MARK: - Incomplete Turn Follow-up
 
@@ -244,7 +244,7 @@ class LiveModeEngine {
     }
 
     private var liveLocaleConfig: LiveLocaleConfig { LiveLocale.zhCN.config }
-    private var liveStrings: LiveLocaleConfig.StatusStrings { liveLocaleConfig.statusStrings }
+    var liveStrings: LiveLocaleConfig.StatusStrings { liveLocaleConfig.statusStrings }
 
     func setup(inference: InferenceService, agentEngine: AgentEngine? = nil) {
         self.inference = inference
@@ -699,7 +699,7 @@ class LiveModeEngine {
         incompleteTurnTimeoutTask = nil
     }
 
-    private func appendLiveHistory(role: ChatMessage.Role, content: String) {
+    func appendLiveHistory(role: ChatMessage.Role, content: String) {
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
@@ -944,69 +944,6 @@ class LiveModeEngine {
         )
     }
 
-    // MARK: - MAIN Agent Bridge
-
-    private func processMainAgentTextTurn(
-        transcript: String,
-        generation gen: UInt64,
-        initialMetrics: LiveTurnMetrics
-    ) async {
-        var metrics = initialMetrics
-        metrics.llmStartedAt = CFAbsoluteTimeGetCurrent()
-        await liveActivity.update(
-            phase: "processing",
-            headline: "正在执行",
-            detail: transcript
-        )
-        backgroundContinuation.update(phase: "processing", detail: transcript)
-
-        let output = await runMainAgentTextTurn(transcript: transcript, generation: gen)
-        metrics.llmFirstTokenAt = metrics.llmStartedAt
-        metrics.llmCompletedAt = CFAbsoluteTimeGetCurrent()
-        metrics.tokenCount = max(metrics.tokenCount, 1)
-        currentTurnMetrics = nil
-
-        guard turnPhase == .processing, turnGeneration == gen else {
-            metrics.interrupted = true
-            print(metrics.summary())
-            return
-        }
-
-        let displayText = output.displayText
-        lastReply = displayText
-        lastSkillInfo = output
-        liveProgressHeadline = nil
-        liveCaption = displayText
-        inputLevel = 0
-
-        if !transcript.isEmpty && !displayText.isEmpty {
-            appendLiveHistory(role: .user, content: transcript)
-            appendLiveHistory(role: .assistant, content: displayText)
-        }
-
-        await liveActivity.update(
-            phase: "result",
-            headline: output.displayName,
-            detail: displayText,
-            skillID: output.skillID,
-            skillName: output.displayName,
-            toolName: output.toolName,
-            success: output.success,
-            alertTitle: output.success ? "Skill 已完成" : "Skill 未完成",
-            alertBody: displayText
-        )
-        backgroundContinuation.update(phase: "result", detail: displayText)
-        print("[LiveAgent] info output skill=\(output.skillID) tool=\(output.toolName ?? "none") success=\(output.success)")
-        print(metrics.summary())
-
-        lastAssistantPlaybackEndTime = CFAbsoluteTimeGetCurrent()
-        turnPhase = .listening
-        state = .listening
-        statusMessage = liveStrings.listeningPrompt
-        scheduleLiveActivityListeningRefresh(afterResultGeneration: gen)
-        print("[Live] 👂 Listening...")
-    }
-
     private func observeLiveActivityDismissal() {
         cancelLiveActivityDismissalObservation()
         liveActivityDismissalTask = Task { [weak self] in
@@ -1035,7 +972,7 @@ class LiveModeEngine {
         liveActivityListeningRefreshTask = nil
     }
 
-    private func scheduleLiveActivityListeningRefresh(afterResultGeneration gen: UInt64) {
+    func scheduleLiveActivityListeningRefresh(afterResultGeneration gen: UInt64) {
         cancelLiveActivityListeningRefresh()
         liveActivityListeningRefreshTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(2500))
@@ -1050,447 +987,5 @@ class LiveModeEngine {
         }
     }
 
-    @MainActor
-    private func runMainAgentTextTurn(transcript: String, generation gen: UInt64) async -> LiveSkillInfoOutput {
-        guard let agentEngine else {
-            return LiveSkillInfoOutput(
-                skillID: "agent",
-                displayName: "PhoneClaw",
-                toolName: nil,
-                success: false,
-                summary: tr("主 Agent 不可用。", "The main agent is unavailable."),
-                detail: ""
-            )
-        }
 
-        let startIndex = agentEngine.messages.count
-        var lastProgressKey: String?
-        let receivedProgress = liveAgentReceivedProgressSnapshot()
-        await publishMainAgentProgress(receivedProgress, generation: gen)
-        lastProgressKey = receivedProgress.key
-
-        await agentEngine.processInput(transcript)
-
-        let deadline = Date().addingTimeInterval(mainAgentTurnTimeout)
-        while Date() < deadline,
-              agentEngine.isProcessing || agentEngine.isModelGenerating {
-            let safeStart = min(startIndex, agentEngine.messages.count)
-            let newMessages = Array(agentEngine.messages.dropFirst(safeStart))
-            let progress = liveAgentProgressSnapshot(from: newMessages, agentEngine: agentEngine)
-            if progress.key != lastProgressKey {
-                await publishMainAgentProgress(progress, generation: gen)
-                lastProgressKey = progress.key
-            }
-            try? await Task.sleep(nanoseconds: 250_000_000)
-        }
-
-        let timedOut = agentEngine.isProcessing || agentEngine.isModelGenerating
-        let safeStart = min(startIndex, agentEngine.messages.count)
-        let newMessages = Array(agentEngine.messages.dropFirst(safeStart))
-        if timedOut {
-            print("[LiveAgent] main Agent turn still processing after \(Int(mainAgentTurnTimeout))s")
-            return liveTimedOutInfoOutput(
-                newMessages,
-                agentEngine: agentEngine,
-                summary: tr(
-                    "还在处理中，可以回到主界面查看结果。",
-                    "Still processing. You can return to the main chat to see the result."
-                )
-            )
-        }
-
-        return liveInfoOutputFromMainAgentMessages(
-            newMessages,
-            agentEngine: agentEngine,
-            fallbackSummary: tr("已完成。", "Done."),
-            timedOut: false
-        )
-    }
-
-    private func liveAgentReceivedProgressSnapshot() -> LiveAgentProgressSnapshot {
-        LiveAgentProgressSnapshot(
-            key: "received",
-            phase: "understanding",
-            headline: "已收到指令",
-            detail: "已收到指令，请稍等。",
-            skillID: nil,
-            skillName: nil,
-            toolName: nil
-        )
-    }
-
-    @MainActor
-    private func liveAgentProgressSnapshot(
-        from messages: [ChatMessage],
-        agentEngine: AgentEngine
-    ) -> LiveAgentProgressSnapshot {
-        if let assistantMessage = messages.reversed().first(where: { message in
-            guard message.role == .assistant else { return false }
-            let cleaned = cleanMainAgentVisibleText(message.content)
-            return !cleaned.isEmpty && cleaned != "▍"
-        }) {
-            return LiveAgentProgressSnapshot(
-                key: "answering-\(assistantMessage.id.uuidString)",
-                phase: "summarizing",
-                headline: "正在生成结果",
-                detail: "已经整理好信息，正在生成回答。",
-                skillID: nil,
-                skillName: nil,
-                toolName: nil
-            )
-        }
-
-        if let toolMessage = messages.reversed().first(where: {
-            $0.role == .skillResult && $0.skillResultKind == .toolExecution
-        }), let toolName = toolMessage.skillName?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !toolName.isEmpty {
-            return liveAgentToolResultProgressSnapshot(toolName: toolName, agentEngine: agentEngine)
-        }
-
-        if let executingMessage = messages.reversed().first(where: {
-            $0.role == .system && $0.content.hasPrefix("executing:")
-        }) {
-            let toolName = String(executingMessage.content.dropFirst("executing:".count))
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            return liveAgentExecutingProgressSnapshot(
-                toolName: toolName,
-                displayName: executingMessage.skillName,
-                agentEngine: agentEngine
-            )
-        }
-
-        if let identifiedMessage = messages.reversed().first(where: {
-            $0.role == .system && ($0.content == "identified" || $0.content == "loaded")
-        }), let displayName = identifiedMessage.skillName?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !displayName.isEmpty {
-            return LiveAgentProgressSnapshot(
-                key: "identified-\(displayName)",
-                phase: "understanding",
-                headline: "已识别 Skill",
-                detail: "已识别为 \(displayName)，正在准备执行。",
-                skillID: agentEngine.findSkillId(for: displayName),
-                skillName: displayName,
-                toolName: nil
-            )
-        }
-
-        return liveAgentReceivedProgressSnapshot()
-    }
-
-    @MainActor
-    private func liveAgentExecutingProgressSnapshot(
-        toolName: String,
-        displayName: String?,
-        agentEngine: AgentEngine
-    ) -> LiveAgentProgressSnapshot {
-        let skillID = agentEngine.findSkillId(for: toolName)
-        let skillName = displayName?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-            ? displayName
-            : agentEngine.findDisplayName(for: toolName)
-
-        switch toolName {
-        case "web-search":
-            return LiveAgentProgressSnapshot(
-                key: "executing-web-search",
-                phase: "searching",
-                headline: "正在搜索",
-                detail: "正在搜索相关信息，请稍等。",
-                skillID: skillID,
-                skillName: skillName,
-                toolName: toolName
-            )
-        case "web-fetch":
-            return LiveAgentProgressSnapshot(
-                key: "executing-web-fetch",
-                phase: "searching",
-                headline: "正在读取来源",
-                detail: "正在打开相关网页并提取内容。",
-                skillID: skillID,
-                skillName: skillName,
-                toolName: toolName
-            )
-        default:
-            return LiveAgentProgressSnapshot(
-                key: "executing-\(toolName)",
-                phase: "executing",
-                headline: "正在执行",
-                detail: "正在执行 \(skillName ?? toolName)。",
-                skillID: skillID,
-                skillName: skillName,
-                toolName: toolName
-            )
-        }
-    }
-
-    @MainActor
-    private func liveAgentToolResultProgressSnapshot(
-        toolName: String,
-        agentEngine: AgentEngine
-    ) -> LiveAgentProgressSnapshot {
-        let skillID = agentEngine.findSkillId(for: toolName)
-        let skillName = agentEngine.findDisplayName(for: toolName)
-
-        switch toolName {
-        case "web-search":
-            return LiveAgentProgressSnapshot(
-                key: "result-web-search",
-                phase: "summarizing",
-                headline: "正在总结",
-                detail: "已检索到相关信息，正在整理答案。",
-                skillID: skillID,
-                skillName: skillName,
-                toolName: toolName
-            )
-        case "web-fetch":
-            return LiveAgentProgressSnapshot(
-                key: "result-web-fetch",
-                phase: "summarizing",
-                headline: "正在总结",
-                detail: "已读取相关来源，正在整理答案。",
-                skillID: skillID,
-                skillName: skillName,
-                toolName: toolName
-            )
-        default:
-            return LiveAgentProgressSnapshot(
-                key: "result-\(toolName)",
-                phase: "summarizing",
-                headline: "正在整理",
-                detail: "\(skillName) 已返回结果，正在整理。",
-                skillID: skillID,
-                skillName: skillName,
-                toolName: toolName
-            )
-        }
-    }
-
-    @MainActor
-    private func publishMainAgentProgress(
-        _ progress: LiveAgentProgressSnapshot,
-        generation gen: UInt64
-    ) async {
-        guard turnPhase == .processing, turnGeneration == gen else { return }
-        liveProgressHeadline = progress.headline
-        lastSkillInfo = nil
-        lastReply = progress.detail
-        await liveActivity.update(
-            phase: progress.phase,
-            headline: progress.headline,
-            detail: progress.detail,
-            skillID: progress.skillID,
-            skillName: progress.skillName,
-            toolName: progress.toolName
-        )
-        backgroundContinuation.update(phase: progress.phase, detail: progress.detail)
-        print("[LiveAgent] progress phase=\(progress.phase) headline=\(progress.headline) detail=\(progress.detail)")
-    }
-
-    @MainActor
-    private func liveTimedOutInfoOutput(
-        _ messages: [ChatMessage],
-        agentEngine: AgentEngine,
-        summary: String
-    ) -> LiveSkillInfoOutput {
-        let toolMessage = messages.reversed().first {
-            $0.role == .skillResult && $0.skillResultKind == .toolExecution
-        }
-
-        if let toolMessage,
-           let toolName = toolMessage.skillName?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !toolName.isEmpty {
-            return LiveSkillInfoOutput(
-                skillID: agentEngine.findSkillId(for: toolName) ?? toolName,
-                displayName: agentEngine.findDisplayName(for: toolName),
-                toolName: toolName,
-                success: false,
-                summary: summary,
-                detail: ""
-            )
-        }
-
-        return LiveSkillInfoOutput(
-            skillID: "agent",
-            displayName: "PhoneClaw",
-            toolName: nil,
-            success: false,
-            summary: summary,
-            detail: ""
-        )
-    }
-
-    @MainActor
-    private func liveInfoOutputFromMainAgentMessages(
-        _ messages: [ChatMessage],
-        agentEngine: AgentEngine,
-        fallbackSummary: String,
-        timedOut: Bool
-    ) -> LiveSkillInfoOutput {
-        let assistantText = messages.reversed().compactMap { message -> String? in
-            guard message.role == .assistant else { return nil }
-            let cleaned = cleanMainAgentVisibleText(message.content)
-            return cleaned.isEmpty ? nil : cleaned
-        }.first
-
-        let toolMessage = messages.reversed().first {
-            $0.role == .skillResult && $0.skillResultKind == .toolExecution
-        }
-
-        if let toolMessage,
-           let toolName = toolMessage.skillName?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !toolName.isEmpty {
-            let canonical = canonicalToolResult(toolName: toolName, toolResult: toolMessage.content)
-            let skillID = agentEngine.findSkillId(for: toolName) ?? toolName
-            let displayName = agentEngine.findDisplayName(for: toolName)
-            let summary = assistantText ?? canonical.summary
-            return LiveSkillInfoOutput(
-                skillID: skillID,
-                displayName: displayName,
-                toolName: toolName,
-                success: timedOut ? false : canonical.success,
-                summary: summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? fallbackSummary : summary,
-                detail: canonical.detail
-            )
-        }
-
-        return LiveSkillInfoOutput(
-            skillID: "agent",
-            displayName: "PhoneClaw",
-            toolName: nil,
-            success: !timedOut,
-            summary: assistantText ?? fallbackSummary,
-            detail: ""
-        )
-    }
-
-    private func cleanMainAgentVisibleText(_ text: String) -> String {
-        text
-            .replacingOccurrences(of: "▍", with: "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    // MARK: - Playback Enqueue
-
-    private func enqueueForPlayback(_ text: String, generation gen: UInt64) async {
-        let cleaned = stripForTTS(text)
-        guard !cleaned.isEmpty else { return }
-
-        // Generation guard: don't enqueue if this turn has been superseded
-        guard turnGeneration == gen else { return }
-
-        if tts.usesSharedAudioEngine {
-            let wavData: Data? = await withTaskGroup(of: Data?.self) { group in
-                group.addTask { [tts] in tts.synthesize(cleaned) }
-                group.addTask {
-                    try? await Task.sleep(nanoseconds: 10_000_000_000)
-                    return nil as Data?
-                }
-                let first = await group.next() ?? nil
-                group.cancelAll()
-                return first
-            }
-            guard let wavData else {
-                print("[Live] ⏱ TTS timeout or empty for: \"\(cleaned.prefix(20))\"")
-                return
-            }
-
-            // Post-synthesis generation guard: stale turn's audio must not enter new turn's queue
-            guard turnGeneration == gen else { return }
-
-            // TTS first chunk metric: stamped AFTER synthesis, not before
-            if currentTurnMetrics != nil && currentTurnMetrics!.ttsFirstChunkAt == 0 {
-                currentTurnMetrics!.ttsFirstChunkAt = CFAbsoluteTimeGetCurrent()
-            }
-
-            await ttsQueue?.enqueueWAV(wavData)
-        } else if tts.allowsSystemFallback {
-            guard turnGeneration == gen else { return }
-            if currentTurnMetrics != nil && currentTurnMetrics!.ttsFirstChunkAt == 0 {
-                currentTurnMetrics!.ttsFirstChunkAt = CFAbsoluteTimeGetCurrent()
-            }
-            await ttsQueue?.enqueueSystemSpeak(cleaned)
-        } else {
-            print("[Live] ❌ TTS skipped: no non-system TTS backend available")
-        }
-    }
-
-    private func stripForTTS(_ text: String) -> String {
-        var s = text
-        s = s.replacingOccurrences(of: "**", with: "")
-        s = s.replacingOccurrences(of: "*", with: "")
-        s = s.replacingOccurrences(of: "#", with: "")
-        s = s.replacingOccurrences(of: "```", with: "")
-        s = s.replacingOccurrences(of: "`", with: "")
-        s = s.replacingOccurrences(of: "（", with: "")
-        s = s.replacingOccurrences(of: "）", with: "")
-        s = s.replacingOccurrences(of: "(", with: "")
-        s = s.replacingOccurrences(of: ")", with: "")
-        s = s.replacingOccurrences(of: "：", with: "，")
-        s = s.replacingOccurrences(of: ":", with: "，")
-        s = s.replacingOccurrences(of: "- ", with: "")
-        var filteredScalars = String.UnicodeScalarView()
-        for scalar in s.unicodeScalars {
-            let value = scalar.value
-            if value == 0x200D || (0xFE00...0xFE0F).contains(value) { continue }
-            if scalar.properties.isEmojiPresentation { continue }
-            if (0x1F000...0x1FAFF).contains(value) { continue }
-            filteredScalars.append(scalar)
-        }
-        s = String(filteredScalars)
-        return s.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    // MARK: - Speakable Segment Extraction
-
-    private func extractSpeakableSegments(from buffer: String) -> (segments: [String], remainder: String) {
-        var segments: [String] = []
-        var lastSplit = buffer.startIndex
-
-        let hardChinesePunctuation: Set<Character> = ["。", "！", "？", "；"]
-        let softChinesePunctuation: Set<Character> = ["，", "、", "："]
-        let hardEnglishPunctuation: Set<Character> = [".", "!", "?", ";"]
-        let softEnglishPunctuation: Set<Character> = [",", ":"]
-        // minSoftClauseLength: 5 (was 8). 更激进地切逗号 → 首段 chunk 更小 →
-        // TTS 合成更快出第一段音频 → TTFS 从 ~2.6s 降到 ~0.8s.
-        // 5 个汉字对应约 2-3 个词, 仍然是自然的语调停顿点.
-        let minSoftClauseLength = 5
-
-        var i = buffer.startIndex
-        while i < buffer.endIndex {
-            let ch = buffer[i]
-            let nextIdx = buffer.index(after: i)
-
-            var isSplit = false
-
-            if hardChinesePunctuation.contains(ch) || ch == "\n" {
-                isSplit = true
-            } else if softChinesePunctuation.contains(ch) || softEnglishPunctuation.contains(ch) {
-                let clause = String(buffer[lastSplit..<nextIdx]).trimmingCharacters(in: .whitespacesAndNewlines)
-                isSplit = clause.count >= minSoftClauseLength
-            } else if hardEnglishPunctuation.contains(ch) && nextIdx < buffer.endIndex {
-                let next = buffer[nextIdx]
-                if next == " " || next == "\n" {
-                    let clause = String(buffer[lastSplit..<nextIdx]).trimmingCharacters(in: .whitespacesAndNewlines)
-                    isSplit = clause.count >= minSoftClauseLength
-                }
-            } else if hardEnglishPunctuation.contains(ch) && nextIdx == buffer.endIndex {
-                isSplit = true
-            }
-
-            if isSplit {
-                let segmentEnd = nextIdx
-                let segment = String(buffer[lastSplit..<segmentEnd])
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-
-                if !segment.isEmpty {
-                    segments.append(segment)
-                    lastSplit = segmentEnd
-                }
-            }
-
-            i = nextIdx
-        }
-
-        let remainder = String(buffer[lastSplit...])
-        return (segments, remainder)
-    }
 }

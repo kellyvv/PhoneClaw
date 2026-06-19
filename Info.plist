@@ -81,6 +81,7 @@
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>com.kellyvv.phoneclaw.live-continuation</string>
+		<string>com.kellyvv.phoneclaw.liveland-continuation</string>
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>PhoneClaw 在局域网内发现并连接你的 Mac,把推理交给 Mac 上更强的大模型运行。</string>

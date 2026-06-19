@@ -26,6 +26,7 @@ struct PhoneClawApp: App {
         // created in this process. See docs/RUNTIME_ARCHITECTURE_PLAN.md §VI.
         LiteRTBootstrap.bootstrap()
         LiveBackgroundContinuation.shared.register()
+        LiveLandBackgroundContinuation.shared.register()
 
         #if DEBUG
         AudioBypassTest.runIfRequested()

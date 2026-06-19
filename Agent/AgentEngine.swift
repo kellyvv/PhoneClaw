@@ -184,32 +184,19 @@ class AgentEngine {
             return liveLandSystemMessages(modelIssue)
         }
 
-        let savedMessages = messages
-        let wasSessionPersistenceEnabled = isSessionPersistenceEnabled
+        let startIndex = messages.count
 
         isLiveLandTurnActive = true
-        isSessionPersistenceEnabled = false
-        sessionStore.cancelPendingSave()
-        messages = []
-        resetPromptPipelineState()
-        clearRecentImageFollowUpContexts()
-
         defer {
             flushPendingStreamingMessageContentUpdates()
             isLiveLandTurnActive = false
-            messages = savedMessages
-            isSessionPersistenceEnabled = wasSessionPersistenceEnabled
-            if !wasSessionPersistenceEnabled {
-                sessionStore.cancelPendingSave()
-            }
-            resetPromptPipelineState()
-            clearRecentImageFollowUpContexts()
         }
 
         await processInput(text)
         await waitForLiveLandCommandCompletion()
         flushPendingStreamingMessageContentUpdates()
-        return messages
+        let safeStart = min(startIndex, messages.count)
+        return Array(messages.dropFirst(safeStart))
     }
 
     private func liveLandSystemMessages(_ content: String) -> [ChatMessage] {

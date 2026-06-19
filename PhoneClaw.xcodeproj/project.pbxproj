@@ -15,6 +15,19 @@
 		0B263C823B20AE04F227B187 /* (null) in Sources */ = {isa = PBXBuildFile; };
 		0C5EBE615C219F104D6D9C8D /* (null) in Sources */ = {isa = PBXBuildFile; };
 		0D58F93BFFFFE778CD8A34D1 /* LiveModeEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83C5B0E5FD420CCB6BD8D1A4 /* LiveModeEngine.swift */; };
+		LLBUILD000000000000000001 /* LiveModeEngine+AgentBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = LLREF000000000000000001 /* LiveModeEngine+AgentBridge.swift */; };
+		LLBUILD000000000000000002 /* LiveModeEngine+Playback.swift in Sources */ = {isa = PBXBuildFile; fileRef = LLREF000000000000000002 /* LiveModeEngine+Playback.swift */; };
+		LLBUILD000000000000000003 /* LiveLandAgentResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = LLREF000000000000000003 /* LiveLandAgentResult.swift */; };
+		LLBUILD000000000000000004 /* LiveLandSkillPromptHaptics.swift in Sources */ = {isa = PBXBuildFile; fileRef = LLREF000000000000000004 /* LiveLandSkillPromptHaptics.swift */; };
+		LLBUILD000000000000000005 /* LiveLandVoiceRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = LLREF000000000000000005 /* LiveLandVoiceRuntime.swift */; };
+		LLBUILD000000000000000006 /* LiveLandAudioIO.swift in Sources */ = {isa = PBXBuildFile; fileRef = LLREF000000000000000006 /* LiveLandAudioIO.swift */; };
+		LLBUILD000000000000000007 /* LiveLandVADService.swift in Sources */ = {isa = PBXBuildFile; fileRef = LLREF000000000000000007 /* LiveLandVADService.swift */; };
+		LLBUILD000000000000000008 /* LiveLandTurnController.swift in Sources */ = {isa = PBXBuildFile; fileRef = LLREF000000000000000008 /* LiveLandTurnController.swift */; };
+		LLBUILD000000000000000009 /* LiveLandBackgroundContinuation.swift in Sources */ = {isa = PBXBuildFile; fileRef = LLREF000000000000000009 /* LiveLandBackgroundContinuation.swift */; };
+		LLBUILD000000000000000010 /* LiveLandActivityBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = LLREF000000000000000010 /* LiveLandActivityBridge.swift */; };
+		LLBUILD000000000000000011 /* LiveLandActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = LLREF000000000000000011 /* LiveLandActivityAttributes.swift */; };
+		LLBUILD000000000000000012 /* LiveLandActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = LLREF000000000000000011 /* LiveLandActivityAttributes.swift */; };
+		LLBUILD000000000000000013 /* LiveLandLauncherWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = LLREF000000000000000012 /* LiveLandLauncherWidgets.swift */; };
 		0F13CB63EFD6EB20B60C013B /* ASRService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C500DE8A47482D5DA7DA6D3 /* ASRService.swift */; };
 		10405212EEF000AA04B72748 /* (null) in Sources */ = {isa = PBXBuildFile; };
 		1D6B9BBA44F194BB9B33BD65 /* (null) in Sources */ = {isa = PBXBuildFile; };
@@ -269,14 +282,26 @@
 		408F2AE98EA54717A74FA4B1 /* PhoneClaw.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PhoneClaw.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4628E2A5FD49247E1D6BE283 /* ResponseUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ResponseUI.swift; path = UI/ResponseUI.swift; sourceTree = SOURCE_ROOT; };
 		4DD9808FE93325C3CE4CFA00 /* PhoneClawApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneClawApp.swift; sourceTree = "<group>"; };
-		4DD9808FE93325C3CE4CFAA1 /* LiveLaunchRouting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveLaunchRouting.swift; sourceTree = "<group>"; };
-		4DD9808FE93325C3CE4CFAA2 /* LiveLandShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveLandShortcuts.swift; sourceTree = "<group>"; };
+		4DD9808FE93325C3CE4CFAA1 /* LiveLaunchRouting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveLaunchRouting.swift; path = LiveLand/App/LiveLaunchRouting.swift; sourceTree = SOURCE_ROOT; };
+		4DD9808FE93325C3CE4CFAA2 /* LiveLandShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveLandShortcuts.swift; path = LiveLand/App/LiveLandShortcuts.swift; sourceTree = SOURCE_ROOT; };
 		4DD9808FE93325C3CE4CFAA3 /* LiveSkillRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveSkillRuntime.swift; path = Live/Turn/LiveSkillRuntime.swift; sourceTree = SOURCE_ROOT; };
 		4F4ACB3F4531FF61E0AADA07 /* libPods-PhoneClaw.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-PhoneClaw.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		52F30C6348B834E5D157205F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		571908036E6DCED1D58C1E9E /* Skills.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Skills.swift; sourceTree = "<group>"; };
 		7C500DE8A47482D5DA7DA6D3 /* ASRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ASRService.swift; path = Shared/Audio/ASRService.swift; sourceTree = SOURCE_ROOT; };
 		83C5B0E5FD420CCB6BD8D1A4 /* LiveModeEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveModeEngine.swift; path = Live/Core/LiveModeEngine.swift; sourceTree = SOURCE_ROOT; };
+		LLREF000000000000000001 /* LiveModeEngine+AgentBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "LiveModeEngine+AgentBridge.swift"; path = "Live/Core/LiveModeEngine+AgentBridge.swift"; sourceTree = SOURCE_ROOT; };
+		LLREF000000000000000002 /* LiveModeEngine+Playback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "LiveModeEngine+Playback.swift"; path = "Live/Core/LiveModeEngine+Playback.swift"; sourceTree = SOURCE_ROOT; };
+		LLREF000000000000000003 /* LiveLandAgentResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveLandAgentResult.swift; path = LiveLand/Runtime/LiveLandAgentResult.swift; sourceTree = SOURCE_ROOT; };
+		LLREF000000000000000004 /* LiveLandSkillPromptHaptics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveLandSkillPromptHaptics.swift; path = LiveLand/Runtime/LiveLandSkillPromptHaptics.swift; sourceTree = SOURCE_ROOT; };
+		LLREF000000000000000005 /* LiveLandVoiceRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveLandVoiceRuntime.swift; path = LiveLand/Runtime/LiveLandVoiceRuntime.swift; sourceTree = SOURCE_ROOT; };
+		LLREF000000000000000006 /* LiveLandAudioIO.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveLandAudioIO.swift; path = LiveLand/Audio/LiveLandAudioIO.swift; sourceTree = SOURCE_ROOT; };
+		LLREF000000000000000007 /* LiveLandVADService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveLandVADService.swift; path = LiveLand/VAD/LiveLandVADService.swift; sourceTree = SOURCE_ROOT; };
+		LLREF000000000000000008 /* LiveLandTurnController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveLandTurnController.swift; path = LiveLand/Core/LiveLandTurnController.swift; sourceTree = SOURCE_ROOT; };
+		LLREF000000000000000009 /* LiveLandBackgroundContinuation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveLandBackgroundContinuation.swift; path = LiveLand/Core/LiveLandBackgroundContinuation.swift; sourceTree = SOURCE_ROOT; };
+		LLREF000000000000000010 /* LiveLandActivityBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveLandActivityBridge.swift; path = LiveLand/Activity/LiveLandActivityBridge.swift; sourceTree = SOURCE_ROOT; };
+		LLREF000000000000000011 /* LiveLandActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveLandActivityAttributes.swift; path = LiveLand/Activity/LiveLandActivityAttributes.swift; sourceTree = SOURCE_ROOT; };
+		LLREF000000000000000012 /* LiveLandLauncherWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveLandLauncherWidgets.swift; path = LiveLand/Widget/LiveLandLauncherWidgets.swift; sourceTree = SOURCE_ROOT; };
 		83C97FEEC133F40BDEFBD9AE /* LiveSkillCall.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveSkillCall.swift; path = Live/Turn/Types/LiveSkillCall.swift; sourceTree = SOURCE_ROOT; };
 		840B21562E52B6B93D4410D0 /* LiveModeUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveModeUI.swift; path = Live/UI/LiveModeUI.swift; sourceTree = SOURCE_ROOT; };
 		8A5F58AC37EA816ED739551D /* ASRBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ASRBackend.swift; path = Shared/Audio/ASRBackend.swift; sourceTree = SOURCE_ROOT; };
@@ -481,10 +506,27 @@
 			isa = PBXGroup;
 			children = (
 				4DD9808FE93325C3CE4CFA00 /* PhoneClawApp.swift */,
-				4DD9808FE93325C3CE4CFAA1 /* LiveLaunchRouting.swift */,
-				4DD9808FE93325C3CE4CFAA2 /* LiveLandShortcuts.swift */,
 			);
 			path = App;
+			sourceTree = "<group>";
+		};
+		LIVELANDGROUP0000000001 /* LiveLand */ = {
+			isa = PBXGroup;
+			children = (
+				4DD9808FE93325C3CE4CFAA1 /* LiveLaunchRouting.swift */,
+				4DD9808FE93325C3CE4CFAA2 /* LiveLandShortcuts.swift */,
+				LLREF000000000000000003 /* LiveLandAgentResult.swift */,
+				LLREF000000000000000004 /* LiveLandSkillPromptHaptics.swift */,
+				LLREF000000000000000005 /* LiveLandVoiceRuntime.swift */,
+				LLREF000000000000000006 /* LiveLandAudioIO.swift */,
+				LLREF000000000000000007 /* LiveLandVADService.swift */,
+				LLREF000000000000000008 /* LiveLandTurnController.swift */,
+				LLREF000000000000000009 /* LiveLandBackgroundContinuation.swift */,
+				LLREF000000000000000011 /* LiveLandActivityAttributes.swift */,
+				LLREF000000000000000010 /* LiveLandActivityBridge.swift */,
+				LLREF000000000000000012 /* LiveLandLauncherWidgets.swift */,
+			);
+			path = LiveLand;
 			sourceTree = "<group>";
 		};
 		98EFD7CCA7E78715F07BABE3 /* Skills */ = {
@@ -721,6 +763,8 @@
 				9D80CB631331A0CA07699BDE /* OutputSanitizer.swift */,
 				F8D921B323B9D6342A22A29E /* LiveAudioIO.swift */,
 				83C5B0E5FD420CCB6BD8D1A4 /* LiveModeEngine.swift */,
+				LLREF000000000000000001 /* LiveModeEngine+AgentBridge.swift */,
+				LLREF000000000000000002 /* LiveModeEngine+Playback.swift */,
 				A7C200000000000000000006 /* LiveWarmPool.swift */,
 				A7C200000000000000000007 /* LiveBackgroundContinuation.swift */,
 				840B21562E52B6B93D4410D0 /* LiveModeUI.swift */,
@@ -730,6 +774,7 @@
 				ICONASSETS0000000000001 /* Assets.xcassets */,
 				E0660A5AE3C683B7B20600EE /* Agent */,
 				6FA4C5AFA3123551D8F8F2F2 /* App */,
+				LIVELANDGROUP0000000001 /* LiveLand */,
 				AE5FF3067EFF33D507435528 /* LLM */,
 				98EFD7CCA7E78715F07BABE3 /* Skills */,
 				D3A1B2C3D4E5F60718290200 /* Tools */,
@@ -814,7 +859,7 @@
 				A7C200000000000000000004 /* Info.plist */,
 				BB7100000000000000000001 /* Assets.xcassets */,
 			);
-			path = PhoneClawLiveActivityWidget;
+			path = LiveLand/Widget;
 			sourceTree = "<group>";
 		};
 		MINICPMV0000000000201 /* MiniCPMV */ = {
@@ -1061,6 +1106,7 @@
 				A7C100000000000000000008 /* LiveTurnTokenSource.swift in Sources */,
 				A7C100000000000000000009 /* IOS27LiveFoundationTokenSource.swift in Sources */,
 				A7C100000000000000000001 /* PhoneClawLiveActivityAttributes.swift in Sources */,
+				LLBUILD000000000000000011 /* LiveLandActivityAttributes.swift in Sources */,
 				A7C100000000000000000002 /* LiveActivityBridge.swift in Sources */,
 				F3B736266E38252D03E6C354 /* LiveVoiceConstants.swift in Sources */,
 				FEFA2136332FF2B38F71C999 /* PromptBuilder+LiveVoice.swift in Sources */,
@@ -1139,6 +1185,8 @@
 				F84BD7F445E2D383551198FB /* OutputSanitizer.swift in Sources */,
 				32D9B612A8A28256BD2CCA55 /* LiveAudioIO.swift in Sources */,
 				0D58F93BFFFFE778CD8A34D1 /* LiveModeEngine.swift in Sources */,
+				LLBUILD000000000000000001 /* LiveModeEngine+AgentBridge.swift in Sources */,
+				LLBUILD000000000000000002 /* LiveModeEngine+Playback.swift in Sources */,
 				A7C100000000000000000006 /* LiveWarmPool.swift in Sources */,
 				A7C100000000000000000007 /* LiveBackgroundContinuation.swift in Sources */,
 				CE2D5BD7F3C310C8CE319A6D /* LiveModeUI.swift in Sources */,
@@ -1169,6 +1217,14 @@
 				45B7FEC6C4D055F44A87BFA9 /* PhoneClawApp.swift in Sources */,
 				45B7FEC6C4D055F44A87BFAA /* LiveLaunchRouting.swift in Sources */,
 				45B7FEC6C4D055F44A87BFAB /* LiveLandShortcuts.swift in Sources */,
+				LLBUILD000000000000000003 /* LiveLandAgentResult.swift in Sources */,
+				LLBUILD000000000000000004 /* LiveLandSkillPromptHaptics.swift in Sources */,
+				LLBUILD000000000000000005 /* LiveLandVoiceRuntime.swift in Sources */,
+				LLBUILD000000000000000006 /* LiveLandAudioIO.swift in Sources */,
+				LLBUILD000000000000000007 /* LiveLandVADService.swift in Sources */,
+				LLBUILD000000000000000008 /* LiveLandTurnController.swift in Sources */,
+				LLBUILD000000000000000009 /* LiveLandBackgroundContinuation.swift in Sources */,
+				LLBUILD000000000000000010 /* LiveLandActivityBridge.swift in Sources */,
 				5084E1CD2E831BC05F5E4374 /* PromptBuilder.swift in Sources */,
 				C1A2B3D4E5F607182930A1B2 /* SkillLoader.swift in Sources */,
 				C1A2B3D4E5F607182930A1C2 /* SkillRegistry.swift in Sources */,
@@ -1231,6 +1287,8 @@
 			files = (
 				A7C100000000000000000003 /* PhoneClawLiveActivityWidget.swift in Sources */,
 				A7C100000000000000000004 /* PhoneClawLiveActivityAttributes.swift in Sources */,
+				LLBUILD000000000000000012 /* LiveLandActivityAttributes.swift in Sources */,
+				LLBUILD000000000000000013 /* LiveLandLauncherWidgets.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1467,7 +1525,7 @@
 				CURRENT_PROJECT_VERSION = 36;
 				DEVELOPMENT_TEAM = 2K4BDCCL73;
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = PhoneClawLiveActivityWidget/Info.plist;
+				INFOPLIST_FILE = LiveLand/Widget/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -1495,7 +1553,7 @@
 				CURRENT_PROJECT_VERSION = 36;
 				DEVELOPMENT_TEAM = 2K4BDCCL73;
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = PhoneClawLiveActivityWidget/Info.plist;
+				INFOPLIST_FILE = LiveLand/Widget/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

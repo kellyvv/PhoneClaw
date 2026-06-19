@@ -129,20 +129,10 @@ struct ContentView: View {
     }
 
     private var visibleConversationIsEmpty: Bool {
-        engine.isLiveLandTurnActive ? cachedDisplayItems.isEmpty : engine.messages.isEmpty
+        engine.messages.isEmpty
     }
 
     private var scrollSignal: ScrollSignal {
-        if engine.isLiveLandTurnActive {
-            return ScrollSignal(
-                lastMessageID: cachedDisplayMessageIDs.last,
-                lastMessageRole: nil,
-                messageCount: cachedDisplayMessageIDs.count,
-                lastMessageContentCount: 0,
-                isProcessing: false
-            )
-        }
-
         let lastMessage = engine.messages.last
         return ScrollSignal(
             lastMessageID: lastMessage?.id,
@@ -327,7 +317,6 @@ struct ContentView: View {
             handleExternalLaunchURL(url)
         }
         .onChange(of: engine.messages.isEmpty) { wasEmpty, isEmpty in
-            guard !engine.isLiveLandTurnActive else { return }
             // 新会话: 卸载 hold-to-talk ASR 以释放内存 (zh ~160MB / en ~180MB). 下次按住说话会 lazy 重新加载.
             // 注意 onChange 只在**变化**时 fire, 初次 render 不会触发. wasEmpty 参数
             // 保证我们只响应 "有消息 -> 清空" 这个方向, 忽略新开一条消息的方向.
@@ -339,11 +328,9 @@ struct ContentView: View {
             }
         }
         .onChange(of: engine.messagesRevision) { _, _ in
-            guard !engine.isLiveLandTurnActive else { return }
             refreshDisplayItems()
         }
         .onChange(of: engine.isProcessing) { _, _ in
-            guard !engine.isLiveLandTurnActive else { return }
             refreshDisplayItems()
         }
         .onChange(of: isInputFocused) { _, focused in
