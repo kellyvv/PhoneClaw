@@ -1037,7 +1037,9 @@ struct ContentView: View {
     }
 
     private func loadInstalledSelectedModelIfNeeded(_ modelID: String) {
+        // Avoid loading a large LLM behind the settings cover; wait for onDismiss.
         guard modelID == engine.config.selectedModelID,
+              !showConfigurations,
               !engine.isModelLoaded else {
             return
         }
@@ -1857,6 +1859,15 @@ struct ContentView: View {
     /// 录音只作 ASR 输入, 不当附件发给模型. 内部还是会显式 consume / 清理
     /// audioCapture 里的 snapshot, 防止下一轮误带。
     private func send(includeAudio: Bool = true) async {
+        guard engine.isModelReady else {
+            showTransientTopNotice(
+                tr("模型加载中，请稍候", "Model is loading, please wait", "モデルを読み込み中です"),
+                symbolName: "hourglass",
+                isWarning: true
+            )
+            return
+        }
+
         let text = inputText
         let images = selectedImages
         let lastDisplayItemID = displayItems.last?.id

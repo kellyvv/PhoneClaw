@@ -46,7 +46,10 @@ extension AgentEngine {
         lastTurnRawModelOutputs.removeAll()
         lastTurnPromptDiagnostics.removeAll()
         lastTurnStreamingPrompt = nil
-        beginGenerationTracking()
+        guard beginGenerationTracking() else {
+            isProcessing = false
+            return
+        }
 
         let currentUserMessage = ChatMessage(
             role: .user,
@@ -728,9 +731,9 @@ extension AgentEngine {
     /// Begin generation transaction tracking at the start of a user turn.
     /// Creates a coordinator transaction if the runtime is ready.
     /// Gracefully no-ops if coordinator is not in ready state (migration path).
-    func beginGenerationTracking() {
-        guard coordinator.sessionState.canGenerate else { return }
-        _ = coordinator.beginGeneration()
+    @discardableResult
+    func beginGenerationTracking() -> Bool {
+        coordinator.beginGenerationIfPossible() != nil
         // Don't call txn.begin() yet — that happens when inference actually starts streaming.
     }
 

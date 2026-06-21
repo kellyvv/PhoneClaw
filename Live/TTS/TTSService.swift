@@ -164,7 +164,11 @@ class TTSService {
             ruleFsts: ruleFsts
         )
 
-        tts = SherpaOnnxOfflineTtsWrapper(config: &config)
+        guard let wrapper = SherpaOnnxOfflineTtsWrapper(config: &config) else {
+            print("[TTS] ❌ sherpa-onnx create failed (keqing zh)")
+            return false
+        }
+        tts = wrapper
         defaultSid = 200  // keqing speaker 200
         print("[TTS] ✅ sherpa-onnx ready (keqing zh, sid=200)")
         backend = "sherpa-onnx"
@@ -219,7 +223,11 @@ class TTSService {
             ruleFsts: ""
         )
 
-        tts = SherpaOnnxOfflineTtsWrapper(config: &config)
+        guard let wrapper = SherpaOnnxOfflineTtsWrapper(config: &config) else {
+            print("[TTS] ❌ sherpa-onnx create failed (Piper libritts_r-medium en)")
+            return false
+        }
+        tts = wrapper
         // libritts_r-medium 是 904 speaker 多说话人模型, sid=0 是 Mac 本地试听确认的默认音色。
         // 改换音色: 修改这一行的数字 (0..903), 不需要重新下载模型。
         defaultSid = 0
@@ -370,7 +378,11 @@ class TTSService {
             )
         )
 
-        tts = SherpaOnnxOfflineTtsWrapper(config: &config)
+        guard let wrapper = SherpaOnnxOfflineTtsWrapper(config: &config) else {
+            print("[TTS] ❌ sherpa-onnx create failed (Supertonic-3 ja)")
+            return false
+        }
+        tts = wrapper
         // Supertonic-3 单一内置音色 (voice.bin), sid 固定 0。
         defaultSid = 0
         print("[TTS] ✅ sherpa-onnx ready (Supertonic-3 ja, unicode-based)")
@@ -393,7 +405,10 @@ class TTSService {
 
         guard let tts else { return nil }
         let t0 = CFAbsoluteTimeGetCurrent()
-        let audio = tts.generate(text: speakText, sid: defaultSid, speed: 1.0)
+        guard let audio = tts.generate(text: speakText, sid: defaultSid, speed: 1.0) else {
+            print("[TTS] ❌ Generate returned nil audio")
+            return nil
+        }
         let synthMs = (CFAbsoluteTimeGetCurrent() - t0) * 1000
 
         let count = audio.n

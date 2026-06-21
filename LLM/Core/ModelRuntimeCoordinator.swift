@@ -196,6 +196,28 @@ public final class ModelRuntimeCoordinator {
         return txn
     }
 
+    /// Non-crashing generation entry for user-facing paths.
+    ///
+    /// A stale UI tap or a model autoload race can reach the generation path
+    /// while the coordinator is no longer `.ready`. In TestFlight/release that
+    /// must be a rejected turn, not a process abort.
+    public func beginGenerationIfPossible() -> GenerationTransaction? {
+        guard case .ready(let modelID, _) = sessionState else {
+            log.warning("beginGeneration rejected: sessionState=\(String(describing: self.sessionState), privacy: .public)")
+            return nil
+        }
+        if let currentTransaction, !currentTransaction.isTerminal {
+            log.warning("beginGeneration rejected: transaction \(currentTransaction.id.uuidString.prefix(8), privacy: .public) still active")
+            return nil
+        }
+
+        let txn = GenerationTransaction(modelID: modelID)
+        currentTransaction = txn
+        transition(to: .generating(modelID: modelID, txnID: txn.id))
+        log.info("beginGeneration txn=\(txn.id.uuidString.prefix(8), privacy: .public)")
+        return txn
+    }
+
     /// 当前 transaction 完成后，回到 ready。
     ///
     /// 调用方在 stream 结束后调用此方法。内部会检查 transaction 是否已 terminal。
