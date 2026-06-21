@@ -2368,7 +2368,7 @@ extension AgentEngine {
             cardIndex = messages.count - 1
         }
 
-        guard ownerSkillId != nil else {
+        guard let ownerSkillId else {
             messages[cardIndex].update(role: .system, content: "done", skillName: displayName)
             messages.append(ChatMessage(role: .assistant, content: tr(
                 "⚠️ 未知工具: \(call.name)",
@@ -2380,7 +2380,7 @@ extension AgentEngine {
         }
 
         let enabledIds = Set(skillEntries.filter(\.isEnabled).map(\.id))
-        guard enabledIds.contains(ownerSkillId!) else {
+        guard enabledIds.contains(ownerSkillId) else {
             messages[cardIndex].update(role: .system, content: "done", skillName: displayName)
             messages.append(ChatMessage(role: .assistant, content: tr(
                 "⚠️ Skill \(displayName) 未启用",

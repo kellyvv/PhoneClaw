@@ -156,9 +156,9 @@ final class SherpaOnnxGeneratedAudioWrapper {
 }
 
 final class SherpaOnnxOfflineTtsWrapper {
-  init(config: UnsafePointer<SherpaOnnxOfflineTtsConfig>!) {}
+  init?(config: UnsafePointer<SherpaOnnxOfflineTtsConfig>!) {}
 
-  func generate(text: String, sid: Int = 0, speed: Float = 1.0) -> SherpaOnnxGeneratedAudioWrapper {
+  func generate(text: String, sid: Int = 0, speed: Float = 1.0) -> SherpaOnnxGeneratedAudioWrapper? {
     SherpaOnnxGeneratedAudioWrapper()
   }
 }
@@ -1069,9 +1069,9 @@ func sherpaOnnxVadModelConfig(
 class SherpaOnnxCircularBufferWrapper {
   private let buffer: OpaquePointer
 
-  init(capacity: Int) {
+  init?(capacity: Int) {
     guard let ptr = SherpaOnnxCreateCircularBuffer(Int32(capacity)) else {
-      fatalError("Failed to create SherpaOnnxCircularBuffer")
+      return nil
     }
     self.buffer = ptr
   }
@@ -1139,9 +1139,9 @@ class SherpaOnnxVoiceActivityDetectorWrapper {
   /// A pointer to the underlying counterpart in C
   private let vad: OpaquePointer
 
-  init(config: UnsafePointer<SherpaOnnxVadModelConfig>, buffer_size_in_seconds: Float) {
+  init?(config: UnsafePointer<SherpaOnnxVadModelConfig>, buffer_size_in_seconds: Float) {
     guard let vad = SherpaOnnxCreateVoiceActivityDetector(config, buffer_size_in_seconds) else {
-      fatalError("SherpaOnnxCreateVoiceActivityDetector returned nil")
+      return nil
     }
     self.vad = vad
   }
@@ -1170,9 +1170,9 @@ class SherpaOnnxVoiceActivityDetectorWrapper {
     SherpaOnnxVoiceActivityDetectorClear(vad)
   }
 
-  func front() -> SherpaOnnxSpeechSegmentWrapper {
+  func front() -> SherpaOnnxSpeechSegmentWrapper? {
     guard let p = SherpaOnnxVoiceActivityDetectorFront(vad) else {
-      fatalError("SherpaOnnxVoiceActivityDetectorFront returned nil")
+      return nil
     }
     return SherpaOnnxSpeechSegmentWrapper(p: p)
   }
@@ -1417,16 +1417,17 @@ class SherpaOnnxWaveWrapper {
 
 class SherpaOnnxGeneratedAudioWrapper {
   /// A pointer to the underlying counterpart in C
-  let audio: UnsafePointer<SherpaOnnxGeneratedAudio>!
+  let audio: UnsafePointer<SherpaOnnxGeneratedAudio>
 
-  init(audio: UnsafePointer<SherpaOnnxGeneratedAudio>!) {
+  init?(audio: UnsafePointer<SherpaOnnxGeneratedAudio>?) {
+    guard let audio else {
+      return nil
+    }
     self.audio = audio
   }
 
   deinit {
-    if let audio {
-      SherpaOnnxDestroyOfflineTtsGeneratedAudio(audio)
-    }
+    SherpaOnnxDestroyOfflineTtsGeneratedAudio(audio)
   }
 
   var n: Int32 {
@@ -1547,22 +1548,23 @@ final class SherpaOnnxGenerationConfigC {
 
 class SherpaOnnxOfflineTtsWrapper {
   /// A pointer to the underlying counterpart in C
-  let tts: OpaquePointer!
+  let tts: OpaquePointer
 
   /// Constructor taking a model config
-  init(
+  init?(
     config: UnsafePointer<SherpaOnnxOfflineTtsConfig>!
   ) {
-    tts = SherpaOnnxCreateOfflineTts(config)
+    guard let tts = SherpaOnnxCreateOfflineTts(config) else {
+      return nil
+    }
+    self.tts = tts
   }
 
   deinit {
-    if let tts {
-      SherpaOnnxDestroyOfflineTts(tts)
-    }
+    SherpaOnnxDestroyOfflineTts(tts)
   }
 
-  func generate(text: String, sid: Int = 0, speed: Float = 1.0) -> SherpaOnnxGeneratedAudioWrapper {
+  func generate(text: String, sid: Int = 0, speed: Float = 1.0) -> SherpaOnnxGeneratedAudioWrapper? {
     let config = SherpaOnnxGenerationConfigSwift(speed: speed, sid: sid)
     return generateWithConfig(text: text, config: config, callback: nil, arg: nil)
   }
@@ -1570,7 +1572,7 @@ class SherpaOnnxOfflineTtsWrapper {
   func generateWithCallbackWithArg(
     text: String, callback: TtsCallbackWithArg, arg: UnsafeMutableRawPointer, sid: Int = 0,
     speed: Float = 1.0
-  ) -> SherpaOnnxGeneratedAudioWrapper {
+  ) -> SherpaOnnxGeneratedAudioWrapper? {
     let config = SherpaOnnxGenerationConfigSwift(speed: speed, sid: sid)
 
     let pair = SherpaOnnxCallbackPair(cb: callback, arg: arg)
@@ -1590,7 +1592,7 @@ class SherpaOnnxOfflineTtsWrapper {
     config: SherpaOnnxGenerationConfigSwift,
     callback: TtsProgressCallbackWithArg?,
     arg: UnsafeMutableRawPointer?
-  ) -> SherpaOnnxGeneratedAudioWrapper {
+  ) -> SherpaOnnxGeneratedAudioWrapper? {
     let bridge = SherpaOnnxGenerationConfigC(config)
 
     let audio: UnsafePointer<SherpaOnnxGeneratedAudio>? =
