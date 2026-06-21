@@ -68,28 +68,11 @@ class LiveAudioIO {
     // MARK: - Lifecycle
 
     func start() throws {
-        try Self.configureAndActivateAudioSession()
-        try startEngine()
-    }
-
-    private static func configureAndActivateAudioSession() throws {
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playAndRecord, mode: .voiceChat,
                                  options: [.defaultToSpeaker, .allowBluetoothHFP])
-        if #available(iOS 13.0, *) {
-            try session.setAllowHapticsAndSystemSoundsDuringRecording(true)
-        }
         try session.setActive(true)
-    }
 
-    private static func configureAndActivateAudioSessionOffMainThread() async throws {
-        try await Task.detached(priority: .userInitiated) {
-            try configureAndActivateAudioSession()
-        }.value
-    }
-
-    private func startEngine() throws {
-        let session = AVAudioSession.sharedInstance()
         // 监听音频中断（下拉控制中心、来电、Siri 等）
         interruptionObserver = NotificationCenter.default.addObserver(
             forName: AVAudioSession.interruptionNotification,
@@ -191,7 +174,7 @@ class LiveAudioIO {
                 // Auto-restart engine if it stopped unexpectedly
                 if !self.engine.isRunning {
                     do {
-                        try await Self.configureAndActivateAudioSessionOffMainThread()
+                        try AVAudioSession.sharedInstance().setActive(true)
                         try self.engine.start()
                         self.lastTapTime = CFAbsoluteTimeGetCurrent()
                         self.idleTriggered = false
@@ -270,15 +253,12 @@ class LiveAudioIO {
                 .map { AVAudioSession.InterruptionOptions(rawValue: $0).contains(.shouldResume) }
                 ?? true
             if shouldResume {
-                Task { [weak self] in
-                    guard let self else { return }
-                    do {
-                        try await Self.configureAndActivateAudioSessionOffMainThread()
-                        try engine.start()
-                        print("[AudioIO] ✅ Engine resumed after interruption")
-                    } catch {
-                        print("[AudioIO] ❌ Failed to resume after interruption: \(error)")
-                    }
+                do {
+                    try AVAudioSession.sharedInstance().setActive(true)
+                    try engine.start()
+                    print("[AudioIO] ✅ Engine resumed after interruption")
+                } catch {
+                    print("[AudioIO] ❌ Failed to resume after interruption: \(error)")
                 }
             }
         @unknown default:
@@ -347,49 +327,37 @@ class LiveAudioIO {
 
     private func wavDataToPCMBuffer(_ data: Data) -> AVAudioPCMBuffer? {
         guard data.count > 44 else { return nil }
-        return data.withUnsafeBytes { raw in
-            guard let base = raw.baseAddress else { return nil }
-            let bytes = base.assumingMemoryBound(to: UInt8.self)
 
-            let sampleRate = UInt32(bytes[24]) |
-                (UInt32(bytes[25]) << 8) |
-                (UInt32(bytes[26]) << 16) |
-                (UInt32(bytes[27]) << 24)
-
-            let channels = UInt16(bytes[22]) | (UInt16(bytes[23]) << 8)
-            let bitsPerSample = UInt16(bytes[34]) | (UInt16(bytes[35]) << 8)
-
-            guard bitsPerSample == 16, channels == 1 else {
-                print("[AudioIO] Unsupported WAV format: \(bitsPerSample)bit, \(channels)ch")
-                return nil
-            }
-
-            let dataSize = UInt32(bytes[40]) |
-                (UInt32(bytes[41]) << 8) |
-                (UInt32(bytes[42]) << 16) |
-                (UInt32(bytes[43]) << 24)
-            let frameCount = AVAudioFrameCount(dataSize / 2)
-
-            guard let format = AVAudioFormat(
-                commonFormat: .pcmFormatFloat32,
-                sampleRate: Double(sampleRate),
-                channels: 1,
-                interleaved: false
-            ), let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else {
-                return nil
-            }
-
-            buffer.frameLength = frameCount
-            let floatData = buffer.floatChannelData![0]
-            let pcmStart = 44
-            for i in 0..<Int(frameCount) {
-                let lo = UInt16(bytes[pcmStart + i * 2])
-                let hi = UInt16(bytes[pcmStart + i * 2 + 1])
-                let sample = Int16(bitPattern: lo | (hi << 8))
-                floatData[i] = Float(sample) / 32768.0
-            }
-            return resampleToPlaybackRate(buffer)
+        let sampleRate: UInt32 = data.withUnsafeBytes { ptr in
+            ptr.load(fromByteOffset: 24, as: UInt32.self)
         }
+
+        let pcmData = data.dropFirst(44)
+        let sampleCount = pcmData.count / 2
+
+        guard sampleCount > 0,
+              let format = AVAudioFormat(commonFormat: .pcmFormatFloat32,
+                                          sampleRate: Double(sampleRate),
+                                          channels: 1, interleaved: false),
+              let buffer = AVAudioPCMBuffer(pcmFormat: format,
+                                             frameCapacity: AVAudioFrameCount(sampleCount))
+        else { return nil }
+
+        buffer.frameLength = AVAudioFrameCount(sampleCount)
+
+        let floatData = buffer.floatChannelData![0]
+        pcmData.withUnsafeBytes { ptr in
+            let int16Ptr = ptr.bindMemory(to: Int16.self)
+            for i in 0..<sampleCount {
+                floatData[i] = Float(int16Ptr[i]) / 32767.0
+            }
+        }
+
+        // playerNode→mixer 连接在 start() 里固定成 playbackSampleRate, 且**不能重连**
+        // (会破坏 AEC 参考信号)。所以非该采样率的 TTS 输出必须先重采样, 否则
+        // scheduleBuffer 会断言崩溃 (_outputFormat.sampleRate == buffer.format.sampleRate)。
+        // keqing/Piper 本来就是 22050, 是 no-op; Supertonic-3 (日语) 输出 44100Hz, 走真转换。
+        return resampleToPlaybackRate(buffer)
     }
 
     /// 把 TTS 缓冲重采样到固定的 playbackSampleRate (用 AVAudioConverter, 带抗混叠滤波,

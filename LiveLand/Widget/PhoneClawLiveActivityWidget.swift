@@ -14,7 +14,6 @@ import WidgetKit
 @main
 struct PhoneClawLiveActivityWidgetBundle: WidgetBundle {
     var body: some Widget {
-        PhoneClawLiveActivityWidget()
         PhoneClawLiveLandActivityWidget()
         PhoneClawLiveLandLauncherWidget()
         if #available(iOS 18.0, *) {
@@ -23,7 +22,6 @@ struct PhoneClawLiveActivityWidgetBundle: WidgetBundle {
     }
 }
 
-let phoneClawLiveModeLaunchURL = URL(string: "phoneclaw://live?mode=voice")!
 let phoneClawLiveLandLaunchURL = URL(string: "phoneclaw://liveland")!
 
 private enum LiveTheme {
@@ -35,60 +33,6 @@ private enum LiveTheme {
     static let skillStatusText = Color.white.opacity(0.36)
     static let tertiaryText = Color.white.opacity(0.36)
     static let signal = Color(red: 1.00, green: 0.62, blue: 0.32)
-}
-
-struct PhoneClawLiveActivityWidget: Widget {
-    var body: some WidgetConfiguration {
-        ActivityConfiguration(for: PhoneClawLiveActivityAttributes.self) { context in
-            let presentation = LiveIslandPresentation(state: context.state)
-            LiveActivityBannerView(presentation: presentation)
-                .activityBackgroundTint(LiveTheme.surface)
-                .activitySystemActionForegroundColor(.orange)
-                .widgetURL(presentation.launchURL)
-        } dynamicIsland: { context in
-            let presentation = LiveIslandPresentation(state: context.state)
-            return DynamicIsland {
-                DynamicIslandExpandedRegion(.leading, priority: 2) {
-                    if presentation.visualPhase != .result {
-                        LiveIslandCoreVisual(
-                            presentation: presentation,
-                            diameter: presentation.expandedGlyphDiameter
-                        )
-                    }
-                }
-                DynamicIslandExpandedRegion(.trailing, priority: 1) {
-                    if presentation.visualPhase != .result {
-                        if presentation.visualPhase == .skill || presentation.hasStartupConfirmation {
-                            LiveIslandSkillStatusLabel(presentation: presentation)
-                        }
-                    }
-                }
-                DynamicIslandExpandedRegion(.center, priority: 3) {
-                    if presentation.visualPhase == .result {
-                        LiveResultExpandedText(presentation: presentation)
-                    }
-                }
-            } compactLeading: {
-                if presentation.visualPhase == .result {
-                    LiveIslandCoreVisual(presentation: presentation, diameter: 18)
-                } else {
-                    LiveIslandCoreVisual(
-                        presentation: presentation,
-                        diameter: presentation.visualPhase == .voice ? 22 : 24
-                    )
-                }
-            } compactTrailing: {
-                if presentation.visualPhase == .result {
-                    EmptyView()
-                } else {
-                    LiveIslandCompactTrailing(presentation: presentation)
-                }
-            } minimal: {
-                LiveIslandCoreVisual(presentation: presentation, diameter: 18)
-            }
-            .widgetURL(presentation.launchURL)
-        }
-    }
 }
 
 struct PhoneClawLiveLandActivityWidget: Widget {
@@ -189,17 +133,6 @@ private struct LiveIslandContentState {
     var toolName: String?
     var success: Bool?
 
-    init(state: PhoneClawLiveActivityAttributes.ContentState) {
-        self.phase = state.phase
-        self.headline = state.headline
-        self.detail = state.detail
-        self.entryPoint = state.entryPoint
-        self.skillID = state.skillID
-        self.skillName = state.skillName
-        self.toolName = state.toolName
-        self.success = state.success
-    }
-
     init(state: LiveLandActivityAttributes.ContentState) {
         self.phase = state.phase
         self.headline = state.headline
@@ -215,10 +148,6 @@ private struct LiveIslandContentState {
 private struct LiveIslandPresentation {
     let state: LiveIslandContentState
 
-    init(state: PhoneClawLiveActivityAttributes.ContentState) {
-        self.state = LiveIslandContentState(state: state)
-    }
-
     init(state: LiveLandActivityAttributes.ContentState) {
         self.state = LiveIslandContentState(state: state)
     }
@@ -227,9 +156,7 @@ private struct LiveIslandPresentation {
     var detail: String { state.detail }
 
     var launchURL: URL {
-        state.entryPoint == "liveLand"
-            ? phoneClawLiveLandLaunchURL
-            : phoneClawLiveModeLaunchURL
+        phoneClawLiveLandLaunchURL
     }
 
     var stage: LiveIslandStage {

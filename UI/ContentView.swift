@@ -358,10 +358,8 @@ struct ContentView: View {
         .fullScreenCover(isPresented: $showLiveMode) {
             LiveModeView(
                 isPresented: $showLiveMode,
-                agentEngine: engine,
                 inference: engine.inference,
                 catalog: engine.catalog,
-                coordinator: engine.coordinator,
                 userSystemPrompt: engine.config.systemPrompt
             )
         }
@@ -1948,7 +1946,6 @@ struct ContentView: View {
 
         showLiveMode = false
         showLiveLand = true
-        LiveWarmPool.shared.cancelPrewarm()
 
         engine.cancelActiveGeneration()
         if audioCapture.isCapturing {
@@ -2016,10 +2013,6 @@ struct ContentView: View {
 
     private func prewarmLiveIfPossible() {
         guard !showLiveMode, !showLiveLand, engine.isModelReady else { return }
-        LiveWarmPool.shared.prewarmIfPossible(
-            inference: engine.inference,
-            userSystemPrompt: engine.config.systemPrompt
-        )
     }
 
     private func showVoiceModelsRequiredPrompt() {

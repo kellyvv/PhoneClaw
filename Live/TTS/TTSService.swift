@@ -47,7 +47,6 @@ class TTSService {
     private var piperPlusJA: PiperPlusJATtsWrapper?
     #endif
     private var sampleRate: Int = 16000
-    private var loadedLanguage: AppLanguage?
 
     /// 当前激活的 TTS 模型对应的 speaker id。
     /// keqing 的训练数据按 speaker 切了多个 sid, 200 是默认女声;
@@ -68,31 +67,22 @@ class TTSService {
     // MARK: - Initialize
 
     func initialize() async {
-        let targetLanguage = LanguageService.shared.current.resolved
-        if isAvailable, state == .ready, loadedLanguage == targetLanguage { return }
-
         #if targetEnvironment(simulator)
         if LanguageService.shared.current.isJapanese {
             print("[TTS] Simulator build: Japanese neural TTS unavailable (system TTS disabled)")
             backend = "none"
             isAvailable = false
             state = .idle
-            loadedLanguage = targetLanguage
         } else {
             print("[TTS] Simulator build: using system TTS")
             backend = "system"
             isAvailable = true
             state = .ready
-            loadedLanguage = targetLanguage
         }
         return
         #endif
 
         state = .loading
-        tts = nil
-        #if canImport(PiperPlus)
-        piperPlusJA = nil
-        #endif
 
         // 按系统语言加载不同 TTS — 中文 keqing / 英文 Piper libritts_r-medium。
         // 日语不允许系统 TTS fallback; Supertonic-3 当前会被内置 ORT 的 ai.onnx.ml opset
@@ -107,7 +97,6 @@ class TTSService {
         if initialized {
             isAvailable = true
             state = .ready
-            loadedLanguage = targetLanguage
             return
         }
 
@@ -116,7 +105,6 @@ class TTSService {
             backend = "none"
             isAvailable = false
             state = .idle
-            loadedLanguage = targetLanguage
             return
         }
 
@@ -125,7 +113,6 @@ class TTSService {
         backend = "system"
         isAvailable = true
         state = .ready
-        loadedLanguage = targetLanguage
     }
 
     /// 中文 keqing TTS 初始化。

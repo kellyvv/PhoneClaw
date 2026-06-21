@@ -81,8 +81,6 @@ class VADService {
     // MARK: - Lifecycle
 
     func initialize() async {
-        if isAvailable, vadManager != nil { return }
-
         do {
             // Use pre-downloaded VAD model from unified LIVE download path.
             // Model: silero-vad-unified-256ms-v6.0.0.mlmodelc (CoreML, Silero VAD v6)

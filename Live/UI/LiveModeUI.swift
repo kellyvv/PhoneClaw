@@ -12,15 +12,13 @@ struct LiveModeView: View {
     @Binding var isPresented: Bool
     @Environment(\.colorScheme) private var colorScheme
 
-    let agentEngine: AgentEngine
     let inference: InferenceService
     let catalog: ModelCatalog
-    let coordinator: ModelRuntimeCoordinator
     /// 用户在 SYSPROMPT.md 编辑的 system prompt（来自 AgentEngine.config.systemPrompt）。
     /// Phase 1 起 Live 不再读取这份通用 prompt；先保留透传，避免接口层变化。
     let userSystemPrompt: String?
 
-    @State private var liveEngine: LiveModeEngine
+    @State private var liveEngine = LiveModeEngine()
     @State private var animatePulse = false
     @State private var camera = LiveCameraService()
     @State private var isCameraEnabled = false
@@ -29,35 +27,13 @@ struct LiveModeView: View {
     /// 只能引导用户去系统设置开。这里弹一个自有 alert 提供 "去设置" 深链。
     @State private var showCameraPermissionAlert = false
 
-    /// Live 为了后台可用可能临时切 CPU；退出 Live 时恢复进入前的后端。
+    /// Live 进入前用户的模型 ID. 仅当 Live 内强制切 E2B 时才记下,
+    /// 退出 Live 在 onDisappear 切回, 让 service 恢复用户偏好.
     /// UserDefaults 全程不动 — 用户在 Configurations 的持久化偏好不被 Live 污染.
-    @State private var preLiveBackend: String? = nil
+    @State private var preLiveModelID: String? = nil
 
     private var liveStrings: LiveLocaleConfig.StatusStrings {
         LiveLocale.zhCN.config.statusStrings
-    }
-
-    init(
-        isPresented: Binding<Bool>,
-        agentEngine: AgentEngine,
-        inference: InferenceService,
-        catalog: ModelCatalog,
-        coordinator: ModelRuntimeCoordinator,
-        userSystemPrompt: String?
-    ) {
-        self._isPresented = isPresented
-        self.agentEngine = agentEngine
-        self.inference = inference
-        self.catalog = catalog
-        self.coordinator = coordinator
-        self.userSystemPrompt = userSystemPrompt
-        self._liveEngine = State(
-            initialValue: LiveWarmPool.shared.checkout(
-                inference: inference,
-                userSystemPrompt: userSystemPrompt,
-                agentEngine: agentEngine
-            )
-        )
     }
 
     private var accentColor: Color {
@@ -126,12 +102,6 @@ struct LiveModeView: View {
     private var headline: String? {
         if isPreparingLive {
             return liveStrings.loadingHeadline
-        }
-        if liveEngine.state == .processing {
-            let progressHeadline = (liveEngine.liveProgressHeadline ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            if !progressHeadline.isEmpty {
-                return progressHeadline
-            }
         }
         switch liveEngine.state {
         case .idle:       return nil
@@ -223,7 +193,7 @@ struct LiveModeView: View {
                 // ── 对话文字区 ──
                 captionArea
                     .padding(.horizontal, 20)
-                    .frame(maxHeight: 180)
+                    .frame(maxHeight: 140)
 
                 // ── 底部按钮 ──
                 bottomBar
@@ -232,8 +202,7 @@ struct LiveModeView: View {
         .task {
             // 注: 之前 E4B 在 Live 有 jetsam 风险, 已在 iPhone 17 Pro Max 验证
             // headroom 充足 (~2.7 GB), 不再强制切 E2B.
-            await prepareRuntimeForBackgroundLive()
-            liveEngine.setup(inference: inference, agentEngine: agentEngine)
+            liveEngine.setup(inference: inference)
             liveEngine.userSystemPrompt = userSystemPrompt
             await liveEngine.start()
         }
@@ -248,16 +217,7 @@ struct LiveModeView: View {
             #if canImport(UIKit)
             UIApplication.shared.isIdleTimerDisabled = false
             #endif
-            let restoreBackend = preLiveBackend
-            Task {
-                await liveEngine.stop()
-                await restoreRuntimeAfterLive(backend: restoreBackend)
-            }
-        }
-        .onChange(of: liveEngine.endedByLiveActivityDismissal) { _, dismissed in
-            guard dismissed else { return }
-            camera.stop()
-            isPresented = false
+            Task { await liveEngine.stop() }
         }
         .alert(
             tr("需要相机权限", "Camera Access Needed"),
@@ -270,41 +230,6 @@ struct LiveModeView: View {
                 "请到 设置 → 隐私与安全性 → 相机 里允许 PhoneClaw 使用相机。",
                 "Enable camera access for PhoneClaw in Settings → Privacy & Security → Camera."
             ))
-        }
-    }
-
-    @MainActor
-    private func prepareRuntimeForBackgroundLive() async {
-        guard !LiveBackgroundContinuation.shared.supportsBackgroundGPU else { return }
-        guard case .ready(_, let backend) = coordinator.sessionState else { return }
-        guard backend == "gpu" else {
-            print("[Live] background GPU unavailable; LIVE runtime already backend=\(backend)")
-            return
-        }
-
-        preLiveBackend = backend
-        print("[Live] background GPU unavailable; switching LIVE runtime gpu → cpu to keep ASR→LLM→Skill running in background")
-        do {
-            try await coordinator.switchBackend(to: "cpu")
-        } catch {
-            preLiveBackend = nil
-            print("[Live] ❌ CPU backend switch for background LIVE failed: \(error.localizedDescription)")
-        }
-    }
-
-    @MainActor
-    private func restoreRuntimeAfterLive(backend: String?) async {
-        guard let backend,
-              case .ready(_, let currentBackend) = coordinator.sessionState,
-              currentBackend != backend else {
-            return
-        }
-
-        print("[Live] restoring runtime backend \(currentBackend) → \(backend)")
-        do {
-            try await coordinator.switchBackend(to: backend)
-        } catch {
-            print("[Live] ⚠️ restore backend failed: \(error.localizedDescription)")
         }
     }
 
@@ -408,12 +333,6 @@ struct LiveModeView: View {
                     .transition(.opacity)
             }
 
-            if realtimeCaption == nil, let skillInfo = liveEngine.lastSkillInfo {
-                skillCallStatusCard(skillInfo)
-                    .id("skill-call-status")
-                    .transition(.opacity)
-            }
-
             // AI 回复 — 暖琥珀, 流式追加不加任何动画 (LLM 40ms/token, 任何 >0 的动画
             // duration 都会和下一帧更新碰撞; 直接随 lastReply 变化原样刷新, 天然是
             // "一个字一个字长出来"的打字机效果, 和 TTS 发声进度同步)
@@ -432,67 +351,6 @@ struct LiveModeView: View {
         // 只对 user caption 做短动画 (它只变一次 partial → final);
         // AI reply 随 token 高频更新, 不加 animation value, 避免动画互相打断.
         .animation(.easeOut(duration: 0.18), value: currentUserCaption?.text)
-    }
-
-    private func skillIconName(for skillID: String) -> String {
-        switch skillID {
-        case "calendar": return "calendar.badge.checkmark"
-        case "reminders": return "checklist.checked"
-        case "health": return "heart.text.square"
-        case "web-search": return "magnifyingglass"
-        default: return "bolt.horizontal.circle"
-        }
-    }
-
-    private func skillStatusText(_ info: LiveSkillInfoOutput) -> String {
-        info.success ? tr("已完成", "Done") : tr("未完成", "Failed")
-    }
-
-    private func skillCallStatusCard(_ info: LiveSkillInfoOutput) -> some View {
-        let statusColor = info.success ? Theme.accentGreen : Theme.accent
-        let toolName = info.toolName ?? tr("无工具", "No tool")
-
-        return HStack(alignment: .center, spacing: 10) {
-            Image(systemName: skillIconName(for: info.skillID))
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(statusColor)
-                .frame(width: 26, height: 26)
-                .background(
-                    RoundedRectangle(cornerRadius: 7)
-                        .fill(statusColor.opacity(usesLightVoiceChrome ? 0.12 : 0.18))
-                )
-
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
-                    Text("SKILL")
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
-                        .foregroundStyle(statusColor.opacity(0.9))
-                    Text(info.displayName)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(liveSecondaryForeground.opacity(usesLightVoiceChrome ? 0.86 : 0.78))
-                        .lineLimit(1)
-                }
-
-                Text("\(toolName) · \(skillStatusText(info))")
-                    .font(.system(size: 11, weight: .regular, design: .rounded))
-                    .foregroundStyle(liveTertiaryForeground.opacity(usesLightVoiceChrome ? 0.74 : 0.52))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(usesLightVoiceChrome ? Theme.bgElevated.opacity(0.72) : Color.white.opacity(0.075))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .strokeBorder(statusColor.opacity(usesLightVoiceChrome ? 0.18 : 0.16), lineWidth: 1)
-                .allowsHitTesting(false)
-        )
     }
 
     // MARK: - 用户文字气泡

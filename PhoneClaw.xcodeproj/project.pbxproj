@@ -15,8 +15,6 @@
 		0B263C823B20AE04F227B187 /* (null) in Sources */ = {isa = PBXBuildFile; };
 		0C5EBE615C219F104D6D9C8D /* (null) in Sources */ = {isa = PBXBuildFile; };
 		0D58F93BFFFFE778CD8A34D1 /* LiveModeEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83C5B0E5FD420CCB6BD8D1A4 /* LiveModeEngine.swift */; };
-		LLBUILD000000000000000001 /* LiveModeEngine+AgentBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = LLREF000000000000000001 /* LiveModeEngine+AgentBridge.swift */; };
-		LLBUILD000000000000000002 /* LiveModeEngine+Playback.swift in Sources */ = {isa = PBXBuildFile; fileRef = LLREF000000000000000002 /* LiveModeEngine+Playback.swift */; };
 		LLBUILD000000000000000003 /* LiveLandAgentResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = LLREF000000000000000003 /* LiveLandAgentResult.swift */; };
 		LLBUILD000000000000000004 /* LiveLandSkillPromptHaptics.swift in Sources */ = {isa = PBXBuildFile; fileRef = LLREF000000000000000004 /* LiveLandSkillPromptHaptics.swift */; };
 		LLBUILD000000000000000005 /* LiveLandVoiceRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = LLREF000000000000000005 /* LiveLandVoiceRuntime.swift */; };
@@ -54,7 +52,6 @@
 		45B7FEC6C4D055F44A87BFAB /* LiveLandShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DD9808FE93325C3CE4CFAA2 /* LiveLandShortcuts.swift */; };
 		4A99F468A0CDF3F577738F6C /* (null) in Sources */ = {isa = PBXBuildFile; };
 		4C01A62B1E57D91C45FFEEA8 /* LiveTurnProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BCB3AA5590B964AC46945D5 /* LiveTurnProcessor.swift */; };
-		4DD9808FE93325C3CE4CFAA4 /* LiveSkillRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DD9808FE93325C3CE4CFAA3 /* LiveSkillRuntime.swift */; };
 		5084E1CD2E831BC05F5E4374 /* PromptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E7C06DA449D1395217A42D5 /* PromptBuilder.swift */; };
 		542491EC62E3A48A32792C5D /* (null) in Sources */ = {isa = PBXBuildFile; };
 		583517394D45962A75274774 /* (null) in Sources */ = {isa = PBXBuildFile; };
@@ -231,16 +228,9 @@
 		LANDISCOVERY00000000001 /* LANDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = LANDISCOVERY00000000101 /* LANDiscovery.swift */; };
 		LANBINDING0000000000001 /* LANBinding.swift in Sources */ = {isa = PBXBuildFile; fileRef = LANBINDING0000000000101 /* LANBinding.swift */; };
 		RMVIEW00000000000001 /* RemoteMacSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = RMVIEW00000000000101 /* RemoteMacSettingsView.swift */; };
-		A7C100000000000000000001 /* PhoneClawLiveActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C200000000000000000001 /* PhoneClawLiveActivityAttributes.swift */; };
-		A7C100000000000000000002 /* LiveActivityBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C200000000000000000002 /* LiveActivityBridge.swift */; };
 		A7C100000000000000000003 /* PhoneClawLiveActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C200000000000000000003 /* PhoneClawLiveActivityWidget.swift */; };
-		A7C100000000000000000004 /* PhoneClawLiveActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C200000000000000000001 /* PhoneClawLiveActivityAttributes.swift */; };
 		A7C100000000000000000005 /* PhoneClawLiveActivityWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A7C200000000000000000005 /* PhoneClawLiveActivityWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		BB7100000000000000000002 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BB7100000000000000000001 /* Assets.xcassets */; };
-		A7C100000000000000000006 /* LiveWarmPool.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C200000000000000000006 /* LiveWarmPool.swift */; };
-		A7C100000000000000000007 /* LiveBackgroundContinuation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C200000000000000000007 /* LiveBackgroundContinuation.swift */; };
-		A7C100000000000000000008 /* LiveTurnTokenSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C200000000000000000008 /* LiveTurnTokenSource.swift */; };
-		A7C100000000000000000009 /* IOS27LiveFoundationTokenSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C200000000000000000009 /* IOS27LiveFoundationTokenSource.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -284,14 +274,11 @@
 		4DD9808FE93325C3CE4CFA00 /* PhoneClawApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneClawApp.swift; sourceTree = "<group>"; };
 		4DD9808FE93325C3CE4CFAA1 /* LiveLaunchRouting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveLaunchRouting.swift; path = LiveLand/App/LiveLaunchRouting.swift; sourceTree = SOURCE_ROOT; };
 		4DD9808FE93325C3CE4CFAA2 /* LiveLandShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveLandShortcuts.swift; path = LiveLand/App/LiveLandShortcuts.swift; sourceTree = SOURCE_ROOT; };
-		4DD9808FE93325C3CE4CFAA3 /* LiveSkillRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveSkillRuntime.swift; path = Live/Turn/LiveSkillRuntime.swift; sourceTree = SOURCE_ROOT; };
 		4F4ACB3F4531FF61E0AADA07 /* libPods-PhoneClaw.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-PhoneClaw.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		52F30C6348B834E5D157205F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		571908036E6DCED1D58C1E9E /* Skills.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Skills.swift; sourceTree = "<group>"; };
 		7C500DE8A47482D5DA7DA6D3 /* ASRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ASRService.swift; path = Shared/Audio/ASRService.swift; sourceTree = SOURCE_ROOT; };
 		83C5B0E5FD420CCB6BD8D1A4 /* LiveModeEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveModeEngine.swift; path = Live/Core/LiveModeEngine.swift; sourceTree = SOURCE_ROOT; };
-		LLREF000000000000000001 /* LiveModeEngine+AgentBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "LiveModeEngine+AgentBridge.swift"; path = "Live/Core/LiveModeEngine+AgentBridge.swift"; sourceTree = SOURCE_ROOT; };
-		LLREF000000000000000002 /* LiveModeEngine+Playback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "LiveModeEngine+Playback.swift"; path = "Live/Core/LiveModeEngine+Playback.swift"; sourceTree = SOURCE_ROOT; };
 		LLREF000000000000000003 /* LiveLandAgentResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveLandAgentResult.swift; path = LiveLand/Runtime/LiveLandAgentResult.swift; sourceTree = SOURCE_ROOT; };
 		LLREF000000000000000004 /* LiveLandSkillPromptHaptics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveLandSkillPromptHaptics.swift; path = LiveLand/Runtime/LiveLandSkillPromptHaptics.swift; sourceTree = SOURCE_ROOT; };
 		LLREF000000000000000005 /* LiveLandVoiceRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveLandVoiceRuntime.swift; path = LiveLand/Runtime/LiveLandVoiceRuntime.swift; sourceTree = SOURCE_ROOT; };
@@ -434,16 +421,10 @@
 		LANDISCOVERY00000000101 /* LANDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LANDiscovery.swift; path = LLM/Backends/Remote/LANDiscovery.swift; sourceTree = SOURCE_ROOT; };
 		LANBINDING0000000000101 /* LANBinding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LANBinding.swift; path = LLM/Backends/Remote/LANBinding.swift; sourceTree = SOURCE_ROOT; };
 		RMVIEW00000000000101 /* RemoteMacSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RemoteMacSettingsView.swift; path = UI/RemoteMacSettingsView.swift; sourceTree = SOURCE_ROOT; };
-		A7C200000000000000000001 /* PhoneClawLiveActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PhoneClawLiveActivityAttributes.swift; path = Live/Activity/PhoneClawLiveActivityAttributes.swift; sourceTree = SOURCE_ROOT; };
-		A7C200000000000000000002 /* LiveActivityBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveActivityBridge.swift; path = Live/Activity/LiveActivityBridge.swift; sourceTree = SOURCE_ROOT; };
 		A7C200000000000000000003 /* PhoneClawLiveActivityWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneClawLiveActivityWidget.swift; sourceTree = "<group>"; };
 		A7C200000000000000000004 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A7C200000000000000000005 /* PhoneClawLiveActivityWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = PhoneClawLiveActivityWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		BB7100000000000000000001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		A7C200000000000000000006 /* LiveWarmPool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveWarmPool.swift; path = Live/Core/LiveWarmPool.swift; sourceTree = SOURCE_ROOT; };
-		A7C200000000000000000007 /* LiveBackgroundContinuation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveBackgroundContinuation.swift; path = Live/Core/LiveBackgroundContinuation.swift; sourceTree = SOURCE_ROOT; };
-		A7C200000000000000000008 /* LiveTurnTokenSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveTurnTokenSource.swift; path = Live/Turn/LiveTurnTokenSource.swift; sourceTree = SOURCE_ROOT; };
-		A7C200000000000000000009 /* IOS27LiveFoundationTokenSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = IOS27LiveFoundationTokenSource.swift; path = Live/Turn/IOS27LiveFoundationTokenSource.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -732,10 +713,6 @@
 				05853E0317CAA5E4BBEDD865 /* LiveOutputEvent.swift */,
 				1933DF0A8083223AD681A973 /* LiveOutputParser.swift */,
 				9BCB3AA5590B964AC46945D5 /* LiveTurnProcessor.swift */,
-				4DD9808FE93325C3CE4CFAA3 /* LiveSkillRuntime.swift */,
-				A7C200000000000000000008 /* LiveTurnTokenSource.swift */,
-				A7C200000000000000000009 /* IOS27LiveFoundationTokenSource.swift */,
-				A7C300000000000000000001 /* Activity */,
 				C6B2CA800EABEF23C3821C51 /* LiveVoiceConstants.swift */,
 				F3E547AAB840AEB6F57C71A4 /* PromptBuilder+LiveVoice.swift */,
 				7C500DE8A47482D5DA7DA6D3 /* ASRService.swift */,
@@ -763,10 +740,6 @@
 				9D80CB631331A0CA07699BDE /* OutputSanitizer.swift */,
 				F8D921B323B9D6342A22A29E /* LiveAudioIO.swift */,
 				83C5B0E5FD420CCB6BD8D1A4 /* LiveModeEngine.swift */,
-				LLREF000000000000000001 /* LiveModeEngine+AgentBridge.swift */,
-				LLREF000000000000000002 /* LiveModeEngine+Playback.swift */,
-				A7C200000000000000000006 /* LiveWarmPool.swift */,
-				A7C200000000000000000007 /* LiveBackgroundContinuation.swift */,
 				840B21562E52B6B93D4410D0 /* LiveModeUI.swift */,
 				52F30C6348B834E5D157205F /* Info.plist */,
 				B1A2C3D4E5F607182930C000 /* InfoPlist.strings */,
@@ -841,15 +814,6 @@
 				C4D5E6F70819A2B3C463E4F6 /* Theme.swift */,
 			);
 			path = UI;
-			sourceTree = "<group>";
-		};
-		A7C300000000000000000001 /* Activity */ = {
-			isa = PBXGroup;
-			children = (
-				A7C200000000000000000001 /* PhoneClawLiveActivityAttributes.swift */,
-				A7C200000000000000000002 /* LiveActivityBridge.swift */,
-			);
-			path = Activity;
 			sourceTree = "<group>";
 		};
 		A7C300000000000000000002 /* PhoneClawLiveActivityWidget */ = {
@@ -1102,12 +1066,7 @@
 				E9D6E75B5D98FAD1F17265D7 /* LiveOutputEvent.swift in Sources */,
 				23D41FD1E095FCDDC5BE04EF /* LiveOutputParser.swift in Sources */,
 				4C01A62B1E57D91C45FFEEA8 /* LiveTurnProcessor.swift in Sources */,
-				4DD9808FE93325C3CE4CFAA4 /* LiveSkillRuntime.swift in Sources */,
-				A7C100000000000000000008 /* LiveTurnTokenSource.swift in Sources */,
-				A7C100000000000000000009 /* IOS27LiveFoundationTokenSource.swift in Sources */,
-				A7C100000000000000000001 /* PhoneClawLiveActivityAttributes.swift in Sources */,
 				LLBUILD000000000000000011 /* LiveLandActivityAttributes.swift in Sources */,
-				A7C100000000000000000002 /* LiveActivityBridge.swift in Sources */,
 				F3B736266E38252D03E6C354 /* LiveVoiceConstants.swift in Sources */,
 				FEFA2136332FF2B38F71C999 /* PromptBuilder+LiveVoice.swift in Sources */,
 				0F13CB63EFD6EB20B60C013B /* ASRService.swift in Sources */,
@@ -1185,10 +1144,6 @@
 				F84BD7F445E2D383551198FB /* OutputSanitizer.swift in Sources */,
 				32D9B612A8A28256BD2CCA55 /* LiveAudioIO.swift in Sources */,
 				0D58F93BFFFFE778CD8A34D1 /* LiveModeEngine.swift in Sources */,
-				LLBUILD000000000000000001 /* LiveModeEngine+AgentBridge.swift in Sources */,
-				LLBUILD000000000000000002 /* LiveModeEngine+Playback.swift in Sources */,
-				A7C100000000000000000006 /* LiveWarmPool.swift in Sources */,
-				A7C100000000000000000007 /* LiveBackgroundContinuation.swift in Sources */,
 				CE2D5BD7F3C310C8CE319A6D /* LiveModeUI.swift in Sources */,
 				A31476FC2F85741500318978 /* ToolCallParser.swift in Sources */,
 				AA1000000000000000000005 /* Gemma4Model.swift in Sources */,
@@ -1286,7 +1241,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				A7C100000000000000000003 /* PhoneClawLiveActivityWidget.swift in Sources */,
-				A7C100000000000000000004 /* PhoneClawLiveActivityAttributes.swift in Sources */,
 				LLBUILD000000000000000012 /* LiveLandActivityAttributes.swift in Sources */,
 				LLBUILD000000000000000013 /* LiveLandLauncherWidgets.swift in Sources */,
 			);

@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.kellyvv.phoneclaw.liveland-continuation</string>
+	</array>
 	<key>CFBundleDisplayName</key>
 	<string>PhoneClaw</string>
 	<key>CFBundleExecutable</key>
@@ -12,6 +16,8 @@
 	<string>PhoneClaw</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -23,20 +29,22 @@
 			</array>
 		</dict>
 	</array>
-	<key>CFBundleShortVersionString</key>
-	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
-	<key>LSRequiresIPhoneOS</key>
-	<true/>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
-	<key>NSCalendarsUsageDescription</key>
-	<string>PhoneClaw uses Calendar access to create events and read schedules only when you ask for local planning analysis.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_phoneclaw-llm._tcp</string>
+	</array>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>PhoneClaw reads calendar events only when you ask for schedule summaries, availability checks, or local planning analysis.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>PhoneClaw uses Calendar access to create events and read schedules only when you ask for local planning analysis.</string>
 	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
 	<string>PhoneClaw needs to create calendar events</string>
 	<key>NSCameraUsageDescription</key>
@@ -47,12 +55,20 @@
 	<string>PhoneClaw reads Health data (steps, distance, active energy, heart rate, sleep, workouts, weight, and HRV) locally to generate summaries and insights. Nothing leaves your device.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>PhoneClaw does not write Health data. This permission description is included because HealthKit access requires a write-purpose string for App Store validation.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>PhoneClaw 在局域网内发现并连接你的 Mac,把推理交给 Mac 上更强的大模型运行。</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>PhoneClaw uses the microphone for LIVE voice conversations, including an active LIVE session that can continue while the app is in the background.</string>
 	<key>NSRemindersFullAccessUsageDescription</key>
 	<string>PhoneClaw needs Reminders access to create reminders</string>
 	<key>NSRemindersUsageDescription</key>
 	<string>PhoneClaw needs access to Reminders</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
 	<key>UIFileSharingEnabled</key>
 	<true/>
 	<key>UILaunchScreen</key>
@@ -73,23 +89,6 @@
 		<string>UIInterfaceOrientationPortraitUpsideDown</string>
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
-	</array>
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>audio</string>
-	</array>
-	<key>BGTaskSchedulerPermittedIdentifiers</key>
-	<array>
-		<string>com.kellyvv.phoneclaw.live-continuation</string>
-		<string>com.kellyvv.phoneclaw.liveland-continuation</string>
-	</array>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>PhoneClaw 在局域网内发现并连接你的 Mac,把推理交给 Mac 上更强的大模型运行。</string>
-	<key>NSSupportsLiveActivities</key>
-	<true/>
-	<key>NSBonjourServices</key>
-	<array>
-		<string>_phoneclaw-llm._tcp</string>
 	</array>
 </dict>
 </plist>
