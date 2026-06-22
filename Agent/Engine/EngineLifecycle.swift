@@ -210,11 +210,7 @@ extension AgentEngine {
         guard let model = availableModels.first(where: { $0.id == modelID }) else {
             return false
         }
-        if !model.requiresLocalArtifact {
-            return true
-        }
-        let state = installer.installState(for: modelID)
-        return state == .downloaded || state == .bundled
+        return modelHasRunnableArtifact(model)
     }
 
     func installedModelID(preferredIDs: [String?]) -> String? {
@@ -222,15 +218,29 @@ extension AgentEngine {
             guard let model = availableModels.first(where: { $0.id == modelID }) else {
                 continue
             }
-            guard !model.requiresLocalArtifact || installer.artifactPath(for: model) != nil else {
+            guard modelHasRunnableArtifact(model) else {
                 continue
             }
             return model.id
         }
 
         return availableModels.first { model in
-            !model.requiresLocalArtifact || installer.artifactPath(for: model) != nil
+            modelCanBeAutoSelected(model)
         }?.id
+    }
+
+    private func modelHasRunnableArtifact(_ model: ModelDescriptor) -> Bool {
+        if !model.requiresLocalArtifact {
+            return true
+        }
+        return installer.artifactPath(for: model) != nil
+    }
+
+    private func modelCanBeAutoSelected(_ model: ModelDescriptor) -> Bool {
+        guard model.artifactKind != .foundationModels else {
+            return false
+        }
+        return modelHasRunnableArtifact(model)
     }
 
     @discardableResult
@@ -240,7 +250,7 @@ extension AgentEngine {
         }
 
         if let currentModel = availableModels.first(where: { $0.id == config.selectedModelID }),
-           !currentModel.requiresLocalArtifact || installer.artifactPath(for: currentModel) != nil {
+           modelHasRunnableArtifact(currentModel) {
             _ = catalog.select(modelID: currentModel.id)
             return false
         }

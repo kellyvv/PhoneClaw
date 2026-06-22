@@ -194,9 +194,8 @@ final class FoundationModelsInferenceService: InferenceService {
                         if Task.isCancelled { break }
                         let next = snapshot.content
                         guard next.hasPrefix(emitted) else {
+                            // Consumers expect append-only deltas, so do not replay a revised snapshot.
                             emitted = next
-                            continuation.yield(next)
-                            chunkCount += 1
                             continue
                         }
                         let suffix = String(next.dropFirst(emitted.count))

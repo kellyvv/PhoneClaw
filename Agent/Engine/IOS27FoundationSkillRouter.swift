@@ -286,7 +286,7 @@ private enum IOS27FoundationSkillRouterRuntime {
 
     private static func resolvedSkillID(_ rawValue: String, candidates: [IOS27FoundationSkillCandidate]) -> String? {
         let normalized = normalizedIdentifier(rawValue)
-        guard !normalized.isEmpty, normalized != "null" else { return nil }
+        guard !normalized.isEmpty, normalized != "null", normalized != "none" else { return nil }
 
         for candidate in candidates {
             let ids = [

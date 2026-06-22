@@ -1669,6 +1669,9 @@ struct ConfigurationsView: View {
     }
 
     private func selectModelIfCurrentUnavailable(_ model: ModelDescriptor) {
+        guard model.artifactKind != .foundationModels else {
+            return
+        }
         guard !model.requiresLocalArtifact || engine.installer.artifactPath(for: model) != nil else {
             return
         }

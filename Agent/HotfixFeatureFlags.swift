@@ -53,7 +53,7 @@ enum HotfixFeatureFlags {
     }
 
     static var enableFoundationModelsInferenceService: Bool {
-        value(for: .enableFoundationModelsInferenceService, defaultValue: true)
+        value(for: .enableFoundationModelsInferenceService, defaultValue: false)
     }
 
     static var enableLiveFoundationTokenSource: Bool {

@@ -107,6 +107,7 @@ final class SkillRouterCompatibilityContractTests: XCTestCase {
         XCTAssertTrue(ios27Router.contains("GenerationSchema(root: root, dependencies: [])"))
         XCTAssertTrue(ios27Router.contains("schema: routeSchema"))
         XCTAssertTrue(ios27Router.contains("anyOf: skillIDChoices"))
+        XCTAssertTrue(ios27Router.contains("normalized != \"none\""))
         XCTAssertTrue(router.contains("registeredTools(for: entry.id).map"))
         XCTAssertTrue(router.contains("definition.metadata.triggers"))
         XCTAssertTrue(router.contains("definition.metadata.examples.map(\\.query)"))
@@ -136,11 +137,12 @@ final class SkillRouterCompatibilityContractTests: XCTestCase {
         let liteRTCatalog = try source("LLM/Backends/LiteRT/LiteRTCatalog.swift")
         let coordinator = try source("LLM/Core/ModelRuntimeCoordinator.swift")
         let agentEngine = try source("Agent/AgentEngine.swift")
+        let engineLifecycle = try source("Agent/Engine/EngineLifecycle.swift")
         let settings = try source("UI/ConfigurationsView.swift")
         let switcher = try source("UI/ContentView.swift")
 
         XCTAssertTrue(flags.contains("ENABLE_FOUNDATION_MODELS_INFERENCE_SERVICE"))
-        XCTAssertTrue(flags.contains("value(for: .enableFoundationModelsInferenceService, defaultValue: true)"))
+        XCTAssertTrue(flags.contains("value(for: .enableFoundationModelsInferenceService, defaultValue: false)"))
         XCTAssertTrue(llmTypes.contains("case foundationModels"))
         XCTAssertTrue(llmTypes.contains("public var requiresLocalArtifact: Bool"))
         XCTAssertTrue(llmTypes.contains("case .remoteEndpoint, .foundationModels:"))
@@ -158,6 +160,7 @@ final class SkillRouterCompatibilityContractTests: XCTestCase {
         XCTAssertTrue(service.contains("streamResponse("))
         XCTAssertTrue(service.contains("toolCallingMode: .disallowed"))
         XCTAssertTrue(service.contains("normalizedPrompt(fromGemmaPrompt:"))
+        XCTAssertFalse(service.contains("continuation.yield(next)"))
 
         XCTAssertTrue(dispatcher.contains("foundationModels: (any InferenceService)?"))
         XCTAssertTrue(dispatcher.contains("case .foundationModels:"))
@@ -166,7 +169,10 @@ final class SkillRouterCompatibilityContractTests: XCTestCase {
         XCTAssertTrue(coordinator.contains("requiresLocalArtifact: @escaping (String) -> Bool"))
         XCTAssertTrue(coordinator.contains("if requiresLocalArtifact(modelID)"))
         XCTAssertTrue(agentEngine.contains("FoundationModelsInferenceService()"))
+        XCTAssertTrue(engineLifecycle.contains("modelCanBeAutoSelected"))
+        XCTAssertTrue(engineLifecycle.contains("model.artifactKind != .foundationModels"))
         XCTAssertTrue(settings.contains("model.requiresLocalArtifact"))
+        XCTAssertTrue(settings.contains("model.artifactKind != .foundationModels"))
         XCTAssertTrue(switcher.contains("systemModels: [ModelDescriptor]"))
     }
 
