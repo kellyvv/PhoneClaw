@@ -14,11 +14,11 @@ import CoreImage
 //      Gemma 4 <|turn> 模板)，不是 messages、也不带 tools。
 //   2. 工具调用是「文本协议」：模型吐 <tool_call>…</tool_call> 纯文本，AgentEngine
 //      在 token 流上解析 + 手机本地执行 + 拼进下一轮 prompt。
-//   ⇒ 远程 backend 只干一件事：prompt → 反解析成 role 化 messages → POST 给 Mac →
+//   ⇒ 远程 backend 只干一件事：prompt → PromptRuntimeProfile → ChatCompletions messages → POST 给 Mac →
 //      把回来的 SSE 文本流逐块 yield。agent 循环 / 工具 / 多轮编排全留在 AgentEngine。
 //
-// Gemma 模板 → messages：镜像 MiniCPMVBackend.translateGemmaToQwen 的解析，让任何
-//   模型 (不止 Gemma) 都拿到正确 role 化对话，而不是把整坨 prompt 塞进单条 user。
+// Gemma 模板 → messages：复用 PromptRuntimeProfile 的结构化 transcript，让 Foundation
+//   Models / Remote ChatCompletions 走同一套 role 解析，而不是各自维护 parser。
 //
 // P0 取舍 (明确标记，P1 收敛)：
 //   - 端点 /v1/chat/completions + stream；SSE 逐行解析 choices[].delta.content。
@@ -154,14 +154,14 @@ final class RemoteInferenceService: InferenceService {
     // MARK: - Generation
 
     func generate(prompt: String) -> AsyncThrowingStream<String, Error> {
-        streamChat(messages: Self.gemmaPromptToMessages(prompt))
+        streamChat(messages: Self.chatCompletionMessages(from: prompt))
     }
 
     func generateRaw(text: String, images: [CIImage]) -> AsyncThrowingStream<String, Error> {
         if !images.isEmpty {
             PCLog.debug("[Remote] generateRaw: \(images.count) image(s) ignored (P0 text-only)")
         }
-        return streamChat(messages: Self.gemmaPromptToMessages(text))
+        return streamChat(messages: Self.chatCompletionMessages(from: text))
     }
 
     func generateMultimodal(
@@ -174,11 +174,8 @@ final class RemoteInferenceService: InferenceService {
         if !images.isEmpty || !audios.isEmpty {
             PCLog.debug("[Remote] generateMultimodal: \(images.count) img / \(audios.count) audio ignored (P0 text-only)")
         }
-        var msgs: [[String: String]] = []
-        let sys = systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !sys.isEmpty { msgs.append(["role": "system", "content": sys]) }
-        msgs.append(["role": "user", "content": prompt])
-        return streamChat(messages: msgs)
+        let profile = PromptRuntimeProfile(instructions: systemPrompt, prompt: prompt)
+        return streamChat(messages: profile.chatCompletionMessages().map(\.dictionary))
     }
 
     func generateLive(
@@ -332,34 +329,16 @@ final class RemoteInferenceService: InferenceService {
         (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["status"] as? String
     }
 
-    // MARK: - Gemma 模板 → OpenAI messages
+    // MARK: - Prompt profile → OpenAI messages
     //
-    // 镜像 MiniCPMVBackend.translateGemmaToQwen：把 PromptBuilder 渲染的
-    // <|turn>ROLE\nCONTENT<turn|> 拆成 role 化 messages。末尾的 open turn
-    // "<|turn>model\n"(没闭合) 是「请生成」提示，不闭合 → 自然不进 messages。
-    // 找不到 marker → 整段当单条 user (兜底)。
-    static func gemmaPromptToMessages(_ prompt: String) -> [[String: String]] {
-        let pattern = #"<\|turn>(\w+)\n([\s\S]*?)<turn\|>"#
-        guard let regex = try? NSRegularExpression(pattern: pattern) else {
-            return [["role": "user", "content": prompt]]
-        }
-        let ns = prompt as NSString
-        let matches = regex.matches(in: prompt, range: NSRange(location: 0, length: ns.length))
-        var messages: [[String: String]] = []
-        for m in matches where m.numberOfRanges == 3 {
-            let gemmaRole = ns.substring(with: m.range(at: 1))
-            let content = ns.substring(with: m.range(at: 2))
-            let role: String
-            switch gemmaRole {
-            case "model":  role = "assistant"
-            case "system": role = "system"
-            case "user":   role = "user"
-            default:       role = "user"   // 未知角色降级为 user
-            }
-            guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
-            messages.append(["role": role, "content": content])
-        }
-        return messages.isEmpty ? [["role": "user", "content": prompt]] : messages
+    // `PromptRuntimeProfile` is the compatibility bridge shared with the iOS 27
+    // Foundation Models adapter. Remote keeps native tool calling disabled at the
+    // gateway boundary; PhoneClaw's text tool protocol still drives execution.
+    static func chatCompletionMessages(from prompt: String) -> [[String: String]] {
+        PromptRuntimeProfile
+            .fromGemmaPrompt(prompt, includeSystemTurnsInPrompt: false)
+            .chatCompletionMessages()
+            .map(\.dictionary)
     }
 }
 

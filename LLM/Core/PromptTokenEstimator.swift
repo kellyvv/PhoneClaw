@@ -272,6 +272,56 @@ public struct PromptRuntimeProfile: Sendable, Codable, Equatable {
         }
         .joined(separator: "\n\n")
     }
+
+    public func chatCompletionMessages() -> [PromptChatMessage] {
+        var messages: [PromptChatMessage] = []
+        if let instructions {
+            messages.append(PromptChatMessage(role: "system", content: instructions))
+        }
+
+        if !transcript.turns.isEmpty {
+            for turn in transcript.turns where turn.role != .system {
+                let role: String
+                switch turn.role {
+                case .user:
+                    role = "user"
+                case .assistant:
+                    role = "assistant"
+                case .tool, .unknown:
+                    // PhoneClaw tools are still represented by the app's text protocol.
+                    // OpenAI-compatible gateways may reject native "tool" messages without
+                    // tool_call_id, so keep non-user/assistant evidence as plain user context.
+                    role = "user"
+                case .system:
+                    continue
+                }
+                let content = turn.content.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !content.isEmpty else { continue }
+                messages.append(PromptChatMessage(role: role, content: content))
+            }
+        } else {
+            let content = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !content.isEmpty {
+                messages.append(PromptChatMessage(role: "user", content: content))
+            }
+        }
+
+        return messages.isEmpty ? [PromptChatMessage(role: "user", content: prompt)] : messages
+    }
+}
+
+public struct PromptChatMessage: Sendable, Codable, Equatable {
+    public let role: String
+    public let content: String
+
+    public init(role: String, content: String) {
+        self.role = role
+        self.content = content
+    }
+
+    public var dictionary: [String: String] {
+        ["role": role, "content": content]
+    }
 }
 
 public struct PromptTokenBreakdown: Sendable, Codable, Equatable {

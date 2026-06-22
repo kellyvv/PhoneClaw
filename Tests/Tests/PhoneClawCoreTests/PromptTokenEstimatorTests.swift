@@ -194,4 +194,32 @@ final class PromptTokenEstimatorTests: XCTestCase {
         XCTAssertEqual(profile.transcript.turns.count, 3)
         XCTAssertEqual(profile.tokenBreakdown.totalTokens, PromptTokenEstimator.estimate(prompt))
     }
+
+    func testPromptRuntimeProfileBuildsChatCompletionMessages() {
+        let prompt = """
+        <|turn>system
+        Follow PhoneClaw rules.
+        <turn|><|turn>user
+        查今天步数
+        <turn|><|turn>model
+        <tool_call>{"name":"health-query","arguments":{}}</tool_call>
+        <turn|><|turn>tool
+        {"steps":1200}
+        <turn|><|turn>model
+
+        """
+
+        let messages = PromptRuntimeProfile
+            .fromGemmaPrompt(prompt, includeSystemTurnsInPrompt: false)
+            .chatCompletionMessages()
+
+        XCTAssertEqual(messages.count, 4)
+        XCTAssertEqual(messages[0], PromptChatMessage(role: "system", content: "Follow PhoneClaw rules."))
+        XCTAssertEqual(messages[1], PromptChatMessage(role: "user", content: "查今天步数"))
+        XCTAssertEqual(
+            messages[2],
+            PromptChatMessage(role: "assistant", content: "<tool_call>{\"name\":\"health-query\",\"arguments\":{}}</tool_call>")
+        )
+        XCTAssertEqual(messages[3], PromptChatMessage(role: "user", content: "{\"steps\":1200}"))
+    }
 }

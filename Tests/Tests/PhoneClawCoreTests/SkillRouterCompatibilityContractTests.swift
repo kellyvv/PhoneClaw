@@ -221,12 +221,15 @@ final class SkillRouterCompatibilityContractTests: XCTestCase {
         let memoryPolicy = try source("Agent/Engine/ConversationMemoryPolicy.swift")
         let observation = try source("Agent/Engine/PromptObservation.swift")
         let helpers = try source("Agent/Engine/PromptPipelineHelpers.swift")
+        let remote = try source("LLM/Backends/Remote/RemoteInferenceService.swift")
 
         XCTAssertTrue(estimator.contains("struct PromptTranscript"))
         XCTAssertTrue(estimator.contains("enum PromptTranscriptRole"))
         XCTAssertTrue(estimator.contains("struct PromptRuntimeProfile"))
+        XCTAssertTrue(estimator.contains("struct PromptChatMessage"))
         XCTAssertTrue(estimator.contains("fromGemmaPrompt("))
         XCTAssertTrue(estimator.contains("includeSystemTurnsInPrompt"))
+        XCTAssertTrue(estimator.contains("chatCompletionMessages()"))
         XCTAssertTrue(estimator.contains("struct PromptTokenBreakdown"))
         XCTAssertTrue(estimator.contains("estimateBreakdown(_ prompt: String)"))
         XCTAssertTrue(estimator.contains("estimateTranscript("))
@@ -247,6 +250,13 @@ final class SkillRouterCompatibilityContractTests: XCTestCase {
         XCTAssertTrue(helpers.contains("let promptTokenBreakdown = plan.budgetDecision.promptTokenBreakdown"))
         XCTAssertTrue(helpers.contains("prompt_turn_count: promptTokenBreakdown.turnCount"))
         XCTAssertTrue(helpers.contains("prompt_system_tokens: promptTokenBreakdown.systemTokens"))
+
+        XCTAssertTrue(remote.contains("PromptRuntimeProfile"))
+        XCTAssertTrue(remote.contains("chatCompletionMessages(from prompt: String)"))
+        XCTAssertTrue(remote.contains(".fromGemmaPrompt(prompt, includeSystemTurnsInPrompt: false)"))
+        XCTAssertTrue(remote.contains(".chatCompletionMessages()"))
+        XCTAssertFalse(remote.contains("NSRegularExpression(pattern:"))
+        XCTAssertFalse(remote.contains("gemmaPromptToMessages"))
     }
 
     func testIOS27FoundationRouterUsesIOS27ModelAPIsWithDiagnostics() throws {
