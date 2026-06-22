@@ -229,7 +229,7 @@ extension AgentEngine {
         let stickyEligibleSkillID: String? = {
             guard let id = matchedSkillIdsForTurn.first,
                   let def = skillRegistry.getDefinition(id) else { return nil }
-            return (def.metadata.type == .device || def.metadata.type == .network) ? id : nil
+            return def.metadata.history.keepActiveSkill ? id : nil
         }()
 
         if requiresMultimodal {
@@ -350,6 +350,7 @@ extension AgentEngine {
             return PromptBuilder.PreloadedSkill(
                 id: id,
                 displayName: def.metadata.name,
+                activationMode: def.metadata.activationMode,
                 body: body,
                 allowedTools: def.metadata.allowedTools,
                 compactSchema: useCompactSchema ? compact : body
@@ -418,7 +419,10 @@ extension AgentEngine {
             while exceedsSafeContextBudget(textPromptPlan.budgetDecision) {
                 guard HotfixFeatureFlags.enableHistoryTrim,
                       let nextTrimmedHistory = ConversationMemoryPolicy.nextTrimmedPriorHistory(
-                        from: trimmedPriorHistory
+                        from: trimmedPriorHistory,
+                        historyPolicyForSkillOrTool: { [weak self] name in
+                            self?.historyPolicy(forSkillOrToolName: name)
+                        }
                       ) else {
                     let hardRejectMessage = PromptLocale.current.hardRejectContextTooLong
                     if let existingIndex = earlyAssistantPlaceholderIndex,

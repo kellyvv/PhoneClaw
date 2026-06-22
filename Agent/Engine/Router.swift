@@ -242,9 +242,8 @@ extension AgentEngine {
     ///   固定窗口 4 经常错过 skill 上下文, 导致多轮对话失去 sticky 能力。
     ///   语义边界与 message 数量解耦, 任何长度的 agent loop 都能正确接住。
     ///
-    /// P1-1 源头修复: AgentEngine 只对 type: device/network 的 skill 打 eager tag,
-    /// content skill (translate 等) 从源头不参与 sticky, 避免一问一答
-    /// 纯变换后的闲聊被污染回 translate。
+    /// P1-1 源头修复: AgentEngine 只对 history.keep_active_skill=true 的 skill 打 eager tag,
+    /// content skill 默认不参与 sticky, 避免一问一答纯变换后的闲聊被污染回 translate。
     ///
     /// 这是纯框架层判定 — 不感知任何具体 skill 名, 不硬编任何业务字符串。
     func recentActiveSkillId() -> String? {
@@ -268,12 +267,15 @@ extension AgentEngine {
 
             // name 可能是 skill id (如 "calendar") 或 tool name (如 "calendar-create-event")。
             let asSkillId = skillRegistry.canonicalSkillId(for: name)
-            if let def = skillRegistry.getDefinition(asSkillId), def.isEnabled {
+            if let def = skillRegistry.getDefinition(asSkillId),
+               def.isEnabled,
+               def.metadata.history.keepActiveSkill {
                 return asSkillId
             }
             if let skillId = skillRegistry.findSkillId(forTool: name),
                let def = skillRegistry.getDefinition(skillId),
-               def.isEnabled {
+               def.isEnabled,
+               def.metadata.history.keepActiveSkill {
                 return skillId
             }
         }

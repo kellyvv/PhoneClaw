@@ -53,6 +53,18 @@ extension AgentEngine {
         skillIds.contains { requiresTimeAnchor(forSkillId: $0) }
     }
 
+    func historyPolicy(forSkillOrToolName name: String) -> SkillHistoryPolicy? {
+        let canonical = skillRegistry.canonicalSkillId(for: name)
+        if let definition = skillRegistry.getDefinition(canonical) {
+            return definition.metadata.history
+        }
+        if let skillId = skillRegistry.findSkillId(forTool: name),
+           let definition = skillRegistry.getDefinition(skillId) {
+            return definition.metadata.history
+        }
+        return nil
+    }
+
     func handleLoadSkill(skillName: String) -> String? {
         let resolvedSkillName = skillRegistry.canonicalSkillId(for: skillName)
         guard let entry = skillEntries.first(where: { $0.id == resolvedSkillName }),

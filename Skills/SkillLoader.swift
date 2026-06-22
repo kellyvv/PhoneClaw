@@ -37,6 +37,32 @@ enum SkillType: String, Sendable {
     case network
 }
 
+enum SkillActivationMode: String, Sendable {
+    case prompt
+    case instructions
+    case none
+
+    var injectsPromptMaterial: Bool {
+        self != .none
+    }
+}
+
+struct SkillHistoryPolicy: Sendable {
+    let keepActiveSkill: Bool
+    let dropCompletedToolCalls: Bool
+    let summarizeOldEvidence: Bool
+    let preservePendingClarification: Bool
+
+    static func defaultPolicy(for type: SkillType) -> SkillHistoryPolicy {
+        SkillHistoryPolicy(
+            keepActiveSkill: type == .device || type == .network,
+            dropCompletedToolCalls: true,
+            summarizeOldEvidence: true,
+            preservePendingClarification: true
+        )
+    }
+}
+
 struct SkillMetadata {
     let id: String              // 目录名 "clipboard"
     let name: String            // 默认英文名 / 回退显示名
@@ -46,6 +72,8 @@ struct SkillMetadata {
     let icon: String
     let disabled: Bool
     let type: SkillType         // 类别 (frontmatter `type:` 必填, 缺省视为 .device)
+    let activationMode: SkillActivationMode
+    let history: SkillHistoryPolicy
     let requiresTimeAnchor: Bool
     let triggers: [String]
     let allowedTools: [String]
@@ -147,6 +175,8 @@ enum SkillLoader {
 
         let typeRaw = (frontmatter["type"] as? String)?.lowercased() ?? "device"
         let type = SkillType(rawValue: typeRaw) ?? .device
+        let activationMode = parseActivationMode(frontmatter["activation"])
+        let history = parseHistoryPolicy(frontmatter["history"], defaultFor: type)
 
         let metadata = SkillMetadata(
             id: id,
@@ -157,6 +187,8 @@ enum SkillLoader {
             icon: frontmatter["icon"] as? String ?? "wrench",
             disabled: frontmatter["disabled"] as? Bool ?? false,
             type: type,
+            activationMode: activationMode,
+            history: history,
             requiresTimeAnchor: frontmatter["requires-time-anchor"] as? Bool ?? false,
             triggers: frontmatter["triggers"] as? [String] ?? [],
             allowedTools: frontmatter["allowed-tools"] as? [String] ?? [],
@@ -203,6 +235,50 @@ enum SkillLoader {
             return String(content[bodyRange]).trimmingCharacters(in: .whitespacesAndNewlines)
         }
         return content.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func parseActivationMode(_ raw: Any?) -> SkillActivationMode {
+        let rawMode: String?
+        if let dict = raw as? [String: Any] {
+            rawMode = dict["mode"] as? String
+        } else {
+            rawMode = raw as? String
+        }
+        let normalized = rawMode?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        return normalized.flatMap(SkillActivationMode.init(rawValue:)) ?? .prompt
+    }
+
+    private static func parseHistoryPolicy(_ raw: Any?, defaultFor type: SkillType) -> SkillHistoryPolicy {
+        let defaults = SkillHistoryPolicy.defaultPolicy(for: type)
+        guard let dict = raw as? [String: Any] else { return defaults }
+
+        return SkillHistoryPolicy(
+            keepActiveSkill: boolValue(dict, keys: ["keep_active_skill", "keep-active-skill"]) ?? defaults.keepActiveSkill,
+            dropCompletedToolCalls: boolValue(dict, keys: ["drop_completed_tool_calls", "drop-completed-tool-calls"]) ?? defaults.dropCompletedToolCalls,
+            summarizeOldEvidence: boolValue(dict, keys: ["summarize_old_evidence", "summarize-old-evidence"]) ?? defaults.summarizeOldEvidence,
+            preservePendingClarification: boolValue(dict, keys: ["preserve_pending_clarification", "preserve-pending-clarification"]) ?? defaults.preservePendingClarification
+        )
+    }
+
+    private static func boolValue(_ dict: [String: Any], keys: [String]) -> Bool? {
+        for key in keys {
+            if let value = dict[key] as? Bool {
+                return value
+            }
+            if let value = dict[key] as? String {
+                switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+                case "1", "true", "yes", "on":
+                    return true
+                case "0", "false", "no", "off":
+                    return false
+                default:
+                    continue
+                }
+            }
+        }
+        return nil
     }
 
     private static func parseExamples(_ raw: Any?) -> [SkillExample] {

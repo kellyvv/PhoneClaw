@@ -267,6 +267,7 @@ struct PromptBuilder {
     struct PreloadedSkill {
         let id: String
         let displayName: String
+        let activationMode: SkillActivationMode
         /// Full SKILL.md body — 旧字段, Live voice 路径仍在用. 主 agent 路径改用 compactSchema.
         let body: String
         let allowedTools: [String]
@@ -434,6 +435,7 @@ struct PromptBuilder {
                 )
             }
             for sk in preloadedSkills {
+                guard sk.activationMode.injectsPromptMaterial else { continue }
                 prompt += "\n━━ Skill: \(sk.displayName) ━━\n"
                 prompt += "<untrusted_skill_instruction_block>\n"
                 prompt += sanitizedPreloadedSkillInstructions(sk.compactSchema) + "\n"

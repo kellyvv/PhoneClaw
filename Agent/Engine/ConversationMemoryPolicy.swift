@@ -130,22 +130,34 @@ struct ConversationMemoryPolicy {
     }
 
     static func nextTrimmedPriorHistory(from priorHistory: [ChatMessage]) -> [ChatMessage]? {
+        nextTrimmedPriorHistory(from: priorHistory, historyPolicyForSkillOrTool: nil)
+    }
+
+    static func nextTrimmedPriorHistory(
+        from priorHistory: [ChatMessage],
+        historyPolicyForSkillOrTool: ((String) -> SkillHistoryPolicy?)?
+    ) -> [ChatMessage]? {
         guard !priorHistory.isEmpty else { return nil }
 
-        if let skillResultIndex = priorHistory.firstIndex(where: { $0.role == .skillResult }) {
+        for skillResultIndex in priorHistory.indices where priorHistory[skillResultIndex].role == .skillResult {
             var trimmed = priorHistory
             let message = trimmed[skillResultIndex]
+            let policy = message.skillName.flatMap { historyPolicyForSkillOrTool?($0) }
             if message.skillResultKind == .toolExecution, let toolName = message.skillName {
                 let summary = canonicalToolResult(toolName: toolName, toolResult: message.content).summary
                 let normalizedSummary = summary.trimmingCharacters(in: .whitespacesAndNewlines)
                 let normalizedDetail = message.content.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !normalizedSummary.isEmpty && normalizedSummary != normalizedDetail {
+                if policy?.summarizeOldEvidence != false,
+                   !normalizedSummary.isEmpty,
+                   normalizedSummary != normalizedDetail {
                     trimmed[skillResultIndex].update(content: normalizedSummary)
                     return trimmed
                 }
             }
-            trimmed.remove(at: skillResultIndex)
-            return trimmed
+            if policy?.dropCompletedToolCalls != false {
+                trimmed.remove(at: skillResultIndex)
+                return trimmed
+            }
         }
 
         let protectedAssistantIndex = priorHistory.lastIndex(where: { $0.role == .assistant })

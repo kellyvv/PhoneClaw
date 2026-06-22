@@ -118,7 +118,10 @@ class AgentEngine {
         skillEntries.filter(\.isEnabled).map {
             SkillInfo(name: $0.id, description: $0.description,
                      displayName: $0.name, icon: $0.icon,
-                     type: $0.type, requiresTimeAnchor: $0.requiresTimeAnchor,
+                     type: $0.type,
+                     activationMode: $0.activationMode,
+                     history: $0.history,
+                     requiresTimeAnchor: $0.requiresTimeAnchor,
                      samplePrompt: $0.samplePrompt,
                      chipPrompt: $0.chipPrompt,
                      chipLabel: $0.chipLabel)

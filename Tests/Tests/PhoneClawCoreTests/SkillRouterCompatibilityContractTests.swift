@@ -176,6 +176,35 @@ final class SkillRouterCompatibilityContractTests: XCTestCase {
         XCTAssertTrue(switcher.contains("systemModels: [ModelDescriptor]"))
     }
 
+    func testSkillContractV2MetadataFeedsRuntimePolicies() throws {
+        let loader = try source("Skills/SkillLoader.swift")
+        let skills = try source("Skills/Skills.swift")
+        let promptBuilder = try source("LLM/PromptBuilder.swift")
+        let processInput = try source("Agent/Engine/ProcessInput.swift")
+        let router = try source("Agent/Engine/Router.swift")
+        let memoryPolicy = try source("Agent/Engine/ConversationMemoryPolicy.swift")
+        let lifecycle = try source("Agent/Engine/EngineLifecycle.swift")
+        let toolChain = try source("Agent/Engine/ToolChain.swift")
+
+        XCTAssertTrue(loader.contains("enum SkillActivationMode"))
+        XCTAssertTrue(loader.contains("struct SkillHistoryPolicy"))
+        XCTAssertTrue(loader.contains("parseActivationMode(frontmatter[\"activation\"])"))
+        XCTAssertTrue(loader.contains("parseHistoryPolicy(frontmatter[\"history\"], defaultFor: type)"))
+        XCTAssertTrue(skills.contains("var activationMode: SkillActivationMode"))
+        XCTAssertTrue(skills.contains("var history: SkillHistoryPolicy"))
+
+        XCTAssertTrue(promptBuilder.contains("let activationMode: SkillActivationMode"))
+        XCTAssertTrue(promptBuilder.contains("guard sk.activationMode.injectsPromptMaterial else { continue }"))
+        XCTAssertTrue(processInput.contains("activationMode: def.metadata.activationMode"))
+        XCTAssertTrue(processInput.contains("def.metadata.history.keepActiveSkill"))
+        XCTAssertTrue(router.contains("def.metadata.history.keepActiveSkill"))
+        XCTAssertTrue(lifecycle.contains("historyPolicy(forSkillOrToolName"))
+        XCTAssertTrue(memoryPolicy.contains("historyPolicyForSkillOrTool"))
+        XCTAssertTrue(memoryPolicy.contains("policy?.summarizeOldEvidence != false"))
+        XCTAssertTrue(memoryPolicy.contains("policy?.dropCompletedToolCalls != false"))
+        XCTAssertTrue(toolChain.contains("activationMode.injectsPromptMaterial"))
+    }
+
     func testIOS27FoundationRouterUsesIOS27ModelAPIsWithDiagnostics() throws {
         let router = try source("Agent/Engine/Router.swift")
         let ios27Router = try source("Agent/Engine/IOS27FoundationSkillRouter.swift")

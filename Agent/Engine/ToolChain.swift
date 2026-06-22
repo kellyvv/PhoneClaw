@@ -494,6 +494,12 @@ extension AgentEngine {
         let uniqueSkillIds = Array(NSOrderedSet(array: skillIds)) as? [String] ?? skillIds
 
         return uniqueSkillIds.compactMap { skillId -> String? in
+            let activationMode =
+                preloadedById[skillId]?.activationMode
+                ?? skillRegistry.getDefinition(skillId)?.metadata.activationMode
+                ?? .prompt
+            guard activationMode.injectsPromptMaterial else { return nil }
+
             let displayName =
                 preloadedById[skillId]?.displayName
                 ?? skillRegistry.getDefinition(skillId)?.metadata.name
