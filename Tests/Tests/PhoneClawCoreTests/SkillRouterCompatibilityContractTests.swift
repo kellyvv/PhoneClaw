@@ -202,6 +202,10 @@ final class SkillRouterCompatibilityContractTests: XCTestCase {
         XCTAssertTrue(memoryPolicy.contains("historyPolicyForSkillOrTool"))
         XCTAssertTrue(memoryPolicy.contains("policy?.summarizeOldEvidence != false"))
         XCTAssertTrue(memoryPolicy.contains("policy?.dropCompletedToolCalls != false"))
+        XCTAssertTrue(memoryPolicy.contains("pendingClarificationProtectedIndices"))
+        XCTAssertTrue(memoryPolicy.contains("looksLikePendingClarification"))
+        XCTAssertTrue(memoryPolicy.contains("policy?.preservePendingClarification == true"))
+        XCTAssertTrue(memoryPolicy.contains("guard !protectedIndices.contains(skillResultIndex) else { continue }"))
         XCTAssertTrue(toolChain.contains("activationMode.injectsPromptMaterial"))
     }
 

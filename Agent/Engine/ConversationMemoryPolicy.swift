@@ -138,8 +138,13 @@ struct ConversationMemoryPolicy {
         historyPolicyForSkillOrTool: ((String) -> SkillHistoryPolicy?)?
     ) -> [ChatMessage]? {
         guard !priorHistory.isEmpty else { return nil }
+        let protectedIndices = pendingClarificationProtectedIndices(
+            in: priorHistory,
+            historyPolicyForSkillOrTool: historyPolicyForSkillOrTool
+        )
 
         for skillResultIndex in priorHistory.indices where priorHistory[skillResultIndex].role == .skillResult {
+            guard !protectedIndices.contains(skillResultIndex) else { continue }
             var trimmed = priorHistory
             let message = trimmed[skillResultIndex]
             let policy = message.skillName.flatMap { historyPolicyForSkillOrTool?($0) }
@@ -161,10 +166,14 @@ struct ConversationMemoryPolicy {
         }
 
         let protectedAssistantIndex = priorHistory.lastIndex(where: { $0.role == .assistant })
+        var allProtectedIndices = protectedIndices
+        if let protectedAssistantIndex {
+            allProtectedIndices.insert(protectedAssistantIndex)
+        }
 
         if let assistantIndex = priorHistory.indices.first(where: {
             priorHistory[$0].role == .assistant
-                && $0 != protectedAssistantIndex
+                && !allProtectedIndices.contains($0)
                 && priorHistory[$0].content.count > 240
         }) {
             var trimmed = priorHistory
@@ -175,7 +184,7 @@ struct ConversationMemoryPolicy {
         }
 
         if let assistantIndex = priorHistory.indices.first(where: {
-            priorHistory[$0].role == .assistant && $0 != protectedAssistantIndex
+            priorHistory[$0].role == .assistant && !allProtectedIndices.contains($0)
         }) {
             var trimmed = priorHistory
             trimmed.remove(at: assistantIndex)
@@ -184,7 +193,7 @@ struct ConversationMemoryPolicy {
 
         if let dropRange = oldestDroppableTurnRange(
             in: priorHistory,
-            protectedAssistantIndex: protectedAssistantIndex
+            protectedIndices: allProtectedIndices
         ) {
             var trimmed = priorHistory
             trimmed.removeSubrange(dropRange)
@@ -201,21 +210,64 @@ struct ConversationMemoryPolicy {
         return prefix + "…"
     }
 
+    private static func pendingClarificationProtectedIndices(
+        in priorHistory: [ChatMessage],
+        historyPolicyForSkillOrTool: ((String) -> SkillHistoryPolicy?)?
+    ) -> Set<Int> {
+        guard let historyPolicyForSkillOrTool,
+              let assistantIndex = priorHistory.indices.last,
+              priorHistory[assistantIndex].role == .assistant,
+              looksLikePendingClarification(priorHistory[assistantIndex].content) else {
+            return []
+        }
+
+        let policy: SkillHistoryPolicy? = priorHistory[..<assistantIndex].reversed().compactMap { message in
+            guard let name = message.skillName,
+                  let policy = historyPolicyForSkillOrTool(name) else { return nil }
+            return policy
+        }.first
+        guard policy?.preservePendingClarification == true else { return [] }
+
+        let turnStart = priorHistory[..<assistantIndex].lastIndex(where: { $0.role == .user })
+            ?? assistantIndex
+        return Set(turnStart...assistantIndex)
+    }
+
+    private static func looksLikePendingClarification(_ content: String) -> Bool {
+        let text = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return false }
+        if text.contains("?") || text.contains("？") || text.contains("吗") || text.contains("呢") {
+            return true
+        }
+
+        let lowercased = text.lowercased()
+        let markers = [
+            "请提供", "请补充", "请告诉", "需要提供", "需要补充",
+            "什么时候", "什么时间", "哪一个", "哪个", "哪位",
+            "电话号", "电话号码", "手机号", "主题是什么", "标题是什么",
+            "要安排什么", "提醒您做什么",
+            "please provide", "please specify", "which one", "which contact",
+            "when should", "what time", "phone number", "what would you like",
+            "what's the topic", "what is the topic",
+            "教えて", "指定", "どれ", "いつ", "何時", "電話", "件名"
+        ]
+        return markers.contains { lowercased.contains($0.lowercased()) }
+    }
+
     private static func oldestDroppableTurnRange(
         in priorHistory: [ChatMessage],
-        protectedAssistantIndex: Int?
+        protectedIndices: Set<Int>
     ) -> Range<Int>? {
         let userIndices = priorHistory.indices.filter { priorHistory[$0].role == .user }
         guard !userIndices.isEmpty else { return nil }
 
-        let protectedIndex = protectedAssistantIndex ?? Int.max
         for (offset, userIndex) in userIndices.enumerated() {
             let nextUserIndex = offset + 1 < userIndices.count
                 ? userIndices[offset + 1]
                 : priorHistory.count
-            if nextUserIndex <= protectedIndex {
-                return userIndex..<nextUserIndex
-            }
+            let range = userIndex..<nextUserIndex
+            guard !range.contains(where: { protectedIndices.contains($0) }) else { continue }
+            return range
         }
 
         return nil
