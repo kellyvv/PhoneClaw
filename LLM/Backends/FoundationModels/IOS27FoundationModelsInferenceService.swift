@@ -59,10 +59,7 @@ final class FoundationModelsInferenceService: InferenceService {
 
         statusMessage = tr("正在准备 Apple Foundation Models", "Preparing Apple Foundation Models", "Apple Foundation Models 準備中")
         let start = CFAbsoluteTimeGetCurrent()
-        let prepared = LanguageModelSession(
-            model: model,
-            instructions: Self.defaultInstructions
-        )
+        let prepared = makeSession(instructions: Self.defaultInstructions)
         prepared.prewarm()
 
         session = prepared
@@ -99,10 +96,7 @@ final class FoundationModelsInferenceService: InferenceService {
             throw FoundationModelsInferenceError.unavailable(Self.availabilityDescription(model.availability))
         }
         liveSystemPrompt = systemPrompt
-        liveSession = LanguageModelSession(
-            model: model,
-            instructions: Self.liveInstructions(systemPrompt)
-        )
+        liveSession = makeSession(instructions: Self.liveInstructions(systemPrompt))
         liveSession?.prewarm()
     }
 
@@ -149,10 +143,7 @@ final class FoundationModelsInferenceService: InferenceService {
             PCLog.debug("[FoundationModels] generateLive ignores \(images.count) image(s) / \(audios.count) audio input(s); text-only adapter")
         }
         if liveSession == nil {
-            liveSession = LanguageModelSession(
-                model: SystemLanguageModel.default,
-                instructions: Self.liveInstructions(liveSystemPrompt)
-            )
+            liveSession = makeSession(instructions: Self.liveInstructions(liveSystemPrompt))
             liveSession?.prewarm()
         }
         return streamText(prompt: prompt, using: liveSession)
@@ -298,13 +289,35 @@ final class FoundationModelsInferenceService: InferenceService {
         if profileSessionCache.count >= 4 {
             profileSessionCache.removeAll(keepingCapacity: true)
         }
-        let dynamicSession = LanguageModelSession(
-            model: model,
-            instructions: instructions
-        )
+        let dynamicSession = makeSession(instructions: instructions)
         dynamicSession.prewarm()
         profileSessionCache[instructions] = dynamicSession
         return dynamicSession
+    }
+
+    private func makeSession(instructions: String) -> LanguageModelSession {
+        let normalizedInstructions = instructions.trimmingCharacters(in: .whitespacesAndNewlines)
+        let effectiveInstructions = normalizedInstructions.isEmpty ? Self.defaultInstructions : normalizedInstructions
+        let profile = LanguageModelSession.Profile {
+            Instructions(effectiveInstructions)
+        }
+        .model(SystemLanguageModel.default)
+        .toolCallingMode(.disallowed)
+        .historyTransform { entries in
+            Self.trimTranscriptHistory(entries)
+        }
+        .transcriptErrorHandlingPolicy(.preserveTranscript)
+        .onToolCall { call in
+            PCLog.debug("[FoundationModels] native tool call observed but execution remains in PhoneClaw tool chain: \(call.toolName)")
+        }
+        return LanguageModelSession(profile: profile)
+    }
+
+    private static let maxTranscriptHistoryEntries = 24
+
+    private static func trimTranscriptHistory(_ entries: [Transcript.Entry]) -> [Transcript.Entry] {
+        guard entries.count > maxTranscriptHistoryEntries else { return entries }
+        return Array(entries.suffix(maxTranscriptHistoryEntries))
     }
 
     private static func availabilityDescription(_ availability: SystemLanguageModel.Availability) -> String {
