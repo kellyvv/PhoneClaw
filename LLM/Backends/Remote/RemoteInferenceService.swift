@@ -1,6 +1,10 @@
 import Foundation
 import CoreImage
 
+#if canImport(FoundationModels)
+import FoundationModels
+#endif
+
 // MARK: - Remote Inference Service (P0)
 //
 // 第 4 个推理 backend：把推理甩给局域网内 Mac 上的 OpenAI 兼容网关。
@@ -64,6 +68,7 @@ final class RemoteInferenceService: InferenceService {
 
     @ObservationIgnored private var streamTask: Task<Void, Never>?
     @ObservationIgnored private let session: URLSession
+    private static let defaultRemoteContextBudgetTokens = 8192
 
     // MARK: - Init
 
@@ -154,14 +159,20 @@ final class RemoteInferenceService: InferenceService {
     // MARK: - Generation
 
     func generate(prompt: String) -> AsyncThrowingStream<String, Error> {
-        streamChat(messages: Self.chatCompletionMessages(from: prompt))
+        streamChat(messages: Self.chatCompletionMessages(
+            from: prompt,
+            maxInputTokens: maxInputTokensForCurrentRequest()
+        ))
     }
 
     func generateRaw(text: String, images: [CIImage]) -> AsyncThrowingStream<String, Error> {
         if !images.isEmpty {
             PCLog.debug("[Remote] generateRaw: \(images.count) image(s) ignored (P0 text-only)")
         }
-        return streamChat(messages: Self.chatCompletionMessages(from: text))
+        return streamChat(messages: Self.chatCompletionMessages(
+            from: text,
+            maxInputTokens: maxInputTokensForCurrentRequest()
+        ))
     }
 
     func generateMultimodal(
@@ -175,7 +186,10 @@ final class RemoteInferenceService: InferenceService {
             PCLog.debug("[Remote] generateMultimodal: \(images.count) img / \(audios.count) audio ignored (P0 text-only)")
         }
         let profile = PromptRuntimeProfile(instructions: systemPrompt, prompt: prompt)
-        return streamChat(messages: profile.chatCompletionMessages().map(\.dictionary))
+        return streamChat(messages: profile
+            .applyingTokenBudget(maxInputTokens: maxInputTokensForCurrentRequest())
+            .chatCompletionMessages()
+            .map(\.dictionary))
     }
 
     func generateLive(
@@ -334,9 +348,23 @@ final class RemoteInferenceService: InferenceService {
     // `PromptRuntimeProfile` is the compatibility bridge shared with the iOS 27
     // Foundation Models adapter. Remote keeps native tool calling disabled at the
     // gateway boundary; PhoneClaw's text tool protocol still drives execution.
-    static func chatCompletionMessages(from prompt: String) -> [[String: String]] {
-        PromptRuntimeProfile
-            .fromGemmaPrompt(prompt, includeSystemTurnsInPrompt: false)
+    private func maxInputTokensForCurrentRequest() -> Int {
+        max(512, Self.defaultRemoteContextBudgetTokens - max(256, maxOutputTokens))
+    }
+
+    static func chatCompletionMessages(
+        from prompt: String,
+        maxInputTokens: Int? = nil
+    ) -> [[String: String]] {
+        let profile = PromptRuntimeProfile.fromGemmaPrompt(
+            prompt,
+            includeSystemTurnsInPrompt: false
+        )
+        let boundedProfile = maxInputTokens.map {
+            profile.applyingTokenBudget(maxInputTokens: $0)
+        } ?? profile
+
+        return boundedProfile
             .chatCompletionMessages()
             .map(\.dictionary)
     }
@@ -366,3 +394,201 @@ enum RemoteInferenceError: LocalizedError {
         }
     }
 }
+
+#if canImport(FoundationModels)
+@available(iOS 27.0, macOS 27.0, *)
+struct ChatCompletionsLanguageModel: LanguageModel, Sendable {
+    typealias Executor = ChatCompletionsLanguageModelExecutor
+
+    let baseURL: URL
+    let modelName: String
+    let authToken: String?
+
+    var capabilities: LanguageModelCapabilities {
+        LanguageModelCapabilities(capabilities: [])
+    }
+
+    var executorConfiguration: ChatCompletionsLanguageModelExecutor.Configuration {
+        ChatCompletionsLanguageModelExecutor.Configuration(
+            baseURL: baseURL,
+            modelName: modelName,
+            authToken: authToken
+        )
+    }
+}
+
+@available(iOS 27.0, macOS 27.0, *)
+struct ChatCompletionsLanguageModelExecutor: LanguageModelExecutor {
+    struct Configuration: Hashable, Sendable {
+        let baseURL: URL
+        let modelName: String
+        let authToken: String?
+    }
+
+    typealias Model = ChatCompletionsLanguageModel
+
+    let configuration: Configuration
+
+    init(configuration: Configuration) {
+        self.configuration = configuration
+    }
+
+    func prewarm(model: ChatCompletionsLanguageModel, transcript: Transcript) {
+        // Remote OpenAI-compatible gateways have no local cache to prewarm.
+    }
+
+    nonisolated func respond(
+        to request: LanguageModelExecutorGenerationRequest,
+        model: ChatCompletionsLanguageModel,
+        streamingInto channel: LanguageModelExecutorGenerationChannel
+    ) async throws {
+        var urlRequest = URLRequest(url: model.baseURL.appendingPathComponent("chat/completions"))
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        if let authToken = model.authToken {
+            urlRequest.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
+        }
+
+        let messages = Self.chatCompletionMessages(from: request.transcript)
+        let body: [String: Any] = [
+            "model": model.modelName,
+            "messages": messages,
+            "stream": true,
+            "stream_options": ["include_usage": true],
+            "temperature": request.generationOptions.temperature ?? 1.0,
+            "max_tokens": request.generationOptions.maximumResponseTokens ?? 1024
+        ]
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (bytes, response) = try await URLSession.shared.bytes(for: urlRequest)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            let code = (response as? HTTPURLResponse)?.statusCode ?? -1
+            throw ChatCompletionsLanguageModelError.httpStatus(code)
+        }
+
+        for try await line in bytes.lines {
+            guard line.hasPrefix("data:") else { continue }
+            let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
+            if payload.isEmpty { continue }
+            if payload == "[DONE]" { break }
+            guard let data = payload.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                continue
+            }
+
+            if let usage = json["usage"] as? [String: Any] {
+                await channel.send(.response(action: .updateUsage(
+                    input: .init(
+                        totalTokenCount: usage["prompt_tokens"] as? Int ?? 0,
+                        cachedTokenCount: 0
+                    ),
+                    output: .init(
+                        totalTokenCount: usage["completion_tokens"] as? Int ?? 0,
+                        reasoningTokenCount: 0
+                    )
+                )))
+                continue
+            }
+
+            guard let choices = json["choices"] as? [[String: Any]],
+                  let delta = choices.first?["delta"] as? [String: Any],
+                  let content = delta["content"] as? String,
+                  !content.isEmpty else {
+                continue
+            }
+            await channel.send(.response(action: .appendText(
+                content,
+                tokenCount: PromptTokenEstimator.estimate(content)
+            )))
+        }
+    }
+
+    private static func chatCompletionMessages(from transcript: Transcript) -> [[String: String]] {
+        var messages: [[String: String]] = []
+        for entry in transcript {
+            switch entry {
+            case .instructions(let instructions):
+                appendMessage(role: "system", segments: instructions.segments, to: &messages)
+            case .prompt(let prompt):
+                appendMessage(role: "user", segments: prompt.segments, to: &messages)
+            case .response(let response):
+                appendMessage(role: "assistant", segments: response.segments, to: &messages)
+            case .toolOutput(let output):
+                appendMessage(role: "user", segments: output.segments, to: &messages)
+            case .toolCalls(let calls):
+                let content = calls.map { call in
+                    RuntimeToolCall(
+                        name: call.toolName,
+                        arguments: FoundationModelsGeneratedContentBridge.dictionary(from: call.arguments),
+                        source: .nativeToolCall,
+                        callID: call.id,
+                        rawPayload: call.arguments.jsonString
+                    ).textProtocolEnvelope
+                }.joined(separator: "\n")
+                appendMessage(role: "assistant", content: content, to: &messages)
+            case .reasoning:
+                continue
+            @unknown default:
+                continue
+            }
+        }
+        return messages.isEmpty ? [["role": "user", "content": ""]] : messages
+    }
+
+    private static func appendMessage(
+        role: String,
+        segments: [Transcript.Segment],
+        to messages: inout [[String: String]]
+    ) {
+        let content = segments.map(segmentText).joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        appendMessage(role: role, content: content, to: &messages)
+    }
+
+    private static func appendMessage(
+        role: String,
+        content: String,
+        to messages: inout [[String: String]]
+    ) {
+        guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        messages.append(["role": role, "content": content])
+    }
+
+    private static func segmentText(_ segment: Transcript.Segment) -> String {
+        switch segment {
+        case .text(let text):
+            return text.content
+        case .structure(let structure):
+            return structure.content.jsonString
+        case .attachment(let attachment):
+            return attachment.description
+        case .custom(let custom):
+            return custom.description
+        @unknown default:
+            return segment.description
+        }
+    }
+}
+
+@available(iOS 27.0, macOS 27.0, *)
+private enum FoundationModelsGeneratedContentBridge {
+    static func dictionary(from content: GeneratedContent) -> [String: Any] {
+        guard let data = content.jsonString.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return [:]
+        }
+        return object
+    }
+}
+
+enum ChatCompletionsLanguageModelError: LocalizedError {
+    case httpStatus(Int)
+
+    var errorDescription: String? {
+        switch self {
+        case .httpStatus(let code):
+            return "Chat Completions gateway returned HTTP \(code)."
+        }
+    }
+}
+#endif

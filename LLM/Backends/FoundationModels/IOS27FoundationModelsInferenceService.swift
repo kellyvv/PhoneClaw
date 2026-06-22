@@ -166,22 +166,30 @@ final class FoundationModelsInferenceService: InferenceService {
             return AsyncThrowingStream { $0.finish(throwing: ModelBackendError.modelNotLoaded) }
         }
 
+        let boundedProfile = profile.applyingTokenBudget(
+            maxInputTokens: Self.maxInputTokens(
+                safeContextTokens: activeCapabilities?.safeContextBudgetTokens,
+                reservedOutputTokens: maxOutputTokens
+            )
+        )
         let requestSession = requestSession(
-            for: profile,
+            for: boundedProfile,
             fallback: sourceSession,
             runtimeToolScope: runtimeToolScope
         )
         return streamText(
-            prompt: profile.prompt,
+            prompt: boundedProfile.prompt,
             using: requestSession.session,
-            toolCallingMode: requestSession.toolCallingMode
+            toolCallingMode: requestSession.toolCallingMode,
+            nativeToolBridge: requestSession.nativeToolBridge
         )
     }
 
     private func streamText(
         prompt: String,
         using sourceSession: LanguageModelSession?,
-        toolCallingMode: GenerationOptions.ToolCallingMode = .disallowed
+        toolCallingMode: GenerationOptions.ToolCallingMode = .disallowed,
+        nativeToolBridge: FoundationModelsNativeToolBridge? = nil
     ) -> AsyncThrowingStream<String, Error> {
         guard isLoaded, let sourceSession else {
             return AsyncThrowingStream { $0.finish(throwing: ModelBackendError.modelNotLoaded) }
@@ -200,6 +208,7 @@ final class FoundationModelsInferenceService: InferenceService {
                 var emitted = ""
 
                 self.isGenerating = true
+                nativeToolBridge?.attach(continuation)
                 do {
                     let stream = sourceSession.streamResponse(
                         to: prompt,
@@ -239,6 +248,7 @@ final class FoundationModelsInferenceService: InferenceService {
                 }
 
                 let elapsed = CFAbsoluteTimeGetCurrent() - start
+                nativeToolBridge?.detach()
                 self.isGenerating = false
                 self.stats.ttftMs = firstChunkTime ?? 0
                 self.stats.totalChunks = chunkCount
@@ -316,6 +326,7 @@ final class FoundationModelsInferenceService: InferenceService {
     private struct RequestSession {
         let session: LanguageModelSession?
         let toolCallingMode: GenerationOptions.ToolCallingMode
+        let nativeToolBridge: FoundationModelsNativeToolBridge?
     }
 
     private func requestSession(
@@ -323,16 +334,29 @@ final class FoundationModelsInferenceService: InferenceService {
         fallback: LanguageModelSession?,
         runtimeToolScope: RuntimeToolScope
     ) -> RequestSession {
-        if let nativeSession = nativeToolSession(for: profile, runtimeToolScope: runtimeToolScope) {
-            return RequestSession(session: nativeSession, toolCallingMode: .allowed)
+        if let nativeRequest = nativeToolSession(for: profile, runtimeToolScope: runtimeToolScope) {
+            return RequestSession(
+                session: nativeRequest.session,
+                toolCallingMode: .allowed,
+                nativeToolBridge: nativeRequest.bridge
+            )
         }
-        return RequestSession(session: profileSession(for: profile, fallback: fallback), toolCallingMode: .disallowed)
+        return RequestSession(
+            session: profileSession(for: profile, fallback: fallback),
+            toolCallingMode: .disallowed,
+            nativeToolBridge: nil
+        )
+    }
+
+    private struct NativeToolRequest {
+        let session: LanguageModelSession
+        let bridge: FoundationModelsNativeToolBridge
     }
 
     private func nativeToolSession(
         for profile: PromptRuntimeProfile,
         runtimeToolScope: RuntimeToolScope
-    ) -> LanguageModelSession? {
+    ) -> NativeToolRequest? {
         guard HotfixFeatureFlags.enableFoundationModelsNativeTools,
               !runtimeToolScope.isEmpty else {
             return nil
@@ -348,17 +372,31 @@ final class FoundationModelsInferenceService: InferenceService {
             return nil
         }
 
+        let bridge = FoundationModelsNativeToolBridge()
         let nativeTools: [any Tool] = registeredTools.map {
-            PhoneClawFoundationModelsTool(registeredTool: $0)
+            PhoneClawFoundationModelsTool(registeredTool: $0, bridge: bridge)
         }
-        let dynamicSession = LanguageModelSession(
-            model: model,
-            tools: nativeTools,
-            instructions: Self.effectiveInstructions(profile.instructions)
-        )
+        let nativeProfile = LanguageModelSession.Profile {
+            Instructions(Self.effectiveInstructions(profile.instructions))
+            nativeTools
+        }
+        .model(model)
+        .toolCallingMode(.allowed)
+        .historyTransform { entries in
+            Self.trimTranscriptHistory(entries)
+        }
+        .transcriptErrorHandlingPolicy(.preserveTranscript)
+        .onToolCall { call in
+            bridge.record(call)
+        }
+        .onToolOutput { call, _ in
+            PCLog.debug("[FoundationModels] native tool output observed for \(call.toolName); PhoneClaw executes the mirrored runtime call in ToolChain")
+        }
+
+        let dynamicSession = LanguageModelSession(profile: nativeProfile)
         dynamicSession.prewarm()
         PCLog.debug("[FoundationModels] native tool scope enabled tools=\(registeredTools.map(\.name).joined(separator: ","))")
-        return dynamicSession
+        return NativeToolRequest(session: dynamicSession, bridge: bridge)
     }
 
     private func makeSession(instructions: String) -> LanguageModelSession {
@@ -384,6 +422,15 @@ final class FoundationModelsInferenceService: InferenceService {
     }
 
     private static let maxTranscriptHistoryEntries = 24
+
+    private static func maxInputTokens(
+        safeContextTokens: Int?,
+        reservedOutputTokens: Int
+    ) -> Int {
+        let context = max(safeContextTokens ?? 4096, 1024)
+        let reserved = max(256, reservedOutputTokens)
+        return max(512, context - reserved)
+    }
 
     private static func trimTranscriptHistory(_ entries: [Transcript.Entry]) -> [Transcript.Entry] {
         guard entries.count > maxTranscriptHistoryEntries else { return entries }
@@ -412,11 +459,113 @@ final class FoundationModelsInferenceService: InferenceService {
 }
 
 @available(iOS 27.0, macOS 27.0, *)
+private final class FoundationModelsNativeToolBridge: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: AsyncThrowingStream<String, Error>.Continuation?
+    private var pendingEnvelopes: [String] = []
+    private var emittedEnvelopes = Set<String>()
+
+    func attach(_ continuation: AsyncThrowingStream<String, Error>.Continuation) {
+        lock.lock()
+        self.continuation = continuation
+        let pending = pendingEnvelopes
+        pendingEnvelopes.removeAll(keepingCapacity: true)
+        lock.unlock()
+
+        for envelope in pending {
+            continuation.yield(envelope)
+        }
+    }
+
+    func detach() {
+        lock.lock()
+        continuation = nil
+        lock.unlock()
+    }
+
+    func record(_ call: Transcript.ToolCall) {
+        record(
+            name: call.toolName,
+            arguments: FoundationModelsGeneratedContentConverter.dictionary(from: call.arguments),
+            rawPayload: call.arguments.jsonString
+        )
+    }
+
+    func record(name: String, arguments: [String: Any], rawPayload: String?) {
+        let call = RuntimeToolCall(
+            name: name,
+            arguments: arguments,
+            source: .nativeToolCall,
+            rawPayload: rawPayload
+        )
+        let envelope = call.textProtocolEnvelope
+        lock.lock()
+        guard emittedEnvelopes.insert(envelope).inserted else {
+            lock.unlock()
+            return
+        }
+        let activeContinuation = continuation
+        if activeContinuation == nil {
+            pendingEnvelopes.append(envelope)
+        }
+        lock.unlock()
+
+        PCLog.debug("[FoundationModels] mirrored native tool call into PhoneClaw ToolChain: \(name)")
+        if let activeContinuation {
+            activeContinuation.yield(envelope)
+        }
+    }
+}
+
+@available(iOS 27.0, macOS 27.0, *)
+private enum FoundationModelsGeneratedContentConverter {
+    static func dictionary(from content: GeneratedContent) -> [String: Any] {
+        if let value = anyValue(from: content) as? [String: Any] {
+            return value
+        }
+        guard let data = content.jsonString.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return [:]
+        }
+        return object
+    }
+
+    private static func anyValue(from content: GeneratedContent) -> Any? {
+        switch content.kind {
+        case .null:
+            return nil
+        case .bool(let value):
+            return value
+        case .number(let value):
+            return value
+        case .string(let value):
+            return value
+        case .array(let values):
+            return values.compactMap { anyValue(from: $0) }
+        case .structure(let properties, let orderedKeys):
+            var result: [String: Any] = [:]
+            let keys = orderedKeys.isEmpty ? Array(properties.keys).sorted() : orderedKeys
+            for key in keys {
+                guard let value = properties[key],
+                      let converted = anyValue(from: value) else {
+                    continue
+                }
+                result[key] = converted
+            }
+            return result
+        @unknown default:
+            return nil
+        }
+    }
+}
+
+@available(iOS 27.0, macOS 27.0, *)
 private struct PhoneClawFoundationModelsTool: Tool, @unchecked Sendable {
     typealias Arguments = GeneratedContent
     typealias Output = String
 
     let registeredTool: RegisteredTool
+    let bridge: FoundationModelsNativeToolBridge
 
     var name: String { registeredTool.name }
 
@@ -436,15 +585,9 @@ private struct PhoneClawFoundationModelsTool: Tool, @unchecked Sendable {
     }
 
     func call(arguments: GeneratedContent) async throws -> String {
-        let args = Self.dictionary(from: arguments)
-        let result: CanonicalToolResult
-        if let executeCanonical = registeredTool.executeCanonical {
-            result = try await executeCanonical(args)
-        } else {
-            let raw = try await registeredTool.execute(args)
-            result = canonicalToolResult(toolName: registeredTool.name, toolResult: raw)
-        }
-        return Self.jsonPayload(for: result)
+        let args = FoundationModelsGeneratedContentConverter.dictionary(from: arguments)
+        bridge.record(name: registeredTool.name, arguments: args, rawPayload: arguments.jsonString)
+        return Self.externalExecutionAcknowledgement(toolName: registeredTool.name)
     }
 
     private static let schemaNamePrefix = "PhoneClawToolArguments_"
@@ -537,58 +680,17 @@ private struct PhoneClawFoundationModelsTool: Tool, @unchecked Sendable {
         }
     }
 
-    private static func dictionary(from content: GeneratedContent) -> [String: Any] {
-        if let value = anyValue(from: content) as? [String: Any] {
-            return value
-        }
-        guard let data = content.jsonString.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return [:]
-        }
-        return object
-    }
-
-    private static func anyValue(from content: GeneratedContent) -> Any? {
-        switch content.kind {
-        case .null:
-            return nil
-        case .bool(let value):
-            return value
-        case .number(let value):
-            return value
-        case .string(let value):
-            return value
-        case .array(let values):
-            return values.compactMap { anyValue(from: $0) }
-        case .structure(let properties, let orderedKeys):
-            var result: [String: Any] = [:]
-            let keys = orderedKeys.isEmpty ? Array(properties.keys).sorted() : orderedKeys
-            for key in keys {
-                guard let value = properties[key],
-                      let converted = anyValue(from: value) else {
-                    continue
-                }
-                result[key] = converted
-            }
-            return result
-        @unknown default:
-            return nil
-        }
-    }
-
-    private static func jsonPayload(for result: CanonicalToolResult) -> String {
-        var payload: [String: Any] = [
-            "success": result.success,
-            "summary": result.summary,
-            "detail": result.detail
+    private static func externalExecutionAcknowledgement(toolName: String) -> String {
+        let payload: [String: Any] = [
+            "success": true,
+            "tool": toolName,
+            "phoneclaw_external_execution": true,
+            "summary": "Tool request captured. PhoneClaw will execute it through the app ToolChain."
         ]
-        if let errorCode = result.errorCode {
-            payload["errorCode"] = errorCode
-        }
         guard JSONSerialization.isValidJSONObject(payload),
               let data = try? JSONSerialization.data(withJSONObject: payload),
               let json = String(data: data, encoding: .utf8) else {
-            return result.summary
+            return "Tool request captured. PhoneClaw will execute it through the app ToolChain."
         }
         return json
     }

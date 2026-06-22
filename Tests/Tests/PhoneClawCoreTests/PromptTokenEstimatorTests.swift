@@ -222,4 +222,39 @@ final class PromptTokenEstimatorTests: XCTestCase {
         )
         XCTAssertEqual(messages[3], PromptChatMessage(role: "user", content: "{\"steps\":1200}"))
     }
+
+    func testPromptRuntimeProfileAppliesStructuredTokenBudget() {
+        let baseInstructions = "Base runtime rules."
+        let system = "Use the active PhoneClaw skill contract."
+        let oldUser = "OLD_CONTEXT_SHOULD_DROP " + String(repeating: "previous health query details ", count: 40)
+        let recentUser = "查今天步数"
+        let prompt = """
+        <|turn>system
+        \(system)
+        <turn|><|turn>user
+        \(oldUser)
+        <turn|><|turn>model
+        I found yesterday's health data.
+        <turn|><|turn>tool
+        {"steps":9000,"date":"yesterday"}
+        <turn|><|turn>user
+        \(recentUser)
+        <turn|><|turn>model
+
+        """
+
+        let profile = PromptRuntimeProfile.fromGemmaPrompt(
+            prompt,
+            baseInstructions: baseInstructions,
+            includeSystemTurnsInPrompt: false
+        )
+        let bounded = profile.applyingTokenBudget(maxInputTokens: 32)
+
+        XCTAssertEqual(bounded.instructions, "\(baseInstructions)\n\n\(system)")
+        XCTAssertLessThanOrEqual(bounded.tokenBreakdown.totalTokens, 32)
+        XCTAssertTrue(bounded.prompt.contains("User:\n\(recentUser)"))
+        XCTAssertFalse(bounded.prompt.contains("System:"))
+        XCTAssertFalse(bounded.prompt.contains("OLD_CONTEXT_SHOULD_DROP"))
+        XCTAssertLessThan(bounded.transcript.turns.count, profile.transcript.turns.count)
+    }
 }

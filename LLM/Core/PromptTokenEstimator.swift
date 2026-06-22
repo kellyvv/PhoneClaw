@@ -146,6 +146,29 @@ public struct PromptTranscriptTurn: Sendable, Codable, Equatable {
         self.content = content
         self.tokenEstimate = tokenEstimate ?? PromptTokenEstimator.estimate(content)
     }
+
+    public func truncated(toTokenBudget maxTokens: Int) -> PromptTranscriptTurn? {
+        guard maxTokens > 0 else { return nil }
+        guard tokenEstimate > maxTokens else { return self }
+
+        var candidate = content
+        let ratio = max(0.05, min(1.0, Double(maxTokens) / Double(max(tokenEstimate, 1))))
+        let initialCount = max(1, Int(Double(candidate.count) * ratio * 0.9))
+        candidate = String(candidate.suffix(initialCount))
+
+        while PromptTokenEstimator.estimate(candidate) > maxTokens, candidate.count > 1 {
+            let nextCount = max(1, Int(Double(candidate.count) * 0.85))
+            candidate = String(candidate.suffix(nextCount))
+        }
+
+        let truncatedContent = "...\n\(candidate)"
+        return PromptTranscriptTurn(
+            role: role,
+            rawRole: rawRole,
+            content: truncatedContent,
+            tokenEstimate: PromptTokenEstimator.estimate(truncatedContent)
+        )
+    }
 }
 
 public struct PromptTranscript: Sendable, Codable, Equatable {
@@ -200,6 +223,37 @@ public struct PromptTranscript: Sendable, Codable, Equatable {
 
         return turns
     }
+
+    public func trimmingToTokenBudget(
+        _ maxTokens: Int,
+        preserveSystemTurns: Bool = true
+    ) -> PromptTranscript {
+        guard maxTokens > 0 else { return PromptTranscript(turns: []) }
+        let currentTokens = turns.reduce(0) { $0 + $1.tokenEstimate }
+        guard currentTokens > maxTokens else { return self }
+
+        let systemTurns = preserveSystemTurns ? turns.filter { $0.role == .system } : []
+        let systemTokens = systemTurns.reduce(0) { $0 + $1.tokenEstimate }
+        var remaining = max(0, maxTokens - systemTokens)
+        var retained: [PromptTranscriptTurn] = []
+
+        for turn in turns.reversed() {
+            if preserveSystemTurns, turn.role == .system {
+                continue
+            }
+            if turn.tokenEstimate <= remaining {
+                retained.append(turn)
+                remaining -= turn.tokenEstimate
+                continue
+            }
+            if retained.isEmpty, let truncated = turn.truncated(toTokenBudget: remaining) {
+                retained.append(truncated)
+            }
+            break
+        }
+
+        return PromptTranscript(turns: systemTurns + retained.reversed())
+    }
 }
 
 public struct PromptRuntimeProfile: Sendable, Codable, Equatable {
@@ -253,6 +307,55 @@ public struct PromptRuntimeProfile: Sendable, Codable, Equatable {
             transcript: transcript,
             tokenBreakdown: PromptTokenEstimator.estimateBreakdown(prompt)
         )
+    }
+
+    public func applyingTokenBudget(maxInputTokens: Int) -> PromptRuntimeProfile {
+        guard maxInputTokens > 0, tokenBreakdown.totalTokens > maxInputTokens else {
+            return self
+        }
+
+        if !transcript.turns.isEmpty {
+            let trimmedTranscript = transcript.trimmingToTokenBudget(
+                maxInputTokens,
+                preserveSystemTurns: false
+            )
+            let promptTurns = trimmedTranscript.turns.filter { $0.role != .system }
+            let trimmedPrompt = Self.renderPromptTurns(promptTurns)
+            return PromptRuntimeProfile(
+                instructions: instructions,
+                prompt: trimmedPrompt.isEmpty ? Self.truncatePlainPrompt(prompt, maxInputTokens: maxInputTokens) : trimmedPrompt,
+                transcript: trimmedTranscript,
+                tokenBreakdown: PromptTokenEstimator.estimateTranscript(trimmedTranscript)
+            )
+        }
+
+        return PromptRuntimeProfile(
+            instructions: instructions,
+            prompt: Self.truncatePlainPrompt(prompt, maxInputTokens: maxInputTokens),
+            transcript: transcript,
+            tokenBreakdown: PromptTokenBreakdown(
+                totalTokens: min(tokenBreakdown.totalTokens, maxInputTokens),
+                systemTokens: 0,
+                userTokens: min(tokenBreakdown.userTokens, maxInputTokens),
+                assistantTokens: 0,
+                toolTokens: 0,
+                otherTokens: 0,
+                formatOverheadTokens: 0,
+                turnCount: tokenBreakdown.turnCount
+            )
+        )
+    }
+
+    private static func truncatePlainPrompt(_ prompt: String, maxInputTokens: Int) -> String {
+        guard maxInputTokens > 0, PromptTokenEstimator.estimate(prompt) > maxInputTokens else {
+            return prompt
+        }
+        var candidate = prompt
+        while PromptTokenEstimator.estimate(candidate) > maxInputTokens, candidate.count > 1 {
+            let nextCount = max(1, Int(Double(candidate.count) * 0.85))
+            candidate = String(candidate.suffix(nextCount))
+        }
+        return "...\n\(candidate)"
     }
 
     private static func renderPromptTurns(_ turns: [PromptTranscriptTurn]) -> String {

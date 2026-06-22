@@ -221,6 +221,64 @@ public struct RuntimeToolCall: @unchecked Sendable {
         self.callID = callID
         self.rawPayload = rawPayload
     }
+
+    public var textProtocolEnvelope: String {
+        Self.textProtocolEnvelope(name: name, arguments: arguments)
+    }
+
+    public static func textProtocolEnvelope(name: String, arguments: [String: Any]) -> String {
+        let payload: [String: Any] = [
+            "name": name,
+            "arguments": jsonCompatibleDictionary(arguments)
+        ]
+        guard JSONSerialization.isValidJSONObject(payload),
+              let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]),
+              let json = String(data: data, encoding: .utf8) else {
+            return "<tool_call>{\"name\":\"\(escapedJSONString(name))\",\"arguments\":{}}</tool_call>"
+        }
+        return "<tool_call>\(json)</tool_call>"
+    }
+
+    private static func jsonCompatibleDictionary(_ dictionary: [String: Any]) -> [String: Any] {
+        var result: [String: Any] = [:]
+        for (key, value) in dictionary {
+            result[key] = jsonCompatibleValue(value)
+        }
+        return result
+    }
+
+    private static func jsonCompatibleValue(_ value: Any) -> Any {
+        switch value {
+        case let string as String:
+            return string
+        case let number as NSNumber:
+            return number
+        case let bool as Bool:
+            return bool
+        case let int as Int:
+            return int
+        case let double as Double:
+            return double
+        case let float as Float:
+            return Double(float)
+        case let dictionary as [String: Any]:
+            return jsonCompatibleDictionary(dictionary)
+        case let array as [Any]:
+            return array.map(jsonCompatibleValue)
+        case let null as NSNull:
+            return null
+        default:
+            return String(describing: value)
+        }
+    }
+
+    private static func escapedJSONString(_ value: String) -> String {
+        guard let data = try? JSONSerialization.data(withJSONObject: [value]),
+              let json = String(data: data, encoding: .utf8) else {
+            return value.replacingOccurrences(of: "\"", with: "\\\"")
+        }
+        return String(json.dropFirst().dropLast())
+    }
 }
 
 public struct RuntimeToolScope: Sendable, Equatable {
