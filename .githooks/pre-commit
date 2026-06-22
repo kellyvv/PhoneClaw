@@ -64,12 +64,13 @@ echo "[pre-commit] 触发 harness (守门路径: $MATCHED)"
 REPO_ROOT=$(git rev-parse --show-toplevel)
 cd "$REPO_ROOT/PhoneClawCLI"
 
-# 跑两个模型 — E2B 是默认部署模型, E4B 是升级选项, 任何一个红就拒绝
+# 跑两个 .litertlm 模型 — E2B 是默认部署模型, E4B 是升级选项, 任何一个红就拒绝。
+# CLI 守门必须跟 iOS 设备运行时一致走 LiteRT, 不能回落到旧 MLX 目录模型。
 FAILED_MODELS=()
 for M in e2b e4b; do
     LOG="/tmp/phoneclaw-precommit-${M}.log"
-    echo "[pre-commit] 跑 ${M} ..."
-    if ! ./run.sh test "${M}" > "${LOG}" 2>&1; then
+    echo "[pre-commit] 跑 ${M} (.litertlm/LiteRT) ..."
+    if ! PHONECLAW_LITERT=1 ./run.sh test "${M}" > "${LOG}" 2>&1; then
         echo "❌ ${M} harness 运行失败 (build 挂了?):"
         tail -20 "${LOG}"
         FAILED_MODELS+=("${M}")
