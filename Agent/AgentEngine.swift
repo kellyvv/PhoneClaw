@@ -22,6 +22,7 @@ func log(_ message: String) {
 
 struct AgentActivityEvent: Sendable, Equatable {
     enum Phase: String, Sendable {
+        case accepted
         case searching
         case executing
         case processing
@@ -282,18 +283,12 @@ class AgentEngine {
         let normalizedToolName = toolName?.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedSkillID = skillID?.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedSkillName = skillName?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let detail: String = {
-            switch phase {
-            case .searching:
-                return "正在查询"
-            case .executing:
-                return "正在执行"
-            case .processing:
-                return "正在处理"
-            case .summarizing:
-                return "正在整理"
-            }
-        }()
+        let detail = skillActivityDetail(
+            skillID: normalizedSkillID,
+            skillName: normalizedSkillName,
+            toolName: normalizedToolName,
+            phase: phase
+        )
 
         await activityEventSink(
             AgentActivityEvent(
@@ -305,6 +300,75 @@ class AgentEngine {
                 toolName: normalizedToolName?.isEmpty == false ? normalizedToolName : nil
             )
         )
+    }
+
+    private func skillActivityDetail(
+        skillID: String?,
+        skillName: String?,
+        toolName: String?,
+        phase: AgentActivityEvent.Phase
+    ) -> String {
+        switch phase {
+        case .accepted:
+            return "已收到，正在理解"
+        case .searching:
+            return "正在查询"
+        case .processing:
+            return "正在处理"
+        case .summarizing:
+            return "正在整理结果"
+        case .executing:
+            return executingSkillActivityDetail(
+                skillID: skillID,
+                skillName: skillName,
+                toolName: toolName
+            )
+        }
+    }
+
+    private func executingSkillActivityDetail(
+        skillID: String?,
+        skillName: String?,
+        toolName: String?
+    ) -> String {
+        if let toolName,
+           let contract = toolRegistry.phoneGroundContract(for: toolName),
+           let evidenceType = contract.evidenceTypes.first {
+            switch evidenceType {
+            case .web:
+                return "正在查询网页"
+            case .health:
+                return "正在读取健康数据"
+            case .calendar:
+                return "正在处理日历"
+            case .contacts:
+                return "正在处理联系人"
+            case .reminders:
+                return "正在处理提醒事项"
+            case .clipboard:
+                return "正在处理剪贴板"
+            case .file:
+                return "正在处理文件"
+            case .system:
+                return "正在处理系统数据"
+            }
+        }
+
+        if let skillID,
+           let definition = skillRegistry.getDefinition(skillID) {
+            switch definition.metadata.type {
+            case .network:
+                return "正在查询"
+            case .content:
+                return "正在处理内容"
+            case .device:
+                let displayName = (skillName?.isEmpty == false ? skillName : nil)
+                    ?? definition.metadata.displayName
+                return displayName.isEmpty ? "正在执行" : "正在执行\(displayName)"
+            }
+        }
+
+        return "正在执行"
     }
 
     var availableModels: [ModelDescriptor] {

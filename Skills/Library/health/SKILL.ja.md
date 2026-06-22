@@ -59,20 +59,9 @@ triggers:
   - 消費カロリー
 
 allowed-tools:
-  - health-report-range
-  - health-report-week
-  - health-steps-today
-  - health-steps-yesterday
-  - health-steps-range
-  - health-distance-today
-  - health-active-energy-today
-  - health-heart-rate-resting
-  - health-heart-rate-recent
-  - health-heart-rate-variability
-  - health-weight-latest
-  - health-sleep-last-night
-  - health-sleep-week
-  - health-workout-recent
+  - health-activity-summary
+  - health-query
+  - health-report
 
 examples:
   - query: "今日の歩数はどれくらい?"
@@ -93,8 +82,8 @@ examples:
     scenario: "30日間の総合ヘルスケアレポートを生成"
 
 # Sync anchor (see scripts/check-skill-sync.sh):
-translation-source-commit: 21af290
-translation-source-sha256: 750f1658821be0743907d0070af47d5e884e4e76682d71c90480266db5cbf6f5
+translation-source-commit: 950300e5
+translation-source-sha256: 7d5cedb223489610c5a48d25aa60f5879639e76485064e7c822ba6fecadf5c15
 ---
 
 # ヘルスケアデータ照会
@@ -105,23 +94,23 @@ translation-source-sha256: 750f1658821be0743907d0070af47d5e884e4e76682d71c904802
 
 | ユーザー意図 | ツール |
 |-------------|------|
-| ヘルスケアデータの分析 / 健康レポート / 週間ヘルスケアレポート / 全体的な健康状態 / 過去N日間の健康データ | health-report-range (`days` はユーザーの期間から推定。1週間=7、2週間=14、1か月=30) |
-| 過去1週間の健康データ / 今週の健康レポート | health-report-range (days=7; health-report-week も可) |
-| 今日の歩数 / 今日の活動量 / 今日の活動レベル | health-steps-today |
-| 昨日の歩数 / 昨日の活動量 | health-steps-yesterday |
-| 今週 / 直近N日間の歩数 | health-steps-range (今週は days=7。ユーザー意図から日数を推定) |
-| 今日どれくらい歩いたか / 歩行距離 | health-distance-today |
-| 今日の消費カロリー / エネルギー / kcal | health-active-energy-today |
-| 安静時心拍数 | health-heart-rate-resting |
-| 最近の心拍数 / 脈拍 / 現在の心拍数 | health-heart-rate-recent |
-| 心拍変動 / HRV | health-heart-rate-variability |
-| 体重 / 最新の体重 | health-weight-latest |
-| 昨夜どれくらい寝たか / 睡眠の質 | health-sleep-last-night |
-| 直近1週間の睡眠 | health-sleep-week |
-| 最近のワークアウト / フィットネス記録 | health-workout-recent |
+| 今日の活動量 / 今日の活動レベル / 今日の運動状況 / 今日のワークアウト状況 | health-activity-summary |
+| ヘルスケアデータの分析 / 健康レポート / 週間ヘルスケアレポート / 全体的な健康状態 / 過去N日間の健康データ | health-report (`days` はユーザーの期間から推定。1週間=7、2週間=14、1か月=30) |
+| 今日/昨日/直近N日間の歩数 / 何歩歩いたか | health-query (metric=steps, range=today/yesterday/last_n_days, 必要に応じて days を渡す) |
+| 今日どれくらい歩いたか / 何キロ歩いたか / 歩行距離 / 移動距離 | health-query (metric=distance, range=today) |
+| 今日の消費カロリー / エネルギー / kcal | health-query (metric=active_energy, range=today) |
+| 安静時心拍数 | health-query (metric=resting_heart_rate, range=recent) |
+| 最近の心拍数 / 脈拍 / 現在の心拍数 | health-query (metric=heart_rate, range=recent) |
+| 心拍変動 / HRV | health-query (metric=hrv, range=recent) |
+| 体重 / 最新の体重 | health-query (metric=weight, range=latest) |
+| 昨夜どれくらい寝たか / 睡眠の質 | health-query (metric=sleep, range=last_night) |
+| 直近1週間の睡眠 | health-query (metric=sleep, range=week) |
+| 最近のワークアウト / フィットネス記録 | health-query (metric=workout, range=recent) |
 
-注: "活動量" / "活動レベル" は既定で歩数(health-steps-today)として扱います。ユーザーが明示的に "カロリー" / "kcal" / "エネルギー" / "消費" と言った場合だけ health-active-energy-today を使います。
-注: "健康データ" / "健康レポート" / "健康を分析" は総合分析を意味するため、必ず health-report-range を使います。睡眠や歩数だけを照会してはいけません。health-sleep-week / health-sleep-last-night は、ユーザーが睡眠を明示した場合だけ使います。
+注: "活動量" / "活動レベル" / "運動状況" は health-activity-summary を使い、歩数だけにしない。ユーザーが明示的に歩数を聞いた場合だけ health-query(metric=steps) を使います。
+注: "どれくらい歩いたか" / "距離" / "キロ" / "メートル" / "移動距離" は距離照会なので、steps ではなく health-query(metric=distance) を必ず使います。
+注: "健康データ" / "健康レポート" / "健康を分析" は総合分析を意味するため、必ず health-report を使います。睡眠や歩数だけを照会してはいけません。睡眠を明示した場合だけ health-query(metric=sleep) を使います。
+注: 前のターンで単一指標を照会した後、ユーザーが期間や日数だけを修正した場合 (例: "5日じゃなくて7日") は、前のターンと同じ metric を維持し、range/days だけを変更します。前の照会が歩数なら health-query(metric=steps, range=last_n_days, days=7) を使い続け、health-report に変えないでください。
 初回の Health 権限リクエストでは、歩数、歩行+ランニング距離、活動エネルギー、安静時心拍数、睡眠、ワークアウト、体重、心拍数、HRV の読み取り権限をまとめて求めます。
 
 ## 期間推定
@@ -136,8 +125,8 @@ translation-source-sha256: 750f1658821be0743907d0070af47d5e884e4e76682d71c904802
 
 1. ユーザー意図に基づき、正しいツールを選んですぐ呼び出す。確認質問はしない。
 2. ツール結果を得たら、返された要約と数値を根拠に、日本語で自然に短く答える。数値や事実は変えない。
-3. 総合ヘルスケアレポート(health-report-range)は、その期間の対応ヘルスケア指標を1回のツール呼び出しで読む。返されたレポートを根拠にする。
-4. 歩数範囲照会(health-steps-range)では、返された要約を根拠にする。
+3. 総合ヘルスケアレポート(health-report)は、その期間の対応ヘルスケア指標を1回のツール呼び出しで読む。返されたレポートを根拠にする。
+4. 単一指標照会(health-query)と今日の活動概要(health-activity-summary)では、返された要約を根拠にする。
 5. **ヘルスケアデータを作り上げない**。必ずツールが返した実数値を使う。
 6. ツールを呼ぶ前に「権限がない」「わからない」と言わない。まずツールを呼び、その結果に基づいて話す。
 

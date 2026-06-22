@@ -50,20 +50,9 @@ triggers:
   - workout
 
 allowed-tools:
-  - health-report-range
-  - health-report-week
-  - health-steps-today
-  - health-steps-yesterday
-  - health-steps-range
-  - health-distance-today
-  - health-active-energy-today
-  - health-heart-rate-resting
-  - health-heart-rate-recent
-  - health-heart-rate-variability
-  - health-weight-latest
-  - health-sleep-last-night
-  - health-sleep-week
-  - health-workout-recent
+  - health-activity-summary
+  - health-query
+  - health-report
 
 examples:
   - query: "我今天走了多少步"
@@ -92,23 +81,23 @@ examples:
 
 | 用户意图 | 工具 |
 |---------|------|
-| 分析健康数据 / 健康报告 / 健康周报 / 整体健康情况 / 最近N天健康数据 | health-report-range (days 按用户时间推断；一周=7，两周=14，一个月=30) |
-| 最近一周健康数据 / 本周健康报告 | health-report-range (days=7；也可用 health-report-week) |
-| 今天走了多少步 / 今天运动量 / 今天活动量 | health-steps-today |
-| 昨天走了多少步 / 昨天运动量 | health-steps-yesterday |
-| 本周/最近N天步数 | health-steps-range (days=7 表示本周, 按用户意图推断天数) |
-| 今天走了多远 / 步行距离 | health-distance-today |
-| 今天消耗了多少卡路里 / 热量 / 千卡 | health-active-energy-today |
-| 静息心率 | health-heart-rate-resting |
-| 最近心率 / 心跳 / 当前心率 | health-heart-rate-recent |
-| 心率变异性 / HRV | health-heart-rate-variability |
-| 体重 / 最近体重 | health-weight-latest |
-| 昨晚睡了多久 / 睡眠质量 | health-sleep-last-night |
-| 最近一周睡眠 | health-sleep-week |
-| 最近运动 / 健身记录 | health-workout-recent |
+| 今天运动量 / 今天活动量 / 今天运动情况 / 今天锻炼情况 | health-activity-summary |
+| 分析健康数据 / 健康报告 / 健康周报 / 整体健康情况 / 最近N天健康数据 | health-report (days 按用户时间推断；一周=7，两周=14，一个月=30) |
+| 今天/昨天/最近N天步数 / 走了多少步 | health-query (metric=steps, range=today/yesterday/last_n_days, days 按用户意图传入) |
+| 今天走了多远 / 走了多少公里 / 步行距离 / 路程 | health-query (metric=distance, range=today) |
+| 今天消耗了多少卡路里 / 热量 / 千卡 | health-query (metric=active_energy, range=today) |
+| 静息心率 | health-query (metric=resting_heart_rate, range=recent) |
+| 最近心率 / 心跳 / 当前心率 | health-query (metric=heart_rate, range=recent) |
+| 心率变异性 / HRV | health-query (metric=hrv, range=recent) |
+| 体重 / 最近体重 | health-query (metric=weight, range=latest) |
+| 昨晚睡了多久 / 睡眠质量 | health-query (metric=sleep, range=last_night) |
+| 最近一周睡眠 | health-query (metric=sleep, range=week) |
+| 最近运动 / 健身记录 | health-query (metric=workout, range=recent) |
 
-注意: "运动量" / "活动量" 默认查步数 (health-steps-today), 只有明确说"卡路里"/"千卡"/"热量"/"消耗"才用 health-active-energy-today。
-注意: "健康数据" / "健康报告" / "分析健康" 是综合分析, 必须用 health-report-range, 不要只查睡眠或步数。只有用户明确说"睡眠"时才用 health-sleep-week / health-sleep-last-night。
+注意: "运动量" / "活动量" / "运动情况" 默认用 health-activity-summary, 不要只查步数。只有用户明确问"走了多少步"才用 health-query(metric=steps)。
+注意: "走了多远" / "距离" / "公里" / "米" / "路程" 是距离查询, 必须用 health-query(metric=distance), 不要用 steps。
+注意: "健康数据" / "健康报告" / "分析健康" 是综合分析, 必须用 health-report, 不要只查睡眠或步数。只有用户明确说"睡眠"时才用 health-query(metric=sleep)。
+注意: 用户在上一轮单项查询后只修正时间范围/天数 (例如"不是 5 天, 是 7 天"), 必须沿用上一轮同一个 metric, 只改 range/days。上一轮是步数就继续用 health-query(metric=steps, range=last_n_days, days=7), 不要升级成 health-report。
 首次健康授权会一次请求步数、步行+跑步距离、活动能量、静息心率、睡眠、体能训练、体重、心率、心率变异性读取权限。
 
 ## 时间范围推断
@@ -123,8 +112,8 @@ examples:
 
 1. 根据用户意图选择正确的工具, 立即调用, 不要追问
 2. 拿到工具结果后, 直接使用返回结果里的自然语言摘要, 不要自己套模板或输出占位符
-3. 综合健康报告 (health-report-range) 会一次读取该时间范围内所有支持的健康项, 直接使用返回报告
-4. 范围步数查询 (health-steps-range) 返回总步数和日均, 直接使用返回摘要
+3. 综合健康报告 (health-report) 会一次读取该时间范围内所有支持的健康项, 直接使用返回报告
+4. 单项查询 (health-query) 和今天运动概况 (health-activity-summary) 都直接使用返回摘要
 5. **不要**自己编造健康数据, 必须用 tool 返回的真实数字
 6. **不要**在没调用 tool 之前说"我没有权限"或"我不知道" — 先调工具再说
 

@@ -2,6 +2,11 @@ import EventKit
 import Foundation
 
 enum RemindersTools {
+    private static let remindersContract = PhoneGroundToolContract(
+        evidenceTypes: [.reminders],
+        answerContract: .none,
+        freshness: .userScopedData
+    )
 
     static func register(into registry: ToolRegistry) {
 
@@ -18,6 +23,7 @@ enum RemindersTools {
                 "title: 提醒标题, due: 到期时间（可选, 支持 ISO 8601 / 中文相对时间如\"今晚八点\" / 中文绝对时间如\"5月3日15:00\"）, notes: 备注（可选）",
                 "title: reminder title, due: due time (optional, supports ISO 8601 or natural language like \"tonight 8pm\" / \"May 3 15:00\"), notes: notes (optional)"
             ),
+            phoneGroundContract: remindersContract,
             requiredParameters: ["title"],
             execute: { args in
                 try await createReminderCanonical(args).detail

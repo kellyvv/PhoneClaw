@@ -2,6 +2,11 @@ import EventKit
 import Foundation
 
 enum CalendarTools {
+    private static let calendarContract = PhoneGroundToolContract(
+        evidenceTypes: [.calendar],
+        answerContract: .none,
+        freshness: .userScopedData
+    )
 
     static func register(into registry: ToolRegistry) {
 
@@ -20,6 +25,7 @@ enum CalendarTools {
                 "title: event title (optional, falls back to the event name from the user's phrasing), start: start time (ISO 8601, or natural language like \"tomorrow 2pm\" / \"May 3 15:00\"), end: end time (optional, same format as start), location: location (optional), notes: notes (optional)",
                 "title: 予定のタイトル（任意。指定がなければユーザーの発話にある予定名を使う）, start: 開始時刻（ISO 8601、または\"明日の午後2時\"のような自然な相対表現や\"5月3日15:00\"のような絶対表現も可）, end: 終了時刻（任意。start と同じ形式）, location: 場所（任意）, notes: メモ（任意）"
             ),
+            phoneGroundContract: calendarContract,
             requiredParameters: ["start"],
             execute: { args in
                 try await createEventCanonical(args).detail
@@ -42,6 +48,7 @@ enum CalendarTools {
                 "period: preset range (optional: today/tomorrow/this_week/next_week/next_7_days), start: start time or range expression (optional, e.g. \"today\" / \"tomorrow afternoon\"), end: end time (optional), days: number of days from start (optional), calendar: calendar title filter (optional), limit: max events to return (optional, default 20, max 50), include_notes: include event notes (optional, default false)",
                 "period: プリセット範囲（任意: today/tomorrow/this_week/next_week/next_7_days）, start: 開始時刻または範囲の表現（任意。例:\"今日\"/\"明日の午後\"）, end: 終了時刻（任意）, days: start からの日数（任意）, calendar: カレンダー名でのフィルタ（任意）, limit: 返す予定の最大件数（任意。既定20、最大50）, include_notes: メモを含めるか（任意。既定false）"
             ),
+            phoneGroundContract: calendarContract,
             aliases: ["calendar-query", "calendar-list-events", "calendar-read-events"],
             execute: { args in
                 try await queryEventsCanonical(args).detail

@@ -48,20 +48,9 @@ triggers:
   - training
 
 allowed-tools:
-  - health-report-range
-  - health-report-week
-  - health-steps-today
-  - health-steps-yesterday
-  - health-steps-range
-  - health-distance-today
-  - health-active-energy-today
-  - health-heart-rate-resting
-  - health-heart-rate-recent
-  - health-heart-rate-variability
-  - health-weight-latest
-  - health-sleep-last-night
-  - health-sleep-week
-  - health-workout-recent
+  - health-activity-summary
+  - health-query
+  - health-report
 
 examples:
   - query: "How many steps did I take today?"
@@ -82,8 +71,8 @@ examples:
     scenario: "Generate a comprehensive 30-day Health report"
 
 # Sync anchor (see scripts/check-skill-sync.sh):
-translation-source-commit: 21af290
-translation-source-sha256: 750f1658821be0743907d0070af47d5e884e4e76682d71c90480266db5cbf6f5
+translation-source-commit: 950300e5
+translation-source-sha256: 7d5cedb223489610c5a48d25aa60f5879639e76485064e7c822ba6fecadf5c15
 ---
 
 # Health Data Query
@@ -94,23 +83,23 @@ You are responsible for reading the user's health data and providing a brief int
 
 | User Intent | Tool |
 |-------------|------|
-| Analyze Health data / Health report / weekly Health report / overall Health / Health data for the past N days | health-report-range (infer `days` from the user's time range; one week=7, two weeks=14, one month=30) |
-| Health data for the past week / this week's Health report | health-report-range (days=7; health-report-week is also acceptable) |
-| How many steps today / today's activity / today's activity level | health-steps-today |
-| How many steps yesterday / yesterday's activity | health-steps-yesterday |
-| This week / last N days step count | health-steps-range (days=7 for this week; infer the number of days from user intent) |
-| How far did I walk today / walking distance | health-distance-today |
-| How many calories did I burn today / energy / kcal | health-active-energy-today |
-| Resting heart rate | health-heart-rate-resting |
-| Recent heart rate / heartbeat / current heart rate | health-heart-rate-recent |
-| Heart rate variability / HRV | health-heart-rate-variability |
-| Weight / latest weight | health-weight-latest |
-| How long did I sleep last night / sleep quality | health-sleep-last-night |
-| Sleep over the last week | health-sleep-week |
-| Recent workouts / fitness records | health-workout-recent |
+| Today's activity / today's activity level / today's exercise status / today's workout status | health-activity-summary |
+| Analyze Health data / Health report / weekly Health report / overall Health / Health data for the past N days | health-report (infer `days` from the user's time range; one week=7, two weeks=14, one month=30) |
+| Steps today / yesterday / over the past N days / how many steps | health-query (metric=steps, range=today/yesterday/last_n_days, pass `days` when needed) |
+| How far did I walk today / how many kilometers / walking distance / distance traveled | health-query (metric=distance, range=today) |
+| How many calories did I burn today / energy / kcal | health-query (metric=active_energy, range=today) |
+| Resting heart rate | health-query (metric=resting_heart_rate, range=recent) |
+| Recent heart rate / heartbeat / current heart rate | health-query (metric=heart_rate, range=recent) |
+| Heart rate variability / HRV | health-query (metric=hrv, range=recent) |
+| Weight / latest weight | health-query (metric=weight, range=latest) |
+| How long did I sleep last night / sleep quality | health-query (metric=sleep, range=last_night) |
+| Sleep over the last week | health-query (metric=sleep, range=week) |
+| Recent workouts / fitness records | health-query (metric=workout, range=recent) |
 
-Note: "activity" / "activity level" defaults to step count (health-steps-today). Only use health-active-energy-today when the user explicitly mentions "calories" / "kcal" / "energy" / "burned".
-Note: "Health data" / "Health report" / "analyze my Health" means comprehensive analysis and must use health-report-range. Do not query only sleep or steps. Only use health-sleep-week / health-sleep-last-night when the user explicitly mentions sleep.
+Note: "activity" / "activity level" / "exercise status" defaults to health-activity-summary, not steps only. Only use health-query(metric=steps) when the user explicitly asks for step count.
+Note: "how far" / "distance" / "kilometers" / "meters" / "distance traveled" means distance and must use health-query(metric=distance), not steps.
+Note: "Health data" / "Health report" / "analyze my Health" means comprehensive analysis and must use health-report. Do not query only sleep or steps. Only use health-query(metric=sleep) when the user explicitly mentions sleep.
+Note: If the user only corrects the time range or day count after a previous one-metric query, such as "not 5 days, 7 days", keep the same metric from the previous turn and only change range/days. If the previous query was steps, continue using health-query(metric=steps, range=last_n_days, days=7); do not upgrade to health-report.
 The first Health authorization request asks for read access to steps, walking+running distance, active energy, resting heart rate, sleep, workouts, weight, heart rate, and HRV together.
 
 ## Time Range Inference
@@ -125,8 +114,8 @@ The first Health authorization request asks for read access to steps, walking+ru
 
 1. Based on user intent, choose the correct tool and call it immediately — do not ask follow-up questions.
 2. Once you have the tool result, use the natural-language summary returned by the tool directly. Do not apply your own template or output placeholders.
-3. Comprehensive Health reports (health-report-range) read all supported Health metrics for that time range in one tool call. Use the returned report directly.
-4. For step range queries (health-steps-range), use the returned summary directly.
+3. Comprehensive Health reports (health-report) read all supported Health metrics for that time range in one tool call. Use the returned report directly.
+4. For one-metric queries (health-query) and today's activity overview (health-activity-summary), use the returned summary directly.
 5. **Do not** make up health data yourself — always use the real numbers returned by the tool.
 6. **Do not** say "I don't have permission" or "I don't know" before calling the tool — call the tool first, then speak.
 

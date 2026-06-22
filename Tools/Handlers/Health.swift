@@ -62,285 +62,81 @@ enum HealthTools {
     }
 
     static func register(into registry: ToolRegistry) {
-
-        registerStepsToday(into: registry)
-        registerStepsYesterday(into: registry)
-        registerStepsRange(into: registry)
-        registerDistanceToday(into: registry)
-        registerActiveEnergyToday(into: registry)
-        registerHeartRateResting(into: registry)
-        registerHeartRateRecent(into: registry)
-        registerHeartRateVariability(into: registry)
-        registerWeightLatest(into: registry)
-        registerSleepLastNight(into: registry)
-        registerSleepWeek(into: registry)
-        registerWorkoutRecent(into: registry)
-        registerReportRange(into: registry)
-        registerReportWeek(into: registry)
+        registerActivitySummary(into: registry)
+        registerHealthQuery(into: registry)
+        registerHealthReport(into: registry)
     }
 
-    // ── health-steps-today ──
-    private static func registerStepsToday(into registry: ToolRegistry) {
+    // ── public high-level Health tools ──
+    private static func registerActivitySummary(into registry: ToolRegistry) {
         registry.register(RegisteredTool(
-            name: "health-steps-today",
-            description: tr("读取用户今日步数 (从本地 0 点到当前时间的累计步数)。仅读取,不修改。", "Read the user's step count for today (cumulative steps from local midnight to now). Read-only, no modifications.", "ユーザーの今日の歩数を読み取る (現地の0時から現在までの累計歩数)。読み取りのみ、変更しません。"),
-            parameters: tr("无", "None", "なし"),
-            phoneGroundContract: healthDataContract,
-            isParameterless: true,
-            skipFollowUp: true,
-            execute: { args in
-                try await stepsTodayCanonical(args).detail
-            },
-            executeCanonical: { args in
-                try await stepsTodayCanonical(args)
-            }
-        ))
-    }
-
-    // ── health-steps-yesterday ──
-    private static func registerStepsYesterday(into registry: ToolRegistry) {
-        registry.register(RegisteredTool(
-            name: "health-steps-yesterday",
-            description: tr("读取用户昨日步数 (昨天本地 0 点到 23:59:59 的累计步数)。仅读取,不修改。", "Read the user's step count for yesterday (cumulative steps from yesterday local midnight to 23:59:59). Read-only, no modifications.", "ユーザーの昨日の歩数を読み取る (昨日の現地0時から23:59:59までの累計歩数)。読み取りのみ、変更しません。"),
-            parameters: tr("无", "None", "なし"),
-            phoneGroundContract: healthDataContract,
-            isParameterless: true,
-            skipFollowUp: true,
-            execute: { args in
-                try await stepsYesterdayCanonical(args).detail
-            },
-            executeCanonical: { args in
-                try await stepsYesterdayCanonical(args)
-            }
-        ))
-    }
-
-    // ── health-sleep-last-night ──
-    private static func registerSleepLastNight(into registry: ToolRegistry) {
-        registry.register(RegisteredTool(
-            name: "health-sleep-last-night",
-            description: tr("读取用户昨晚的睡眠数据 (最近 24 小时内的睡眠记录)。返回总时长和分阶段明细。", "Read the user's sleep data for last night (sleep records within the past 24 hours). Returns total duration and per-stage breakdown.", "ユーザーの昨夜の睡眠データを読み取る (直近24時間以内の睡眠記録)。合計時間と各ステージの内訳を返します。"),
-            parameters: tr("无", "None", "なし"),
-            phoneGroundContract: healthDataContract,
-            isParameterless: true,
-            skipFollowUp: true,
-            execute: { args in
-                try await sleepLastNightCanonical(args).detail
-            },
-            executeCanonical: { args in
-                try await sleepLastNightCanonical(args)
-            }
-        ))
-    }
-
-    // ── health-sleep-week ──
-    private static func registerSleepWeek(into registry: ToolRegistry) {
-        registry.register(RegisteredTool(
-            name: "health-sleep-week",
-            description: tr("读取用户最近 7 天的睡眠汇总 (每晚总时长 + 7 天平均)。", "Read a sleep summary for the user's past 7 days (total duration per night + 7-day average).", "ユーザーの直近7日間の睡眠サマリーを読み取る (毎晩の合計時間 + 7日間の平均)。"),
-            parameters: tr("无", "None", "なし"),
-            phoneGroundContract: healthDataContract,
-            isParameterless: true,
-            skipFollowUp: true,
-            execute: { args in
-                try await sleepWeekCanonical(args).detail
-            },
-            executeCanonical: { args in
-                try await sleepWeekCanonical(args)
-            }
-        ))
-    }
-
-    // ── health-workout-recent ──
-    private static func registerWorkoutRecent(into registry: ToolRegistry) {
-        registry.register(RegisteredTool(
-            name: "health-workout-recent",
-            description: tr("读取用户最近 7 天的运动记录 (类型、时长、消耗)。", "Read the user's workout records for the past 7 days (type, duration, calories burned).", "ユーザーの直近7日間のワークアウト記録を読み取る (種類、時間、消費カロリー)。"),
-            parameters: tr("无", "None", "なし"),
-            phoneGroundContract: healthDataContract,
-            isParameterless: true,
-            skipFollowUp: true,
-            execute: { args in
-                try await workoutRecentCanonical(args).detail
-            },
-            executeCanonical: { args in
-                try await workoutRecentCanonical(args)
-            }
-        ))
-    }
-
-    // ── health-report-week ──
-    private static func registerReportWeek(into registry: ToolRegistry) {
-        registry.register(RegisteredTool(
-            name: "health-report-week",
+            name: "health-activity-summary",
             description: tr(
-                "读取用户最近 7 天的综合健康数据并生成本地周报：步数、距离、活动能量、睡眠、运动、心率、HRV、体重。仅读取。",
-                "Read the user's past 7 days of Health data and generate a local weekly report: steps, distance, active energy, sleep, workouts, heart rate, HRV, and weight. Read-only.",
-                "ユーザーの直近7日間の総合的なヘルスデータを読み取り、ローカルで週次レポートを生成する：歩数、距離、アクティブエネルギー、睡眠、ワークアウト、心拍数、HRV、体重。読み取りのみ。"
+                "读取用户今天的运动概况：步数、步行+跑步距离、活动能量和今天的运动记录。仅读取。",
+                "Read today's activity overview: steps, walking+running distance, active energy, and today's workout records. Read-only.",
+                "今日のアクティビティ概要を読み取る：歩数、ウォーキング+ランニング距離、アクティブエネルギー、今日のワークアウト記録。読み取りのみ。"
             ),
             parameters: tr("无", "None", "なし"),
             phoneGroundContract: healthDataContract,
             isParameterless: true,
             skipFollowUp: true,
             execute: { args in
-                try await healthReportWeekCanonical(args).detail
+                try await healthActivitySummaryCanonical(args).detail
             },
             executeCanonical: { args in
-                try await healthReportWeekCanonical(args)
+                try await healthActivitySummaryCanonical(args)
             }
         ))
     }
 
-    // ── health-report-range ──
-    private static func registerReportRange(into registry: ToolRegistry) {
+    private static func registerHealthQuery(into registry: ToolRegistry) {
         registry.register(RegisteredTool(
-            name: "health-report-range",
+            name: "health-query",
             description: tr(
-                "读取用户指定天数内的综合健康数据并生成本地报告：步数、距离、活动能量、睡眠、运动、心率、HRV、体重。仅读取。",
-                "Read the user's Health data for a requested day range and generate a local report: steps, distance, active energy, sleep, workouts, heart rate, HRV, and weight. Read-only.",
-                "ユーザーが指定した日数分の総合的なヘルスデータを読み取り、ローカルでレポートを生成する：歩数、距離、アクティブエネルギー、睡眠、ワークアウト、心拍数、HRV、体重。読み取りのみ。"
+                "读取一项健康数据。支持 metric: steps、distance、active_energy、sleep、workout、heart_rate、resting_heart_rate、hrv、weight、activity；range 可选 today、yesterday、last_n_days、week、last_night、recent、latest。",
+                "Read one Health metric. Supports metric: steps, distance, active_energy, sleep, workout, heart_rate, resting_heart_rate, hrv, weight, activity; optional range: today, yesterday, last_n_days, week, last_night, recent, latest.",
+                "1つのヘルスケア指標を読み取る。metric: steps、distance、active_energy、sleep、workout、heart_rate、resting_heart_rate、hrv、weight、activity をサポート。range は today、yesterday、last_n_days、week、last_night、recent、latest を指定可能。"
+            ),
+            parameters: tr(
+                "{\"metric\":{\"type\":\"string\",\"description\":\"要查询的健康指标，如 steps、distance、active_energy、sleep、workout、heart_rate、resting_heart_rate、hrv、weight、activity。\",\"required\":true},\"range\":{\"type\":\"string\",\"description\":\"可选时间范围，如 today、yesterday、last_n_days、week、last_night、recent、latest。\"},\"days\":{\"type\":\"integer\",\"description\":\"range=last_n_days 时的天数。\"}}",
+                "{\"metric\":{\"type\":\"string\",\"description\":\"Health metric to query, such as steps, distance, active_energy, sleep, workout, heart_rate, resting_heart_rate, hrv, weight, activity.\",\"required\":true},\"range\":{\"type\":\"string\",\"description\":\"Optional time range, such as today, yesterday, last_n_days, week, last_night, recent, latest.\"},\"days\":{\"type\":\"integer\",\"description\":\"Number of days when range=last_n_days.\"}}",
+                "{\"metric\":{\"type\":\"string\",\"description\":\"照会するヘルスケア指標。steps、distance、active_energy、sleep、workout、heart_rate、resting_heart_rate、hrv、weight、activity など。\",\"required\":true},\"range\":{\"type\":\"string\",\"description\":\"任意の期間。today、yesterday、last_n_days、week、last_night、recent、latest など。\"},\"days\":{\"type\":\"integer\",\"description\":\"range=last_n_days の日数。\"}}"
+            ),
+            phoneGroundContract: healthDataContract,
+            requiredParameters: ["metric"],
+            isParameterless: false,
+            skipFollowUp: true,
+            execute: { args in
+                try await healthQueryCanonical(args).detail
+            },
+            executeCanonical: { args in
+                try await healthQueryCanonical(args)
+            }
+        ))
+    }
+
+    private static func registerHealthReport(into registry: ToolRegistry) {
+        registry.register(RegisteredTool(
+            name: "health-report",
+            description: tr(
+                "读取最近 N 天综合健康数据并生成本地报告：活动、睡眠、运动、心率、HRV、体重。仅读取。",
+                "Read the past N days of Health data and generate a local report: activity, sleep, workouts, heart rate, HRV, and weight. Read-only.",
+                "直近N日間のヘルスケアデータを読み取り、ローカルレポートを生成する：アクティビティ、睡眠、ワークアウト、心拍数、HRV、体重。読み取りのみ。"
             ),
             parameters: tr(
                 "{\"days\":{\"type\":\"integer\",\"description\":\"查询最近几天的健康数据，1 到 90 天。例如一周=7，两周=14，一个月=30。\",\"required\":true}}",
                 "{\"days\":{\"type\":\"integer\",\"description\":\"Number of recent days to query, 1 to 90. For example: one week=7, two weeks=14, one month=30.\",\"required\":true}}",
-                "{\"days\":{\"type\":\"integer\",\"description\":\"直近何日分のヘルスデータを照会するか、1～90日。例：1週間=7、2週間=14、1ヶ月=30。\",\"required\":true}}"
+                "{\"days\":{\"type\":\"integer\",\"description\":\"直近何日分のヘルスケアデータを照会するか、1～90日。例：1週間=7、2週間=14、1ヶ月=30。\",\"required\":true}}"
             ),
             phoneGroundContract: healthDataContract,
             requiredParameters: ["days"],
             isParameterless: false,
             skipFollowUp: true,
             execute: { args in
-                try await healthReportRangeCanonical(args).detail
+                try await healthReportCanonical(args).detail
             },
             executeCanonical: { args in
-                try await healthReportRangeCanonical(args)
-            }
-        ))
-    }
-
-    // ── health-distance-today ──
-    private static func registerDistanceToday(into registry: ToolRegistry) {
-        registry.register(RegisteredTool(
-            name: "health-distance-today",
-            description: tr("读取用户今日步行+跑步距离 (从本地 0 点到当前时间, 单位 km)。仅读取。", "Read the user's walking+running distance for today (from local midnight to now, in km). Read-only.", "ユーザーの今日のウォーキング+ランニングの距離を読み取る (現地0時から現在まで、単位km)。読み取りのみ。"),
-            parameters: tr("无", "None", "なし"),
-            phoneGroundContract: healthDataContract,
-            isParameterless: true,
-            skipFollowUp: true,
-            execute: { args in
-                try await distanceTodayCanonical(args).detail
-            },
-            executeCanonical: { args in
-                try await distanceTodayCanonical(args)
-            }
-        ))
-    }
-
-    // ── health-active-energy-today ──
-    private static func registerActiveEnergyToday(into registry: ToolRegistry) {
-        registry.register(RegisteredTool(
-            name: "health-active-energy-today",
-            description: tr("读取用户今日活动消耗的卡路里 (从本地 0 点到当前时间)。仅读取。", "Read the user's active calories burned today (from local midnight to now). Read-only.", "ユーザーの今日のアクティブ消費カロリーを読み取る (現地0時から現在まで)。読み取りのみ。"),
-            parameters: tr("无", "None", "なし"),
-            phoneGroundContract: healthDataContract,
-            isParameterless: true,
-            skipFollowUp: true,
-            execute: { args in
-                try await activeEnergyTodayCanonical(args).detail
-            },
-            executeCanonical: { args in
-                try await activeEnergyTodayCanonical(args)
-            }
-        ))
-    }
-
-    // ── health-heart-rate-resting ──
-    private static func registerHeartRateResting(into registry: ToolRegistry) {
-        registry.register(RegisteredTool(
-            name: "health-heart-rate-resting",
-            description: tr("读取用户最近的静息心率 (最近 24 小时平均, 单位 BPM)。仅读取。", "Read the user's recent resting heart rate (average over the past 24 hours, in BPM). Read-only.", "ユーザーの最近の安静時心拍数を読み取る (直近24時間の平均、単位BPM)。読み取りのみ。"),
-            parameters: tr("无", "None", "なし"),
-            phoneGroundContract: healthDataContract,
-            isParameterless: true,
-            skipFollowUp: true,
-            execute: { args in
-                try await heartRateRestingCanonical(args).detail
-            },
-            executeCanonical: { args in
-                try await heartRateRestingCanonical(args)
-            }
-        ))
-    }
-
-    // ── health-heart-rate-recent ──
-    private static func registerHeartRateRecent(into registry: ToolRegistry) {
-        registry.register(RegisteredTool(
-            name: "health-heart-rate-recent",
-            description: tr("读取用户最近一条心率记录 (单位 BPM)。仅读取。", "Read the user's most recent heart rate sample (in BPM). Read-only.", "ユーザーの最新の心拍数記録を読み取る (単位BPM)。読み取りのみ。"),
-            parameters: tr("无", "None", "なし"),
-            phoneGroundContract: healthDataContract,
-            isParameterless: true,
-            skipFollowUp: true,
-            execute: { args in
-                try await heartRateRecentCanonical(args).detail
-            },
-            executeCanonical: { args in
-                try await heartRateRecentCanonical(args)
-            }
-        ))
-    }
-
-    // ── health-heart-rate-variability ──
-    private static func registerHeartRateVariability(into registry: ToolRegistry) {
-        registry.register(RegisteredTool(
-            name: "health-heart-rate-variability",
-            description: tr("读取用户最近一条心率变异性 HRV SDNN 记录 (单位 ms)。仅读取。", "Read the user's most recent heart rate variability (HRV SDNN) sample (in ms). Read-only.", "ユーザーの最新の心拍変動 HRV SDNN 記録を読み取る (単位ms)。読み取りのみ。"),
-            parameters: tr("无", "None", "なし"),
-            phoneGroundContract: healthDataContract,
-            isParameterless: true,
-            skipFollowUp: true,
-            execute: { args in
-                try await heartRateVariabilityCanonical(args).detail
-            },
-            executeCanonical: { args in
-                try await heartRateVariabilityCanonical(args)
-            }
-        ))
-    }
-
-    // ── health-weight-latest ──
-    private static func registerWeightLatest(into registry: ToolRegistry) {
-        registry.register(RegisteredTool(
-            name: "health-weight-latest",
-            description: tr("读取用户最近一条体重记录 (单位 kg)。仅读取。", "Read the user's most recent body weight sample (in kg). Read-only.", "ユーザーの最新の体重記録を読み取る (単位kg)。読み取りのみ。"),
-            parameters: tr("无", "None", "なし"),
-            phoneGroundContract: healthDataContract,
-            isParameterless: true,
-            skipFollowUp: true,
-            execute: { args in
-                try await weightLatestCanonical(args).detail
-            },
-            executeCanonical: { args in
-                try await weightLatestCanonical(args)
-            }
-        ))
-    }
-
-    // ── health-steps-range ──
-    private static func registerStepsRange(into registry: ToolRegistry) {
-        registry.register(RegisteredTool(
-            name: "health-steps-range",
-            description: tr("读取最近 N 天的每日步数。返回每日列表 + 总数 + 日均。", "Read daily step counts for the past N days. Returns a daily list + total + daily average.", "直近N日間の日別歩数を読み取る。日別リスト + 合計 + 日平均を返します。"),
-            parameters: tr("{\"days\":{\"type\":\"integer\",\"description\":\"查询天数 (1-30)\",\"required\":true}}", "{\"days\":{\"type\":\"integer\",\"description\":\"Number of days to query (1-30)\",\"required\":true}}", "{\"days\":{\"type\":\"integer\",\"description\":\"照会する日数 (1-30)\",\"required\":true}}"),
-            phoneGroundContract: healthDataContract,
-            requiredParameters: ["days"],
-            isParameterless: false,
-            skipFollowUp: true,
-            execute: { args in
-                try await stepsRangeCanonical(args).detail
-            },
-            executeCanonical: { args in
-                try await stepsRangeCanonical(args)
+                try await healthReportCanonical(args)
             }
         ))
     }
@@ -349,6 +145,301 @@ enum HealthTools {
     // - 查询为空/没有可用样本 = success=true
     // - 授权失败 / 参数缺失 / Health 查询失败 = success=false
     // - HealthKit 底层问题在本文件内归一成 canonical failure, 不向上层抛 Swift error
+
+    private enum HealthMetric {
+        case activity
+        case steps
+        case distance
+        case activeEnergy
+        case sleep
+        case workout
+        case heartRate
+        case restingHeartRate
+        case hrv
+        case weight
+        case report
+        case unsupported(String)
+
+        init(rawValue: String) {
+            let normalized = HealthTools.normalizedHealthSelector(rawValue)
+            if normalized.contains("activity") || normalized.contains("exercise") || normalized.contains("运动") || normalized.contains("活動") || normalized.contains("活动") {
+                self = .activity
+            } else if normalized.contains("step") || normalized.contains("步") {
+                self = .steps
+            } else if normalized.contains("distance") || normalized.contains("公里") || normalized.contains("距離") || normalized.contains("距离") {
+                self = .distance
+            } else if normalized.contains("active_energy") || normalized.contains("activeenergy") || normalized.contains("calorie") || normalized.contains("kcal") || normalized.contains("卡路") || normalized.contains("千卡") || normalized.contains("熱量") || normalized.contains("热量") || normalized.contains("能量") {
+                self = .activeEnergy
+            } else if normalized.contains("sleep") || normalized.contains("睡") {
+                self = .sleep
+            } else if normalized.contains("workout") || normalized.contains("fitness") || normalized.contains("training") || normalized.contains("健身") || normalized.contains("训练") || normalized.contains("訓練") {
+                self = .workout
+            } else if normalized.contains("hrv") || normalized.contains("variability") || normalized.contains("变异") || normalized.contains("変動") {
+                self = .hrv
+            } else if normalized.contains("resting") || normalized.contains("静息") || normalized.contains("安静") {
+                self = .restingHeartRate
+            } else if normalized.contains("heart") || normalized.contains("bpm") || normalized.contains("心率") || normalized.contains("心跳") || normalized.contains("心拍") {
+                self = .heartRate
+            } else if normalized.contains("weight") || normalized.contains("体重") || normalized.contains("體重") {
+                self = .weight
+            } else if normalized.contains("report") || normalized.contains("summary") || normalized.contains("健康") || normalized.contains("health") {
+                self = .report
+            } else {
+                self = .unsupported(normalized)
+            }
+        }
+    }
+
+    private enum HealthRange {
+        case today
+        case yesterday
+        case lastNDays
+        case week
+        case month
+        case lastNight
+        case recent
+        case latest
+        case unspecified
+
+        init(rawValue: String) {
+            let normalized = HealthTools.normalizedHealthSelector(rawValue)
+            if normalized.isEmpty {
+                self = .unspecified
+            } else if normalized.contains("yesterday") || normalized.contains("昨天") || normalized.contains("昨日") {
+                self = .yesterday
+            } else if normalized.contains("last_n") || normalized.contains("range") || normalized.contains("最近") || normalized.contains("這幾") || normalized.contains("这几") {
+                self = .lastNDays
+            } else if normalized.contains("week") || normalized.contains("本周") || normalized.contains("週") || normalized.contains("周") || normalized.contains("週間") {
+                self = .week
+            } else if normalized.contains("month") || normalized.contains("月") {
+                self = .month
+            } else if normalized.contains("last_night") || normalized.contains("昨晚") || normalized.contains("昨夜") {
+                self = .lastNight
+            } else if normalized.contains("latest") || normalized.contains("最新") || normalized.contains("最近一次") {
+                self = .latest
+            } else if normalized.contains("recent") || normalized.contains("最近") {
+                self = .recent
+            } else if normalized.contains("today") || normalized.contains("今天") || normalized.contains("今日") {
+                self = .today
+            } else {
+                self = .unspecified
+            }
+        }
+
+        var isMultiDay: Bool {
+            switch self {
+            case .lastNDays, .week, .month:
+                return true
+            case .today, .yesterday, .lastNight, .recent, .latest, .unspecified:
+                return false
+            }
+        }
+    }
+
+    private struct HealthQueryRequest {
+        let metric: HealthMetric
+        let range: HealthRange
+        let days: Int
+        let hasExplicitDays: Bool
+
+        init(args: [String: Any]) {
+            metric = HealthMetric(rawValue: HealthTools.stringArg(args, keys: ["metric", "type", "item", "query"]))
+            range = HealthRange(rawValue: HealthTools.stringArg(args, keys: ["range", "period", "time_range", "timeRange"]))
+            days = HealthTools.healthDays(from: args, defaultValue: 7, maximum: 90)
+            hasExplicitDays = args["days"] != nil
+        }
+    }
+
+    private static func healthActivitySummaryCanonical(_ args: [String: Any]) async throws -> CanonicalToolResult {
+        let cal = Calendar.current
+        let now = Date()
+        let start = cal.startOfDay(for: now)
+
+        let steps = await fetchQuantitySumResult(
+            identifier: .stepCount,
+            unit: .count(),
+            start: start,
+            end: now
+        )
+        let distance = await fetchQuantitySumResult(
+            identifier: .distanceWalkingRunning,
+            unit: .meter(),
+            start: start,
+            end: now
+        )
+        let activeEnergy = await fetchQuantitySumResult(
+            identifier: .activeEnergyBurned,
+            unit: .kilocalorie(),
+            start: start,
+            end: now
+        )
+        let workouts = await fetchWorkoutsResult(start: start, end: now)
+
+        var lines: [String] = []
+        var unavailable: [String] = []
+        var failures: [String] = []
+        var extras: [String: Any] = ["date": isoDateString(now)]
+        var stepCount: Int?
+        var workoutCount: Int?
+
+        switch steps {
+        case .success(let value):
+            let rounded = Int(value.rounded())
+            stepCount = rounded
+            extras["steps"] = rounded
+            lines.append(tr("步数：\(rounded) 步。", "Steps: \(rounded).", "歩数：\(rounded) 歩。"))
+        case .noData:
+            unavailable.append(tr("步数", "steps", "歩数"))
+        case .failure(let error):
+            unavailable.append(tr("步数", "steps", "歩数"))
+            failures.append(error)
+        }
+
+        switch distance {
+        case .success(let meters):
+            let km = roundedOneDecimal(meters / 1000)
+            extras["distance_km"] = km
+            extras["distance_m"] = Int(meters.rounded())
+            lines.append(tr("距离：步行+跑步约 \(formatOneDecimal(km)) 公里。", "Distance: about \(formatOneDecimal(km)) km walking+running.", "距離：ウォーキング+ランニング約 \(formatOneDecimal(km)) キロ。"))
+        case .noData:
+            unavailable.append(tr("步行距离", "walking distance", "ウォーキング距離"))
+        case .failure(let error):
+            unavailable.append(tr("步行距离", "walking distance", "ウォーキング距離"))
+            failures.append(error)
+        }
+
+        switch activeEnergy {
+        case .success(let kcal):
+            let rounded = Int(kcal.rounded())
+            extras["active_energy_kcal"] = rounded
+            lines.append(tr("活动能量：约 \(rounded) 千卡。", "Active energy: about \(rounded) kcal.", "アクティブエネルギー：約 \(rounded) キロカロリー。"))
+        case .noData:
+            unavailable.append(tr("活动能量", "active energy", "アクティブエネルギー"))
+        case .failure(let error):
+            unavailable.append(tr("活动能量", "active energy", "アクティブエネルギー"))
+            failures.append(error)
+        }
+
+        switch workouts {
+        case .success(let records):
+            let totalMin = records.reduce(0) { $0 + $1.durationMin }
+            workoutCount = records.count
+            extras["workouts_count"] = records.count
+            extras["workouts_total_minutes"] = totalMin
+            extras["workouts"] = records.map {
+                ["type": $0.type, "duration_min": $0.durationMin, "calories": $0.calories, "date": $0.date] as [String: Any]
+            }
+            lines.append(tr("运动记录：\(records.count) 次，共 \(totalMin) 分钟。", "Workouts: \(records.count) sessions, \(totalMin) min total.", "ワークアウト：\(records.count) 回、合計 \(totalMin) 分。"))
+        case .noData:
+            workoutCount = 0
+            extras["workouts_count"] = 0
+            lines.append(tr("运动记录：今天没有运动记录。", "Workouts: no workout records today.", "ワークアウト：今日は記録がありません。"))
+        case .failure(let error):
+            unavailable.append(tr("运动记录", "workouts", "ワークアウト"))
+            failures.append(error)
+        }
+
+        if lines.isEmpty {
+            if !failures.isEmpty {
+                return healthFailure(
+                    summary: tr("无法读取今天的运动数据。请确认健康权限已开启。", "Unable to read today's activity data. Please make sure Health permission is enabled.", "今日のアクティビティデータを読み取れません。ヘルスケアの権限が有効になっているか確認してください。"),
+                    detail: failures.joined(separator: "\n"),
+                    errorCode: "HEALTH_ACTIVITY_READ_FAILED"
+                )
+            }
+            return healthEmpty(
+                summary: tr("今天还没有可用的运动数据。", "No activity data is available yet today.", "今日はまだ利用可能なアクティビティデータがありません。"),
+                extras: extras
+            )
+        }
+
+        let advice = healthRangeAdvice(stepAverage: stepCount, sleepAverage: nil, workoutCount: workoutCount)
+        extras["unavailable"] = unavailable
+        extras["advice"] = advice
+
+        let summary: String
+        if LanguageService.shared.current.isChinese {
+            var reportLines = ["今天运动情况："]
+            reportLines.append(contentsOf: lines.map { "- \($0)" })
+            if !unavailable.isEmpty {
+                reportLines.append("- 暂无：\(unavailable.joined(separator: "、"))。")
+            }
+            reportLines.append("- 建议：\(advice)")
+            summary = reportLines.joined(separator: "\n")
+        } else if LanguageService.shared.current.isJapanese {
+            var reportLines = ["今日のアクティビティ："]
+            reportLines.append(contentsOf: lines.map { "- \($0)" })
+            if !unavailable.isEmpty {
+                reportLines.append("- データなし：\(unavailable.joined(separator: "、"))。")
+            }
+            reportLines.append("- アドバイス：\(advice)")
+            summary = reportLines.joined(separator: "\n")
+        } else {
+            var reportLines = ["Today's activity:"]
+            reportLines.append(contentsOf: lines.map { "- \($0)" })
+            if !unavailable.isEmpty {
+                reportLines.append("- Unavailable: \(unavailable.joined(separator: ", ")).")
+            }
+            reportLines.append("- Suggestion: \(advice)")
+            summary = reportLines.joined(separator: "\n")
+        }
+
+        return healthSuccess(summary: summary, extras: extras)
+    }
+
+    private static func healthQueryCanonical(_ args: [String: Any]) async throws -> CanonicalToolResult {
+        let request = HealthQueryRequest(args: args)
+
+        switch request.metric {
+        case .activity:
+            return try await healthActivitySummaryCanonical(args)
+        case .steps:
+            if request.range == .yesterday {
+                return try await stepsYesterdayCanonical(args)
+            }
+            if request.range.isMultiDay || request.hasExplicitDays {
+                return try await stepsRangeCanonical(["days": healthDays(from: args, defaultValue: 7, maximum: 30)])
+            }
+            return try await stepsTodayCanonical(args)
+        case .distance:
+            if request.range.isMultiDay || request.hasExplicitDays {
+                return try await healthReportRangeCanonical(["days": request.days])
+            }
+            return try await distanceTodayCanonical(args)
+        case .activeEnergy:
+            if request.range.isMultiDay || request.hasExplicitDays {
+                return try await healthReportRangeCanonical(["days": request.days])
+            }
+            return try await activeEnergyTodayCanonical(args)
+        case .sleep:
+            if request.range.isMultiDay || request.hasExplicitDays {
+                return try await sleepWeekCanonical(args)
+            }
+            return try await sleepLastNightCanonical(args)
+        case .workout:
+            return try await workoutRecentCanonical(args)
+        case .hrv:
+            return try await heartRateVariabilityCanonical(args)
+        case .restingHeartRate:
+            return try await heartRateRestingCanonical(args)
+        case .heartRate:
+            return try await heartRateRecentCanonical(args)
+        case .weight:
+            return try await weightLatestCanonical(args)
+        case .report:
+            return try await healthReportCanonical(args)
+        case .unsupported(let value):
+            return healthFailure(
+                summary: tr("我还不支持这个健康指标，请换成步数、活动、距离、卡路里、睡眠、心率、HRV、体重或健康报告。", "I don't support that Health metric yet. Please use steps, activity, distance, calories, sleep, heart rate, HRV, weight, or Health report.", "このヘルスケア指標にはまだ対応していません。歩数、アクティビティ、距離、カロリー、睡眠、心拍数、HRV、体重、またはヘルスケアレポートを指定してください。"),
+                detail: "Unsupported health metric: \(value)",
+                errorCode: "HEALTH_QUERY_UNSUPPORTED_METRIC"
+            )
+        }
+    }
+
+    private static func healthReportCanonical(_ args: [String: Any]) async throws -> CanonicalToolResult {
+        try await healthReportRangeCanonical(["days": healthDays(from: args, defaultValue: 7, maximum: 90)])
+    }
 
     private static func stepsTodayCanonical(_ args: [String: Any]) async throws -> CanonicalToolResult {
         let cal = Calendar.current
@@ -1320,6 +1411,36 @@ enum HealthTools {
 
     private static func formatOneDecimal(_ value: Double) -> String {
         String(format: "%.1f", value)
+    }
+
+    private static func stringArg(_ args: [String: Any], keys: [String]) -> String {
+        for key in keys {
+            if let value = args[key] as? String {
+                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    return trimmed
+                }
+            }
+        }
+        return ""
+    }
+
+    private static func normalizedHealthSelector(_ value: String) -> String {
+        value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "-", with: "_")
+            .replacingOccurrences(of: " ", with: "_")
+    }
+
+    private static func healthDays(
+        from args: [String: Any],
+        defaultValue: Int,
+        maximum: Int
+    ) -> Int {
+        let rawDays = (args["days"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let requestedDays = (args["days"] as? Int) ?? rawDays.flatMap(Int.init) ?? defaultValue
+        return max(1, min(maximum, requestedDays))
     }
 
     private static func minutesText(_ minutes: Int) -> String {

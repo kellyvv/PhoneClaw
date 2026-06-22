@@ -56,7 +56,7 @@ struct PhoneClawLiveLandActivityWidget: Widget {
                 }
                 DynamicIslandExpandedRegion(.trailing, priority: 1) {
                     if presentation.visualPhase != .result {
-                        if presentation.visualPhase == .skill || presentation.hasStartupConfirmation {
+                        if presentation.visualPhase == .skill || presentation.hasStartupConfirmation || presentation.hasUnderstandingAck {
                             LiveIslandSkillStatusLabel(presentation: presentation)
                         }
                     }
@@ -186,6 +186,10 @@ private struct LiveIslandPresentation {
         stage == .starting && !explicitDetail.isEmpty
     }
 
+    var hasUnderstandingAck: Bool {
+        phase == "understanding" && !explicitDetail.isEmpty
+    }
+
     var visualPhase: LiveIslandVisualPhase {
         if stage == .result {
             return .result
@@ -237,12 +241,16 @@ private struct LiveIslandPresentation {
         "正在查询",
         "正在执行",
         "正在处理",
-        "正在整理"
+        "正在整理",
+        "正在整理结果"
     ]
 
     var skillStatusText: String {
         let trimmed = detail.trimmingCharacters(in: .whitespacesAndNewlines)
         if Self.skillStatusTexts.contains(trimmed) {
+            return trimmed
+        }
+        if isSkillExecutionPhase, !trimmed.isEmpty {
             return trimmed
         }
         switch phase {
@@ -560,7 +568,9 @@ private struct LiveIslandSkillStatusLabel: View {
     }
 
     private var labelText: String {
-        presentation.hasStartupConfirmation ? presentation.primaryLine : presentation.skillStatusText
+        (presentation.hasStartupConfirmation || presentation.hasUnderstandingAck)
+            ? presentation.primaryLine
+            : presentation.skillStatusText
     }
 }
 
@@ -578,6 +588,17 @@ private struct LiveIslandCompactTrailing: View {
                     .allowsTightening(true)
                     .fixedSize(horizontal: true, vertical: false)
                     .frame(minWidth: 72, alignment: .trailing)
+                    .padding(.trailing, 4)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+            } else if presentation.hasUnderstandingAck {
+                Text(presentation.primaryLine)
+                    .font(.system(size: 11, weight: .semibold, design: .default))
+                    .foregroundStyle(LiveTheme.skillStatusText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.58)
+                    .allowsTightening(true)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .frame(minWidth: 76, alignment: .trailing)
                     .padding(.trailing, 4)
                     .transition(.move(edge: .trailing).combined(with: .opacity))
             } else {
@@ -622,7 +643,7 @@ private struct LiveMinimalActivityCard: View {
         Group {
             if presentation.visualPhase == .result {
                 LiveResultExpandedText(presentation: presentation)
-            } else if presentation.hasStartupConfirmation {
+            } else if presentation.hasStartupConfirmation || presentation.hasUnderstandingAck {
                 HStack(alignment: .center, spacing: 12) {
                     LiveIslandCoreVisual(presentation: presentation, diameter: 34)
                     VStack(alignment: .leading, spacing: 2) {

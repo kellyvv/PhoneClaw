@@ -4,6 +4,7 @@ import Foundation
 final class LiveLandVoiceRuntime {
     private static let shortPromptDwell: Duration = .milliseconds(2500)
     private static let resultDwell: Duration = .seconds(12)
+    private static let acceptedPromptDelay: Duration = .milliseconds(500)
     private static let skillPromptMinimumDwellSeconds: TimeInterval = 0.8
     private static let startupConfirmationDwell: Duration = .milliseconds(900)
 
@@ -17,6 +18,7 @@ final class LiveLandVoiceRuntime {
     }
 
     private enum IslandStatus: String, Sendable {
+        case understanding = "已收到，正在理解"
         case querying = "正在查询"
         case executing = "正在执行"
         case processing = "正在处理"
@@ -25,6 +27,8 @@ final class LiveLandVoiceRuntime {
 
         var activityPhase: String {
             switch self {
+            case .understanding:
+                return "understanding"
             case .querying:
                 return "searching"
             case .executing, .processing:
@@ -39,12 +43,12 @@ final class LiveLandVoiceRuntime {
 
     private struct SkillPrompt: Equatable, Sendable {
         let status: IslandStatus
+        let detail: String
         let skillID: String?
         let skillName: String?
         let toolName: String?
 
         var phase: String { status.activityPhase }
-        var detail: String { status.rawValue }
     }
 
     var onStatusChanged: ((String) -> Void)?
@@ -415,13 +419,64 @@ final class LiveLandVoiceRuntime {
               turnGeneration == generation
         else { return }
 
-        liveActivitySkillSignalSeen = true
         let prompt = skillPrompt(from: event)
+        if event.phase == .accepted {
+            scheduleAcceptedPrompt(prompt, generation: generation)
+            return
+        }
+
+        cancelPendingSkillPrompt()
+        if event.phase == .summarizing {
+            guard await waitForVisibleSkillPromptMinimumDwell(generation: generation) else { return }
+        }
+
+        await presentSkillPrompt(
+            prompt,
+            generation: generation,
+            markSkillSignal: true,
+            playHaptic: true
+        )
+    }
+
+    private func scheduleAcceptedPrompt(_ prompt: SkillPrompt, generation: UInt64) {
+        cancelPendingSkillPrompt()
+        pendingSkillPrompt = prompt
+        skillPromptTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: Self.acceptedPromptDelay)
+            guard let self,
+                  !Task.isCancelled,
+                  self.pendingSkillPrompt == prompt
+            else { return }
+            await self.presentSkillPrompt(
+                prompt,
+                generation: generation,
+                markSkillSignal: false,
+                playHaptic: false
+            )
+        }
+    }
+
+    private func presentSkillPrompt(
+        _ prompt: SkillPrompt,
+        generation: UInt64,
+        markSkillSignal: Bool,
+        playHaptic: Bool
+    ) async {
+        guard isRunning,
+              phase == .processing,
+              turnGeneration == generation
+        else { return }
+
+        if markSkillSignal {
+            liveActivitySkillSignalSeen = true
+        }
         pendingSkillPrompt = prompt
         hasVisibleSkillPresentation = true
         visibleSkillPromptStartedAt = Date()
         setStatus(prompt.detail)
-        skillPromptHaptics.prepare()
+        if playHaptic {
+            skillPromptHaptics.prepare()
+        }
         await liveActivity.update(
             phase: prompt.phase,
             headline: "LiveLand",
@@ -430,7 +485,9 @@ final class LiveLandVoiceRuntime {
             skillName: prompt.skillName,
             toolName: prompt.toolName
         )
-        playSkillPromptHaptic(for: prompt.detail)
+        if playHaptic {
+            playSkillPromptHaptic(for: prompt.detail)
+        }
     }
 
     private func cancelPendingSkillPrompt() {
@@ -458,8 +515,10 @@ final class LiveLandVoiceRuntime {
 
     private func skillPrompt(from event: AgentActivityEvent) -> SkillPrompt {
         let status = islandStatus(for: event)
+        let detail = event.detail.trimmingCharacters(in: .whitespacesAndNewlines)
         return SkillPrompt(
             status: status,
+            detail: detail.isEmpty ? status.rawValue : detail,
             skillID: event.skillID,
             skillName: event.skillName,
             toolName: event.toolName
@@ -468,6 +527,8 @@ final class LiveLandVoiceRuntime {
 
     private func islandStatus(for event: AgentActivityEvent) -> IslandStatus {
         switch event.phase {
+        case .accepted:
+            return .understanding
         case .searching:
             return .querying
         case .processing:

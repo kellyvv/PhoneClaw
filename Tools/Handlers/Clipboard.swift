@@ -2,6 +2,11 @@
 import UIKit
 
 enum ClipboardTools {
+    private static let clipboardContract = PhoneGroundToolContract(
+        evidenceTypes: [.clipboard],
+        answerContract: .none,
+        freshness: .userScopedData
+    )
 
     static func register(into registry: ToolRegistry) {
 
@@ -10,6 +15,7 @@ enum ClipboardTools {
             name: "clipboard-read",
             description: tr("读取剪贴板当前内容", "Read the current clipboard contents", "クリップボードの現在の内容を読み取る"),
             parameters: tr("无", "None", "なし"),
+            phoneGroundContract: clipboardContract,
             isParameterless: true,
             skipFollowUp: true,
             execute: { _ in
@@ -104,6 +110,7 @@ enum ClipboardTools {
             name: "clipboard-write",
             description: tr("将文本写入剪贴板", "Write text to the clipboard", "テキストをクリップボードに書き込む"),
             parameters: tr("text: 要复制的文本内容", "text: The text content to copy", "text: コピーするテキスト内容"),
+            phoneGroundContract: clipboardContract,
             requiredParameters: ["text"],
             skipFollowUp: true,
             execute: { args in
@@ -255,6 +262,11 @@ import AppKit
 // CLI harness 跑 clipboard scenario 现在跟 iOS 真机数据流一致.
 
 enum ClipboardTools {
+    private static let clipboardContract = PhoneGroundToolContract(
+        evidenceTypes: [.clipboard],
+        answerContract: .none,
+        freshness: .userScopedData
+    )
 
     static func register(into registry: ToolRegistry) {
 
@@ -263,6 +275,7 @@ enum ClipboardTools {
             name: "clipboard-read",
             description: tr("读取剪贴板当前内容", "Read the current clipboard contents", "クリップボードの現在の内容を読み取る"),
             parameters: tr("无", "None", "なし"),
+            phoneGroundContract: clipboardContract,
             isParameterless: true,
             skipFollowUp: true,
             execute: { _ in
@@ -345,6 +358,7 @@ enum ClipboardTools {
             name: "clipboard-write",
             description: tr("将文本写入剪贴板", "Write text to the clipboard", "テキストをクリップボードに書き込む"),
             parameters: tr("text: 要复制的文本内容", "text: The text content to copy", "text: コピーするテキスト内容"),
+            phoneGroundContract: clipboardContract,
             requiredParameters: ["text"],
             skipFollowUp: true,
             execute: { args in

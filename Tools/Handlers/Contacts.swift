@@ -2,6 +2,11 @@ import Contacts
 import Foundation
 
 enum ContactsTools {
+    private static let contactsContract = PhoneGroundToolContract(
+        evidenceTypes: [.contacts],
+        answerContract: .none,
+        freshness: .userScopedData
+    )
 
     static func register(into registry: ToolRegistry) {
 
@@ -18,6 +23,7 @@ enum ContactsTools {
                 "name: contact name, phone: phone number (optional), company: company (optional), email: email address (optional), notes: notes (optional)",
                 "name: 連絡先の名前, phone: 電話番号（任意）, company: 会社（任意）, email: メールアドレス（任意）, notes: メモ（任意）"
             ),
+            phoneGroundContract: contactsContract,
             requiredParameters: ["name"],
             aliases: ["contacts_upsert"],
             execute: { args in
@@ -41,6 +47,7 @@ enum ContactsTools {
                 "query: search keyword (optional), identifier: contact identifier (optional), name: name (optional), phone: phone number (optional), email: email address (optional)",
                 "query: 検索キーワード（任意）, identifier: 連絡先の識別子（任意）, name: 名前（任意）, phone: 電話番号（任意）, email: メールアドレス（任意）"
             ),
+            phoneGroundContract: contactsContract,
             requiredAnyOfParameters: ["query", "identifier", "name", "phone", "email"],
             aliases: ["contacts_search"],
             execute: { args in
@@ -64,6 +71,7 @@ enum ContactsTools {
                 "query: search keyword (optional), identifier: contact identifier (optional), name: name (optional), phone: phone number (optional), email: email address (optional), all: whether to delete every match when more than one is found (optional, default false)",
                 "query: 検索キーワード（任意）, identifier: 連絡先の識別子（任意）, name: 名前（任意）, phone: 電話番号（任意）, email: メールアドレス（任意）, all: 複数一致した場合にすべて削除するか（任意、既定値 false）"
             ),
+            phoneGroundContract: contactsContract,
             requiredAnyOfParameters: ["query", "identifier", "name", "phone", "email"],
             aliases: ["contacts_delete", "contacts-delete-contact"],
             execute: { args in

@@ -173,6 +173,16 @@ extension AgentEngine {
         }
         // 暴露给 CLI harness (ScenarioRunner) 做断言. iOS UI 不读, 0 行为影响.
         self.lastTurnMatchedSkillIds = matchedSkillIdsForTurn
+        if activityEventSink != nil,
+           !requiresMultimodal,
+           let acceptedSkillID = matchedSkillIdsForTurn.first {
+            await publishSkillActivityEvent(
+                skillID: acceptedSkillID,
+                skillName: findDisplayName(for: acceptedSkillID),
+                toolName: nil,
+                phase: .accepted
+            )
+        }
         // T2 (2026-04-17): 把 Planner 入口从 matched>=2 降到 matched>=1.
         //
         // 动机: Router 的 substring trigger 命中存在大量边界 fail (e.g. 用户说

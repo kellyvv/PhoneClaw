@@ -2478,6 +2478,12 @@ extension AgentEngine {
             }
 
             if toolRegistry.shouldSkipFollowUp(for: followUpToolName) {
+                await publishSkillActivityEvent(
+                    skillID: ownerSkillId,
+                    skillName: displayName,
+                    toolName: followUpToolName,
+                    phase: .summarizing
+                )
                 messages.append(ChatMessage(role: .assistant, content: canonicalResult.summary))
                 finishTurn()
                 return
