@@ -342,6 +342,101 @@ final class FoundationModelsInferenceService: InferenceService {
 }
 
 @available(iOS 27.0, macOS 27.0, *)
+private struct PhoneClawFoundationModelsTool: Tool, @unchecked Sendable {
+    typealias Arguments = GeneratedContent
+    typealias Output = String
+
+    let registeredTool: RegisteredTool
+
+    var name: String { registeredTool.name }
+
+    var description: String {
+        let parameters = registeredTool.parameters.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !parameters.isEmpty else { return registeredTool.description }
+        return "\(registeredTool.description)\nParameters: \(parameters)"
+    }
+
+    var parameters: GenerationSchema {
+        let root = DynamicGenerationSchema(
+            name: "\(Self.schemaNamePrefix)\(registeredTool.name)",
+            description: "Arguments for \(registeredTool.name). \(registeredTool.parameters)",
+            properties: []
+        )
+        return (try? GenerationSchema(root: root, dependencies: [])) ?? GeneratedContent.generationSchema
+    }
+
+    func call(arguments: GeneratedContent) async throws -> String {
+        let args = Self.dictionary(from: arguments)
+        let result: CanonicalToolResult
+        if let executeCanonical = registeredTool.executeCanonical {
+            result = try await executeCanonical(args)
+        } else {
+            let raw = try await registeredTool.execute(args)
+            result = canonicalToolResult(toolName: registeredTool.name, toolResult: raw)
+        }
+        return Self.jsonPayload(for: result)
+    }
+
+    private static let schemaNamePrefix = "PhoneClawToolArguments_"
+
+    private static func dictionary(from content: GeneratedContent) -> [String: Any] {
+        if let value = anyValue(from: content) as? [String: Any] {
+            return value
+        }
+        guard let data = content.jsonString.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return [:]
+        }
+        return object
+    }
+
+    private static func anyValue(from content: GeneratedContent) -> Any? {
+        switch content.kind {
+        case .null:
+            return nil
+        case .bool(let value):
+            return value
+        case .number(let value):
+            return value
+        case .string(let value):
+            return value
+        case .array(let values):
+            return values.compactMap { anyValue(from: $0) }
+        case .structure(let properties, let orderedKeys):
+            var result: [String: Any] = [:]
+            let keys = orderedKeys.isEmpty ? Array(properties.keys).sorted() : orderedKeys
+            for key in keys {
+                guard let value = properties[key],
+                      let converted = anyValue(from: value) else {
+                    continue
+                }
+                result[key] = converted
+            }
+            return result
+        @unknown default:
+            return nil
+        }
+    }
+
+    private static func jsonPayload(for result: CanonicalToolResult) -> String {
+        var payload: [String: Any] = [
+            "success": result.success,
+            "summary": result.summary,
+            "detail": result.detail
+        ]
+        if let errorCode = result.errorCode {
+            payload["errorCode"] = errorCode
+        }
+        guard JSONSerialization.isValidJSONObject(payload),
+              let data = try? JSONSerialization.data(withJSONObject: payload),
+              let json = String(data: data, encoding: .utf8) else {
+            return result.summary
+        }
+        return json
+    }
+}
+
+@available(iOS 27.0, macOS 27.0, *)
 private enum FoundationModelsInferenceError: LocalizedError {
     case unsupportedModel(String)
     case unavailable(String)
