@@ -57,7 +57,7 @@ tests:
 
 The runtime output must still pass PhoneClaw validation. Structured output improves shape, but it does not replace `ToolRegistry` and `SkillRegistry` checks.
 
-The current registry-driven Foundation Models router can use free-form string fields plus local allowlist validation as a transition step. The target shape is a runtime schema, such as `DynamicGenerationSchema` with `anyOf` guides generated from the active `SkillRegistry` and `ToolRegistry`, so invalid skill IDs and tool names are constrained before generation.
+The registry-driven Foundation Models router now uses a runtime schema built from `DynamicGenerationSchema` with `anyOf` choices generated from the active `SkillRegistry` and `ToolRegistry`, so invalid skill IDs and tool names are constrained before generation. The runtime output still goes through local allowlist validation because schema shape does not replace PhoneClaw's registry contracts.
 
 ## Progressive Disclosure Rules
 

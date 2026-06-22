@@ -207,7 +207,10 @@ extension AgentEngine {
     }
 
     func modelCanLoad(_ modelID: String) -> Bool {
-        if modelID.hasPrefix("remote::") {
+        guard let model = availableModels.first(where: { $0.id == modelID }) else {
+            return false
+        }
+        if !model.requiresLocalArtifact {
             return true
         }
         let state = installer.installState(for: modelID)
@@ -216,15 +219,17 @@ extension AgentEngine {
 
     func installedModelID(preferredIDs: [String?]) -> String? {
         for modelID in preferredIDs.compactMap({ $0 }) {
-            guard let model = availableModels.first(where: { $0.id == modelID }),
-                  installer.artifactPath(for: model) != nil else {
+            guard let model = availableModels.first(where: { $0.id == modelID }) else {
+                continue
+            }
+            guard !model.requiresLocalArtifact || installer.artifactPath(for: model) != nil else {
                 continue
             }
             return model.id
         }
 
         return availableModels.first { model in
-            installer.artifactPath(for: model) != nil
+            !model.requiresLocalArtifact || installer.artifactPath(for: model) != nil
         }?.id
     }
 
@@ -234,14 +239,8 @@ extension AgentEngine {
             installer.refreshInstallStates()
         }
 
-        // 远程模型 (remote::) 无本地资产, 永远视为可用 —— 别 reconcile 切到本地模型。
-        if config.selectedModelID.hasPrefix("remote::") {
-            _ = catalog.select(modelID: config.selectedModelID)
-            return false
-        }
-
         if let currentModel = availableModels.first(where: { $0.id == config.selectedModelID }),
-           installer.artifactPath(for: currentModel) != nil {
+           !currentModel.requiresLocalArtifact || installer.artifactPath(for: currentModel) != nil {
             _ = catalog.select(modelID: currentModel.id)
             return false
         }

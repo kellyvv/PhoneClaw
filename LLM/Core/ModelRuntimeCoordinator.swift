@@ -50,6 +50,9 @@ public final class ModelRuntimeCoordinator {
     /// 模型安装管理器 (用于查询安装状态)
     private let installer: ModelInstaller
 
+    /// 指定模型是否必须先有本地资产才能 load。远程端点和系统模型不需要。
+    private let requiresLocalArtifact: (String) -> Bool
+
     /// 最后一次成功 load/switch 使用的 backend。
     /// 用于 generating → ready 和 cancel → ready 回退时恢复 backend 信息。
     private var lastKnownBackend: String = "cpu"
@@ -58,9 +61,14 @@ public final class ModelRuntimeCoordinator {
 
     // MARK: - Init
 
-    public init(inference: InferenceService, installer: ModelInstaller) {
+    public init(
+        inference: InferenceService,
+        installer: ModelInstaller,
+        requiresLocalArtifact: @escaping (String) -> Bool = { !$0.hasPrefix("remote::") }
+    ) {
         self.inference = inference
         self.installer = installer
+        self.requiresLocalArtifact = requiresLocalArtifact
     }
 
     // MARK: - Load Model
@@ -79,8 +87,8 @@ public final class ModelRuntimeCoordinator {
             assertionFailure("LiteRTBootstrap.bootstrap() must be called in @main init() before any load()")
         }
 
-        // Guard: 模型必须已安装 (远程模型无本地资产, 跳过此门禁)。
-        if !modelID.hasPrefix("remote::") {
+        // Guard: 模型必须已安装 (远程端点 / 系统模型无本地资产, 跳过此门禁)。
+        if requiresLocalArtifact(modelID) {
             let state = installer.installState(for: modelID)
             guard state == .downloaded || state == .bundled else {
                 log.error("load(\(modelID, privacy: .public)) rejected: not installed (state=\(String(describing: state), privacy: .public))")

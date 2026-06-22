@@ -103,6 +103,10 @@ final class SkillRouterCompatibilityContractTests: XCTestCase {
         XCTAssertTrue(ios27Router.contains("candidates: [IOS27FoundationSkillCandidate]"))
         XCTAssertTrue(ios27Router.contains("Available Skills (use the id exactly):"))
         XCTAssertTrue(ios27Router.contains("isSupportedRoute(candidate:"))
+        XCTAssertTrue(ios27Router.contains("DynamicGenerationSchema("))
+        XCTAssertTrue(ios27Router.contains("GenerationSchema(root: root, dependencies: [])"))
+        XCTAssertTrue(ios27Router.contains("schema: routeSchema"))
+        XCTAssertTrue(ios27Router.contains("anyOf: skillIDChoices"))
         XCTAssertTrue(router.contains("registeredTools(for: entry.id).map"))
         XCTAssertTrue(router.contains("definition.metadata.triggers"))
         XCTAssertTrue(router.contains("definition.metadata.examples.map(\\.query)"))
@@ -119,6 +123,51 @@ final class SkillRouterCompatibilityContractTests: XCTestCase {
         XCTAssertFalse(ios27Router.contains("case \"translate\":"))
         XCTAssertFalse(ios27Router.contains("dropLast()"))
         XCTAssertFalse(ios27Router.contains("hasSuffix(\"s\")"))
+        XCTAssertFalse(ios27Router.contains("@Generable(description: \"A PhoneClaw skill routing decision.\")"))
+        XCTAssertFalse(ios27Router.contains("generating: IOS27GeneratedSkillRoute.self"))
+    }
+
+    func testFoundationModelsInferenceServiceStaysBehindRuntimeCompatibilityBoundary() throws {
+        let flags = try source("Agent/HotfixFeatureFlags.swift")
+        let llmTypes = try source("LLM/Core/LLMTypes.swift")
+        let catalog = try source("LLM/Backends/FoundationModels/IOS27FoundationModelsCatalog.swift")
+        let service = try source("LLM/Backends/FoundationModels/IOS27FoundationModelsInferenceService.swift")
+        let dispatcher = try source("LLM/Backends/BackendDispatcher.swift")
+        let liteRTCatalog = try source("LLM/Backends/LiteRT/LiteRTCatalog.swift")
+        let coordinator = try source("LLM/Core/ModelRuntimeCoordinator.swift")
+        let agentEngine = try source("Agent/AgentEngine.swift")
+        let settings = try source("UI/ConfigurationsView.swift")
+        let switcher = try source("UI/ContentView.swift")
+
+        XCTAssertTrue(flags.contains("ENABLE_FOUNDATION_MODELS_INFERENCE_SERVICE"))
+        XCTAssertTrue(flags.contains("value(for: .enableFoundationModelsInferenceService, defaultValue: true)"))
+        XCTAssertTrue(llmTypes.contains("case foundationModels"))
+        XCTAssertTrue(llmTypes.contains("public var requiresLocalArtifact: Bool"))
+        XCTAssertTrue(llmTypes.contains("case .remoteEndpoint, .foundationModels:"))
+
+        XCTAssertTrue(catalog.contains("#if canImport(FoundationModels)"))
+        XCTAssertTrue(catalog.contains("if #available(iOS 27.0, macOS 27.0, *)"))
+        XCTAssertTrue(catalog.contains("SystemLanguageModel.default.availability"))
+        XCTAssertTrue(catalog.contains("id: FoundationModelsCatalog.systemModelID"))
+        XCTAssertTrue(catalog.contains("artifactKind: .foundationModels"))
+
+        XCTAssertTrue(service.contains("final class FoundationModelsInferenceService: InferenceService"))
+        XCTAssertTrue(service.contains("#if canImport(FoundationModels)"))
+        XCTAssertTrue(service.contains("@available(iOS 27.0, macOS 27.0, *)"))
+        XCTAssertTrue(service.contains("LanguageModelSession("))
+        XCTAssertTrue(service.contains("streamResponse("))
+        XCTAssertTrue(service.contains("toolCallingMode: .disallowed"))
+        XCTAssertTrue(service.contains("normalizedPrompt(fromGemmaPrompt:"))
+
+        XCTAssertTrue(dispatcher.contains("foundationModels: (any InferenceService)?"))
+        XCTAssertTrue(dispatcher.contains("case .foundationModels:"))
+        XCTAssertTrue(dispatcher.contains("target = foundationModels"))
+        XCTAssertTrue(liteRTCatalog.contains("FoundationModelsCatalog.availableModels"))
+        XCTAssertTrue(coordinator.contains("requiresLocalArtifact: @escaping (String) -> Bool"))
+        XCTAssertTrue(coordinator.contains("if requiresLocalArtifact(modelID)"))
+        XCTAssertTrue(agentEngine.contains("FoundationModelsInferenceService()"))
+        XCTAssertTrue(settings.contains("model.requiresLocalArtifact"))
+        XCTAssertTrue(switcher.contains("systemModels: [ModelDescriptor]"))
     }
 
     func testIOS27FoundationRouterUsesIOS27ModelAPIsWithDiagnostics() throws {

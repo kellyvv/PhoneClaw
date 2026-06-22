@@ -231,6 +231,9 @@ public enum ArtifactKind: String, Sendable {
     /// 远程端点 (局域网 Mac 上的 OpenAI 兼容网关)。无本地资产, 不下载不安装,
     /// 由 RemoteInferenceService 走 HTTP/SSE。
     case remoteEndpoint
+    /// Apple Foundation Models 系统模型。无本地资产, 不下载不安装,
+    /// 由 FoundationModelsInferenceService 走系统 LanguageModelSession。
+    case foundationModels
 }
 
 // MARK: - Model Capabilities
@@ -386,6 +389,16 @@ public struct ModelDescriptor: Identifiable, Hashable, Sendable {
     /// bundle 总下载体积 (主文件 + 所有 companions 压缩后字节)。用于 UI 进度估算。
     public var totalDownloadSize: Int64 {
         expectedFileSize + companionFiles.reduce(0) { $0 + $1.expectedFileSize }
+    }
+
+    /// 是否需要本地模型文件才能加载。系统模型 / 远程端点没有下载资产。
+    public var requiresLocalArtifact: Bool {
+        switch artifactKind {
+        case .litertlmFile, .mlxDirectory, .ggufBundle:
+            return true
+        case .remoteEndpoint, .foundationModels:
+            return false
+        }
     }
 
     /// 显式 memberwise init: 给 companionFiles 默认 `[]` 让所有已有的 Gemma 4

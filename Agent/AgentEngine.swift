@@ -525,10 +525,21 @@ class AgentEngine {
 
             let remote = RemoteInferenceService()
             remote.endpointResolver = { [lan] modelID in await lan.resolveRemoteModel(modelID) }
+            let foundationModels: (any InferenceService)?
+            #if canImport(FoundationModels)
+            if #available(iOS 27.0, macOS 27.0, *) {
+                foundationModels = FoundationModelsInferenceService()
+            } else {
+                foundationModels = nil
+            }
+            #else
+            foundationModels = nil
+            #endif
             self.inference = BackendDispatcher(
                 liteRT: liteRT,
                 miniCPMV: miniCPMV,
                 remote: remote,
+                foundationModels: foundationModels,
                 modelLookup: { modelID in
                     resolvedCatalog.availableModels.first(where: { $0.id == modelID })
                 }
@@ -540,7 +551,11 @@ class AgentEngine {
 
         self.coordinator = ModelRuntimeCoordinator(
             inference: self.inference,
-            installer: resolvedInstaller
+            installer: resolvedInstaller,
+            requiresLocalArtifact: { modelID in
+                resolvedCatalog.availableModels.first(where: { $0.id == modelID })?.requiresLocalArtifact
+                    ?? !modelID.hasPrefix("remote::")
+            }
         )
         self.sessionStore = ChatSessionStore()
 

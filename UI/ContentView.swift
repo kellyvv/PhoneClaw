@@ -2497,10 +2497,17 @@ private struct ModelSwitcherSheet: View {
     @Environment(\.dismiss) private var dismiss
     var engine: AgentEngine
 
-    /// 已就绪的本地模型 (已下载;artifactPath 存在才算可切)。
+    /// 已就绪的本地权重模型 (已下载;artifactPath 存在才算可切)。
     private var localModels: [ModelDescriptor] {
         engine.availableModels.filter {
-            !$0.id.hasPrefix("remote::") && engine.installer.artifactPath(for: $0) != nil
+            $0.requiresLocalArtifact && engine.installer.artifactPath(for: $0) != nil
+        }
+    }
+
+    /// Apple 系统模型等无下载资产模型。
+    private var systemModels: [ModelDescriptor] {
+        engine.availableModels.filter {
+            !$0.requiresLocalArtifact && !$0.id.hasPrefix("remote::")
         }
     }
 
@@ -2509,7 +2516,7 @@ private struct ModelSwitcherSheet: View {
         engine.availableModels.filter { $0.id.hasPrefix("remote::") }
     }
 
-    private var isEmpty: Bool { localModels.isEmpty && remoteModels.isEmpty }
+    private var isEmpty: Bool { localModels.isEmpty && systemModels.isEmpty && remoteModels.isEmpty }
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -2531,6 +2538,9 @@ private struct ModelSwitcherSheet: View {
                         VStack(alignment: .leading, spacing: 24) {
                             if !localModels.isEmpty {
                                 section(tr("本地模型", "Local", "ローカル"), models: localModels)
+                            }
+                            if !systemModels.isEmpty {
+                                section(tr("系统模型", "System", "システム"), models: systemModels)
                             }
                             if !remoteModels.isEmpty {
                                 section(tr("远程模型", "Remote", "リモート"), models: remoteModels)
@@ -2609,7 +2619,12 @@ private struct ModelSwitcherSheet: View {
     }
 
     private func rowSubtitle(_ model: ModelDescriptor) -> String? {
-        guard model.id.hasPrefix("remote::") else { return nil }
+        guard model.id.hasPrefix("remote::") else {
+            if model.artifactKind == .foundationModels {
+                return tr("Apple Intelligence · 无需下载", "Apple Intelligence · no download", "Apple Intelligence · ダウンロード不要")
+            }
+            return nil
+        }
         return LANConnectionManager.remoteDisplayParts(for: model).subtitle
     }
 

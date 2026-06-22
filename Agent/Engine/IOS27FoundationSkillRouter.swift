@@ -104,23 +104,12 @@ enum IOS27FoundationSkillRouter {
 }
 
 #if canImport(FoundationModels)
-@available(iOS 27.0, macOS 27.0, *)
-@Generable(description: "A PhoneClaw skill routing decision.")
 private struct IOS27GeneratedSkillRoute {
-    @Guide(description: "Routing action.", .anyOf(["answerDirectly", "useSkill", "askClarification"]))
-    var action: String
-
-    @Guide(description: "Selected skill identifier from Available Skills, or null.")
-    var skillID: String
-
-    @Guide(description: "Selected tool name from the selected skill's tools, or null.")
-    var toolName: String
-
-    @Guide(description: "Confidence from 0.0 to 1.0.", .range(0.0...1.0))
-    var confidence: Double
-
-    @Guide(description: "Short reason for the routing decision.")
-    var reason: String
+    let action: String
+    let skillID: String
+    let toolName: String
+    let confidence: Double
+    let reason: String
 }
 
 @available(iOS 27.0, macOS 27.0, *)
@@ -165,9 +154,10 @@ private enum IOS27FoundationSkillRouterRuntime {
             session.prewarm()
             prewarmMilliseconds = milliseconds(since: prewarmStart)
 
+            let routeSchema = try routeGenerationSchema(candidates: candidates)
             let response = try await session.respond(
                 to: prompt(for: normalized, candidates: candidates),
-                generating: IOS27GeneratedSkillRoute.self,
+                schema: routeSchema,
                 options: GenerationOptions(
                     samplingMode: .greedy,
                     maximumResponseTokens: 96,
@@ -179,7 +169,7 @@ private enum IOS27FoundationSkillRouterRuntime {
                     "phoneclaw_router": "foundation"
                 ]
             )
-            let route = response.content
+            let route = try decodedRoute(from: response.content)
             let decision = decision(
                 from: route,
                 candidates: candidates,
@@ -321,6 +311,107 @@ private enum IOS27FoundationSkillRouterRuntime {
         }
     }
 
+    private static func routeGenerationSchema(candidates: [IOS27FoundationSkillCandidate]) throws -> GenerationSchema {
+        let skillIDChoices = uniqueSorted(candidates.map(\.id) + ["none"])
+        let toolChoices = uniqueSorted(candidates.flatMap { candidate in
+            candidate.tools.map(\.name)
+        } + ["none"])
+
+        let root = DynamicGenerationSchema(
+            name: "PhoneClawSkillRoute",
+            description: "A PhoneClaw skill routing decision.",
+            properties: [
+                DynamicGenerationSchema.Property(
+                    name: "action",
+                    description: "Routing action.",
+                    schema: DynamicGenerationSchema(
+                        name: "PhoneClawSkillRouteAction",
+                        anyOf: ["answerDirectly", "useSkill", "askClarification"]
+                    )
+                ),
+                DynamicGenerationSchema.Property(
+                    name: "skillID",
+                    description: "Selected skill identifier. Use none when no skill is selected.",
+                    schema: DynamicGenerationSchema(
+                        name: "PhoneClawSkillRouteSkillID",
+                        anyOf: skillIDChoices
+                    )
+                ),
+                DynamicGenerationSchema.Property(
+                    name: "toolName",
+                    description: "Selected tool name from the selected skill, or none.",
+                    schema: DynamicGenerationSchema(
+                        name: "PhoneClawSkillRouteToolName",
+                        anyOf: toolChoices
+                    )
+                ),
+                DynamicGenerationSchema.Property(
+                    name: "confidence",
+                    description: "Confidence from 0.0 to 1.0.",
+                    schema: DynamicGenerationSchema(
+                        type: Double.self,
+                        guides: [.range(0.0...1.0)]
+                    )
+                ),
+                DynamicGenerationSchema.Property(
+                    name: "reason",
+                    description: "Short reason for the routing decision.",
+                    schema: DynamicGenerationSchema(type: String.self)
+                )
+            ]
+        )
+
+        return try GenerationSchema(root: root, dependencies: [])
+    }
+
+    private static func decodedRoute(from content: GeneratedContent) throws -> IOS27GeneratedSkillRoute {
+        guard let data = content.jsonString.data(using: .utf8),
+              let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw IOS27FoundationRouteDecodeError.invalidContent
+        }
+
+        return IOS27GeneratedSkillRoute(
+            action: stringValue(object["action"]),
+            skillID: stringValue(object["skillID"]),
+            toolName: stringValue(object["toolName"]),
+            confidence: doubleValue(object["confidence"]),
+            reason: stringValue(object["reason"])
+        )
+    }
+
+    private static func uniqueSorted(_ values: [String]) -> [String] {
+        Array(Set(values.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }))
+            .sorted()
+    }
+
+    private static func stringValue(_ value: Any?) -> String {
+        switch value {
+        case let value as String:
+            return value
+        case let value as NSNumber:
+            return value.stringValue
+        case _ as NSNull:
+            return "none"
+        case .none:
+            return "none"
+        default:
+            return String(describing: value ?? "none")
+        }
+    }
+
+    private static func doubleValue(_ value: Any?) -> Double {
+        switch value {
+        case let value as Double:
+            return value
+        case let value as NSNumber:
+            return value.doubleValue
+        case let value as String:
+            return Double(value) ?? 0
+        default:
+            return 0
+        }
+    }
+
     private static func normalizedIdentifier(_ rawValue: String) -> String {
         rawValue
             .folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: .current)
@@ -404,12 +495,17 @@ private enum IOS27FoundationSkillRouterRuntime {
         Decision hints:
         - Return useSkill only when the request clearly matches one listed skill id, name, description, trigger, example, or tool.
         - Return askClarification when one listed skill matches but required details appear missing.
-        - For skillID, copy the exact id from Available Skills.
-        - For toolName, copy one listed tool for that skill, or return null when tool choice should be decided later.
-        - Explanation, definition, introduction, or summary requests => answerDirectly/null/null.
+        - For skillID, choose one schema-provided skill id exactly.
+        - For toolName, choose one schema-provided tool name for that skill, or none when tool choice should be decided later.
+        - Explanation, definition, introduction, or summary requests => answerDirectly/none/none.
         - Never answerDirectly for a request that should read or change private device/app state.
         - Do not invent skill IDs or tool names that are not listed above.
         """
     }
+}
+
+@available(iOS 27.0, macOS 27.0, *)
+private enum IOS27FoundationRouteDecodeError: Error {
+    case invalidContent
 }
 #endif

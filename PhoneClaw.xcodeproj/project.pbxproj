@@ -87,6 +87,8 @@
 		A31476F82F85741500318978 /* Router.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31476F12F85741500318978 /* Router.swift */; };
 		A27C0DEF0000000000000001 /* GuardedSkillRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A27C0DEF0000000000000002 /* GuardedSkillRouter.swift */; };
 		A27C0DEF0000000000000003 /* IOS27FoundationSkillRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A27C0DEF0000000000000004 /* IOS27FoundationSkillRouter.swift */; };
+		21A376D4F0444A74A8F6D2EE /* IOS27FoundationModelsInferenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD57EFED3F6A41FC8B154FC9 /* IOS27FoundationModelsInferenceService.swift */; };
+		7CE29873DCE243E48125BD3F /* IOS27FoundationModelsCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9ABCEF146EDF405D95524F33 /* IOS27FoundationModelsCatalog.swift */; };
 		A31476F92F85741500318978 /* ChatSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31476F22F85741500318978 /* ChatSessionStore.swift */; };
 		A31476FA2F85741500318978 /* ToolChain.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31476F42F85741500318978 /* ToolChain.swift */; };
 		A31476FB2F85741500318978 /* OutputCleaner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31476EF2F85741500318978 /* OutputCleaner.swift */; };
@@ -420,6 +422,8 @@
 		REMOTEINFERENCE00000101 /* RemoteInferenceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RemoteInferenceService.swift; path = LLM/Backends/Remote/RemoteInferenceService.swift; sourceTree = SOURCE_ROOT; };
 		LANDISCOVERY00000000101 /* LANDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LANDiscovery.swift; path = LLM/Backends/Remote/LANDiscovery.swift; sourceTree = SOURCE_ROOT; };
 		LANBINDING0000000000101 /* LANBinding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LANBinding.swift; path = LLM/Backends/Remote/LANBinding.swift; sourceTree = SOURCE_ROOT; };
+		BD57EFED3F6A41FC8B154FC9 /* IOS27FoundationModelsInferenceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = IOS27FoundationModelsInferenceService.swift; path = LLM/Backends/FoundationModels/IOS27FoundationModelsInferenceService.swift; sourceTree = SOURCE_ROOT; };
+		9ABCEF146EDF405D95524F33 /* IOS27FoundationModelsCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = IOS27FoundationModelsCatalog.swift; path = LLM/Backends/FoundationModels/IOS27FoundationModelsCatalog.swift; sourceTree = SOURCE_ROOT; };
 		RMVIEW00000000000101 /* RemoteMacSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RemoteMacSettingsView.swift; path = UI/RemoteMacSettingsView.swift; sourceTree = SOURCE_ROOT; };
 		A7C200000000000000000003 /* PhoneClawLiveActivityWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneClawLiveActivityWidget.swift; sourceTree = "<group>"; };
 		A7C200000000000000000004 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -665,8 +669,18 @@
 				DISPATCHER000000000101 /* BackendDispatcher.swift */,
 				BB3000000000000000000005 /* LiteRT */,
 				MINICPMV0000000000201 /* MiniCPMV */,
+				0F8ABECF69424C19830E92AD /* FoundationModels */,
 			);
 			path = Backends;
+			sourceTree = "<group>";
+		};
+		0F8ABECF69424C19830E92AD /* FoundationModels */ = {
+			isa = PBXGroup;
+			children = (
+				BD57EFED3F6A41FC8B154FC9 /* IOS27FoundationModelsInferenceService.swift */,
+				9ABCEF146EDF405D95524F33 /* IOS27FoundationModelsCatalog.swift */,
+			);
+			path = FoundationModels;
 			sourceTree = "<group>";
 		};
 		BB3000000000000000000004 /* Installation */ = {
@@ -1048,6 +1062,8 @@
 				C3C4D5E6F7081A2B3C52D3E4 /* ChatModels.swift in Sources */,
 				97E96A2FBFFAF609F276A896 /* ConfigurationsView.swift in Sources */,
 				9412304167DACB86E5D60D49 /* ContentView.swift in Sources */,
+				21A376D4F0444A74A8F6D2EE /* IOS27FoundationModelsInferenceService.swift in Sources */,
+				7CE29873DCE243E48125BD3F /* IOS27FoundationModelsCatalog.swift in Sources */,
 				AA1000000000000000000003 /* Gemma4Config.swift in Sources */,
 				AA1000000000000000000004 /* Gemma4LanguageModel.swift in Sources */,
 				AA1000000000000000000020 /* Gemma4AudioFeatureExtractor.swift in Sources */,

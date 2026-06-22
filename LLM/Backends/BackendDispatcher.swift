@@ -12,6 +12,7 @@ import CoreImage
 //   ArtifactKind.litertlmFile   → LiteRTBackend         (Gemma 4 / .litertlm)
 //   ArtifactKind.ggufBundle     → MiniCPMVBackend       (MiniCPM-V / GGUF + ANE)
 //   ArtifactKind.remoteEndpoint → RemoteInferenceService (局域网 Mac / OpenAI 兼容网关)
+//   ArtifactKind.foundationModels → FoundationModelsInferenceService (Apple 系统模型)
 //   ArtifactKind.mlxDirectory   → 错误 (MLX backend 当前未集成, 保留 case 占位)
 //
 // 为什么是 dispatcher 而不是"换 inference 实例":
@@ -35,6 +36,8 @@ final class BackendDispatcher: InferenceService {
     let miniCPMV: MiniCPMVBackend
     /// 局域网 Mac 远程推理 (OpenAI 兼容网关)。纯 URLSession, 跨平台。
     let remote: RemoteInferenceService
+    /// Apple Foundation Models 系统推理。nil 表示当前 SDK/OS/设备不可用。
+    private let foundationModels: (any InferenceService)?
 
     /// 当前 active 的后端。`load` 时按 ModelDescriptor 路由切换。
     /// 协议要求的所有方法/属性都转发到这里。
@@ -51,11 +54,13 @@ final class BackendDispatcher: InferenceService {
         liteRT: LiteRTBackend,
         miniCPMV: MiniCPMVBackend,
         remote: RemoteInferenceService,
+        foundationModels: (any InferenceService)? = nil,
         modelLookup: @escaping (String) -> ModelDescriptor?
     ) {
         self.liteRT = liteRT
         self.miniCPMV = miniCPMV
         self.remote = remote
+        self.foundationModels = foundationModels
         self.modelLookup = modelLookup
         // 默认 active 走 LiteRT — 保持现有路径行为不变 (app 启动时如果还没
         // 选 MiniCPM-V, 任何对 inference 的访问都是 LiteRT)。
@@ -136,6 +141,8 @@ final class BackendDispatcher: InferenceService {
 
     var stats: InferenceStats { active.stats }
 
+    var activeCapabilities: ModelCapabilities? { active.activeCapabilities }
+
     // MARK: - InferenceService: Sampling
 
     var samplingTopK: Int {
@@ -214,6 +221,11 @@ final class BackendDispatcher: InferenceService {
                 target = miniCPMV
             case .remoteEndpoint:
                 target = remote
+            case .foundationModels:
+                guard let foundationModels else {
+                    throw BackendDispatcherError.foundationModelsUnavailable
+                }
+                target = foundationModels
             case .mlxDirectory:
                 // 当前 PhoneClaw 不集成 MLX backend, descriptor 也不应该出现 mlxDirectory,
                 // 但 enum case 存在所以这里给个明确错误而不是 silent fallback。
@@ -239,6 +251,7 @@ final class BackendDispatcher: InferenceService {
 
 public enum BackendDispatcherError: LocalizedError {
     case unsupportedArtifactKind(modelID: String, kind: String)
+    case foundationModelsUnavailable
 
     public var errorDescription: String? {
         switch self {
@@ -246,6 +259,11 @@ public enum BackendDispatcherError: LocalizedError {
             return tr(
                 "模型 \(id) 的资产类型 \(kind) 当前后端不支持",
                 "Model \(id) has unsupported artifact kind: \(kind)"
+            )
+        case .foundationModelsUnavailable:
+            return tr(
+                "Apple Foundation Models 当前不可用",
+                "Apple Foundation Models is unavailable"
             )
         }
     }

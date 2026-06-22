@@ -558,31 +558,53 @@ struct ConfigurationsView: View {
     }
 
     private var modelSection: some View {
-        // 只列本地模型;远程模型 (remote::) 归「Mac 远程推理」页, 不走这里的下载/安装流程。
-        let localModels = engine.availableModels.filter { !$0.id.hasPrefix("remote::") }
+        // 只列本地权重模型和系统模型;远程模型归「Mac 远程推理」页。
+        let localModels = engine.availableModels.filter(\.requiresLocalArtifact)
+        let systemModels = engine.availableModels.filter {
+            !$0.requiresLocalArtifact && !$0.id.hasPrefix("remote::")
+        }
         return VStack(alignment: .leading, spacing: 16) {
             sectionLabel(tr("本地模型", "Local", "ローカル"))
 
-            VStack(spacing: 0) {
-                ForEach(Array(localModels.enumerated()), id: \.element.id) { index, model in
-                    modelCandidateRow(model)
+            if !localModels.isEmpty {
+                VStack(spacing: 0) {
+                    ForEach(Array(localModels.enumerated()), id: \.element.id) { index, model in
+                        modelCandidateRow(model)
 
-                    if index < localModels.count - 1 {
-                        Rectangle()
-                            .fill(SettingsStyle.hairline)
-                            .frame(height: 1)
-                            .padding(.vertical, 12)
+                        if index < localModels.count - 1 {
+                            Rectangle()
+                                .fill(SettingsStyle.hairline)
+                                .frame(height: 1)
+                                .padding(.vertical, 12)
+                        }
                     }
                 }
             }
 
+            if !systemModels.isEmpty {
+                sectionLabel(tr("系统模型", "System", "システム"))
+                    .padding(.top, localModels.isEmpty ? 0 : 6)
+
+                VStack(spacing: 0) {
+                    ForEach(Array(systemModels.enumerated()), id: \.element.id) { index, model in
+                        modelCandidateRow(model)
+
+                        if index < systemModels.count - 1 {
+                            Rectangle()
+                                .fill(SettingsStyle.hairline)
+                                .frame(height: 1)
+                                .padding(.vertical, 12)
+                        }
+                    }
+                }
+            }
         }
     }
 
     private func modelCandidateRow(_ model: ModelDescriptor) -> some View {
         let state = engine.installer.installState(for: model.id)
         let isSelected = selectedModelID == model.id
-        let isSelectable = modelIsSelectable(state)
+        let isSelectable = modelIsSelectable(model, state: state)
 
         return VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 12) {
@@ -669,7 +691,11 @@ struct ConfigurationsView: View {
             .foregroundStyle(compact ? SettingsStyle.ink : SettingsStyle.secondary)
     }
 
-    private func modelIsSelectable(_ state: ModelInstallState) -> Bool {
+    private func modelIsSelectable(_ model: ModelDescriptor, state: ModelInstallState) -> Bool {
+        guard model.requiresLocalArtifact else {
+            return true
+        }
+
         switch state {
         case .downloaded, .bundled:
             return true
@@ -680,6 +706,8 @@ struct ConfigurationsView: View {
 
     private func modelRecommendationBadge(for model: ModelDescriptor) -> (text: String, color: Color)? {
         switch model.id {
+        case FoundationModelsCatalog.systemModelID:
+            return (tr("系统", "System", "システム"), SettingsStyle.secondary)
         case ModelDescriptor.gemma4E2B.id:
             return (tr("推荐", "Recommended", "おすすめ"), SettingsStyle.ink)
         case ModelDescriptor.gemma4E4B.id:
@@ -728,7 +756,7 @@ struct ConfigurationsView: View {
             return tr("未选择模型", "No Model Selected", "モデル未選択")
         }
 
-        guard modelIsSelectable(state) else {
+        guard modelIsSelectable(model, state: state) else {
             return tr("待下载模型", "Model Pending Download", "ダウンロード待ちのモデル")
         }
 
@@ -742,6 +770,17 @@ struct ConfigurationsView: View {
     private func modelInstallLabel(for state: ModelInstallState, model: ModelDescriptor) -> String {
         if let runtimeLabel = modelRuntimeLabel(for: model, includeBackend: true) {
             return runtimeLabel
+        }
+
+        if !model.requiresLocalArtifact {
+            switch model.artifactKind {
+            case .foundationModels:
+                return tr("系统模型 · 无需下载", "System model · no download", "システムモデル · ダウンロード不要")
+            case .remoteEndpoint:
+                return tr("远程模型 · 无需下载", "Remote model · no download", "リモートモデル · ダウンロード不要")
+            default:
+                break
+            }
         }
 
         let recommendationDetail = modelRecommendationDetail(for: model)
@@ -781,6 +820,17 @@ struct ConfigurationsView: View {
 
         if let runtimeLabel = modelRuntimeLabel(for: model, includeBackend: true) {
             return runtimeLabel
+        }
+
+        if !model.requiresLocalArtifact {
+            switch model.artifactKind {
+            case .foundationModels:
+                return tr("系统模型 · 无需下载", "System model · no download", "システムモデル · ダウンロード不要")
+            case .remoteEndpoint:
+                return tr("远程模型 · 无需下载", "Remote model · no download", "リモートモデル · ダウンロード不要")
+            default:
+                break
+            }
         }
 
         let mode = preferredBackend.uppercased()
@@ -857,7 +907,8 @@ struct ConfigurationsView: View {
     }
 
     private var currentModelSupportsSpeculativeDecoding: Bool {
-        currentModelFamily == .gemma4
+        engine.availableModels.first(where: { $0.id == selectedModelID })?.artifactKind == .litertlmFile
+            && currentModelFamily == .gemma4
     }
 
     private var speculativeDecodingToggleBinding: Binding<Bool> {
@@ -1302,6 +1353,9 @@ struct ConfigurationsView: View {
 
     @ViewBuilder
     private func modelStateControl(for model: ModelDescriptor, state: ModelInstallState) -> some View {
+        if !model.requiresLocalArtifact {
+            modelBadge(tr("可用", "Available", "利用可能"), color: SettingsStyle.secondary)
+        } else {
         switch state {
         case .notInstalled:
             let isResumable = engine.installer.hasResumableDownload(for: model.id)
@@ -1417,6 +1471,7 @@ struct ConfigurationsView: View {
                 .padding(.vertical, 7)
                 .background(SettingsStyle.controlFill, in: Capsule())
             }
+        }
         }
     }
 
@@ -1614,12 +1669,12 @@ struct ConfigurationsView: View {
     }
 
     private func selectModelIfCurrentUnavailable(_ model: ModelDescriptor) {
-        guard engine.installer.artifactPath(for: model) != nil else {
+        guard !model.requiresLocalArtifact || engine.installer.artifactPath(for: model) != nil else {
             return
         }
 
         if let currentModel = selectedModel,
-           engine.installer.artifactPath(for: currentModel) != nil {
+           !currentModel.requiresLocalArtifact || engine.installer.artifactPath(for: currentModel) != nil {
             return
         }
 
@@ -1645,10 +1700,8 @@ struct ConfigurationsView: View {
         let modelChanged = engine.config.selectedModelID != selectedModelID
         let backendChanged = engine.config.preferredBackend != preferredBackend
 
-        // 远程模型 (remote::) 无本地资产,不走"已下载"校验 —— 可用性由配对+网关保证。
-        let isRemote = selectedModelID.hasPrefix("remote::")
         guard let selectedModel = engine.availableModels.first(where: { $0.id == selectedModelID }),
-              isRemote || engine.installer.artifactPath(for: selectedModel) != nil else {
+              !selectedModel.requiresLocalArtifact || engine.installer.artifactPath(for: selectedModel) != nil else {
             modelSelectionMessage = tr(
                 "请选择已下载模型，或先下载当前模型。",
                 "Choose an installed model, or download the current model first.",
@@ -1662,7 +1715,9 @@ struct ConfigurationsView: View {
         // true 值。这里按 selectedModel 重算 effective 值, 避免 "UI 显示关闭
         // 但写回 config 是 true" 的不一致 (会被 reloadModel 持久化)。
         let effectiveSpeculativeDecoding =
-            (!isRemote && selectedModel.family == .gemma4) ? enableSpeculativeDecoding : false
+            (selectedModel.artifactKind == .litertlmFile && selectedModel.family == .gemma4)
+                ? enableSpeculativeDecoding
+                : false
         let mtpChanged = engine.config.enableSpeculativeDecoding != effectiveSpeculativeDecoding
 
         modelSelectionMessage = nil

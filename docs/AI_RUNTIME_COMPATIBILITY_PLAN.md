@@ -50,7 +50,7 @@ InferenceService
   LiteRTBackend                         existing
   MiniCPMVBackend                       existing
   RemoteInferenceService                existing
-  FoundationModelsInferenceService      future adapter, SDK-gated
+  FoundationModelsInferenceService      SDK-gated adapter
   CoreAIInferenceService                future adapter, SDK-gated
 
 Agent contracts
@@ -139,9 +139,9 @@ Use these boundaries instead:
 
 ### Phase 3: Foundation Models Adapter
 
-- Add a feature-gated `FoundationModelsInferenceService` or smaller routing/extraction adapter.
-- Start with routing and structured extraction, not full answer generation.
-- Prefer runtime schemas such as `DynamicGenerationSchema` for runtime skill/tool candidate constraints when the SDK supports them.
+- Keep the feature-gated `FoundationModelsInferenceService` on the existing `InferenceService` boundary.
+- Keep routing and structured extraction on runtime schemas before expanding deeper planning contracts.
+- Keep runtime schemas such as `DynamicGenerationSchema` for runtime skill/tool candidate constraints when the SDK supports them.
 - Compare output with existing CLI golden scenarios.
 - Do not move LiveLand production voice to a separate Foundation Models live token source until latency, cancellation, and recovery match the current persistent Live path.
 
