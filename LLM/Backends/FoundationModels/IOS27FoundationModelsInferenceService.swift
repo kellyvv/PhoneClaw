@@ -37,6 +37,7 @@ final class FoundationModelsInferenceService: InferenceService {
     @ObservationIgnored private var streamTask: Task<Void, Never>?
     @ObservationIgnored private var loadedModelID: String?
     @ObservationIgnored private var liveSystemPrompt: String?
+    @ObservationIgnored private var profileSessionCache: [String: LanguageModelSession] = [:]
 
     init() {
         stats.backend = "foundation-models"
@@ -76,6 +77,7 @@ final class FoundationModelsInferenceService: InferenceService {
         streamTask = nil
         session = nil
         liveSession = nil
+        profileSessionCache.removeAll(keepingCapacity: false)
         loadedModelID = nil
         isLoaded = false
         isGenerating = false
@@ -110,14 +112,14 @@ final class FoundationModelsInferenceService: InferenceService {
     }
 
     func generate(prompt: String) -> AsyncThrowingStream<String, Error> {
-        streamText(prompt: Self.normalizedPrompt(fromGemmaPrompt: prompt), using: session)
+        streamProfile(Self.runtimeProfile(fromGemmaPrompt: prompt), using: session)
     }
 
     func generateRaw(text: String, images: [CIImage]) -> AsyncThrowingStream<String, Error> {
         if !images.isEmpty {
             PCLog.debug("[FoundationModels] generateRaw ignores \(images.count) image(s); text-only adapter")
         }
-        return streamText(prompt: Self.normalizedPrompt(fromGemmaPrompt: text), using: session)
+        return streamProfile(Self.runtimeProfile(fromGemmaPrompt: text), using: session)
     }
 
     func generateMultimodal(
@@ -129,10 +131,13 @@ final class FoundationModelsInferenceService: InferenceService {
         if !images.isEmpty || !audios.isEmpty {
             PCLog.debug("[FoundationModels] generateMultimodal ignores \(images.count) image(s) / \(audios.count) audio input(s); text-only adapter")
         }
-        let mergedPrompt = systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? prompt
-            : "System:\n\(systemPrompt)\n\nUser:\n\(prompt)"
-        return streamText(prompt: mergedPrompt, using: session)
+        return streamProfile(
+            PromptRuntimeProfile(
+                instructions: Self.instructions(adding: systemPrompt),
+                prompt: "User:\n\(prompt)"
+            ),
+            using: session
+        )
     }
 
     func generateLive(
@@ -151,6 +156,18 @@ final class FoundationModelsInferenceService: InferenceService {
             liveSession?.prewarm()
         }
         return streamText(prompt: prompt, using: liveSession)
+    }
+
+    private func streamProfile(
+        _ profile: PromptRuntimeProfile,
+        using sourceSession: LanguageModelSession?
+    ) -> AsyncThrowingStream<String, Error> {
+        guard isLoaded, sourceSession != nil else {
+            return AsyncThrowingStream { $0.finish(throwing: ModelBackendError.modelNotLoaded) }
+        }
+
+        let requestSession = profileSession(for: profile, fallback: sourceSession)
+        return streamText(prompt: profile.prompt, using: requestSession)
     }
 
     private func streamText(
@@ -247,60 +264,47 @@ final class FoundationModelsInferenceService: InferenceService {
         return "\(defaultInstructions)\n\nUser system prompt:\n\(trimmed)"
     }
 
-    private static func normalizedPrompt(fromGemmaPrompt prompt: String) -> String {
-        let turns = parseGemmaTurns(prompt)
-        guard !turns.isEmpty else {
-            return prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-
-        return turns.map { turn in
-            switch turn.role {
-            case "system":
-                return "System:\n\(turn.content)"
-            case "user":
-                return "User:\n\(turn.content)"
-            case "model", "assistant":
-                return "Assistant:\n\(turn.content)"
-            default:
-                return "\(turn.role.capitalized):\n\(turn.content)"
-            }
-        }
-        .joined(separator: "\n\n")
+    private static func runtimeProfile(fromGemmaPrompt prompt: String) -> PromptRuntimeProfile {
+        PromptRuntimeProfile.fromGemmaPrompt(
+            prompt,
+            baseInstructions: defaultInstructions,
+            includeSystemTurnsInPrompt: false
+        )
     }
 
-    private static func parseGemmaTurns(_ prompt: String) -> [(role: String, content: String)] {
-        let open = "<|turn>"
-        let close = "<turn|>"
-        var remainder = prompt[...]
-        var turns: [(role: String, content: String)] = []
+    private static func instructions(adding systemPrompt: String?) -> String {
+        let trimmed = systemPrompt?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !trimmed.isEmpty else { return defaultInstructions }
+        return "\(defaultInstructions)\n\n\(trimmed)"
+    }
 
-        while let openRange = remainder.range(of: open) {
-            remainder = remainder[openRange.upperBound...]
-            let endRange = remainder.range(of: close)
-            let body: Substring
-            if let endRange {
-                body = remainder[..<endRange.lowerBound]
-                remainder = remainder[endRange.upperBound...]
-            } else {
-                body = remainder
-                remainder = prompt[prompt.endIndex...]
-            }
-
-            let trimmedBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmedBody.isEmpty else { continue }
-            let parts = trimmedBody.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
-            guard let rawRole = parts.first else { continue }
-            let role = rawRole.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            let content = parts.count > 1
-                ? parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
-                : ""
-            if role == "model", content.isEmpty {
-                continue
-            }
-            turns.append((role: role, content: content))
+    private func profileSession(
+        for profile: PromptRuntimeProfile,
+        fallback: LanguageModelSession?
+    ) -> LanguageModelSession? {
+        let instructions = profile.instructions?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !instructions.isEmpty, instructions != Self.defaultInstructions else {
+            return fallback
+        }
+        if let cached = profileSessionCache[instructions] {
+            return cached
         }
 
-        return turns
+        let model = SystemLanguageModel.default
+        guard case .available = model.availability else {
+            return fallback
+        }
+
+        if profileSessionCache.count >= 4 {
+            profileSessionCache.removeAll(keepingCapacity: true)
+        }
+        let dynamicSession = LanguageModelSession(
+            model: model,
+            instructions: instructions
+        )
+        dynamicSession.prewarm()
+        profileSessionCache[instructions] = dynamicSession
+        return dynamicSession
     }
 
     private static func availabilityDescription(_ availability: SystemLanguageModel.Availability) -> String {

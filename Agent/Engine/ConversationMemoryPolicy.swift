@@ -28,10 +28,12 @@ struct LegacyBudgetPlanner: ContextBudgetPlanner {
             from: history,
             historyDepth: historyDepth
         )
-        let estimatedPromptTokens = PromptTokenEstimator.estimate(prompt)
+        let promptTokenBreakdown = PromptTokenEstimator.estimateBreakdown(prompt)
+        let estimatedPromptTokens = promptTokenBreakdown.totalTokens
         let reservedOutputTokens = min(maxOutputTokens, capabilities.defaultReservedOutputTokens)
         return BudgetDecision(
             estimatedPromptTokens: estimatedPromptTokens,
+            promptTokenBreakdown: promptTokenBreakdown,
             reservedOutputTokens: reservedOutputTokens,
             historyMessagesIncluded: stats.messageCount,
             historyCharsIncluded: stats.characterCount
@@ -51,10 +53,12 @@ struct HotfixBudgetPlanner: ContextBudgetPlanner {
             fromPlanningHistory: history,
             historyDepth: historyDepth
         )
-        let estimatedPromptTokens = PromptTokenEstimator.estimate(prompt)
+        let promptTokenBreakdown = PromptTokenEstimator.estimateBreakdown(prompt)
+        let estimatedPromptTokens = promptTokenBreakdown.totalTokens
         let reservedOutputTokens = min(maxOutputTokens, capabilities.defaultReservedOutputTokens)
         return BudgetDecision(
             estimatedPromptTokens: estimatedPromptTokens,
+            promptTokenBreakdown: promptTokenBreakdown,
             reservedOutputTokens: reservedOutputTokens,
             historyMessagesIncluded: stats.messageCount,
             historyCharsIncluded: stats.characterCount

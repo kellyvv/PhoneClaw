@@ -159,8 +159,14 @@ final class SkillRouterCompatibilityContractTests: XCTestCase {
         XCTAssertTrue(service.contains("LanguageModelSession("))
         XCTAssertTrue(service.contains("streamResponse("))
         XCTAssertTrue(service.contains("toolCallingMode: .disallowed"))
-        XCTAssertTrue(service.contains("normalizedPrompt(fromGemmaPrompt:"))
+        XCTAssertTrue(service.contains("runtimeProfile(fromGemmaPrompt:"))
+        XCTAssertTrue(service.contains("PromptRuntimeProfile.fromGemmaPrompt("))
+        XCTAssertTrue(service.contains("profileSessionCache"))
+        XCTAssertTrue(service.contains("profileSession(for: profile"))
+        XCTAssertTrue(service.contains("instructions: instructions"))
         XCTAssertFalse(service.contains("continuation.yield(next)"))
+        XCTAssertFalse(service.contains("normalizedPrompt(fromGemmaPrompt:"))
+        XCTAssertFalse(service.contains("parseGemmaTurns"))
 
         XCTAssertTrue(dispatcher.contains("foundationModels: (any InferenceService)?"))
         XCTAssertTrue(dispatcher.contains("case .foundationModels:"))
@@ -207,6 +213,40 @@ final class SkillRouterCompatibilityContractTests: XCTestCase {
         XCTAssertTrue(memoryPolicy.contains("policy?.preservePendingClarification == true"))
         XCTAssertTrue(memoryPolicy.contains("guard !protectedIndices.contains(skillResultIndex) else { continue }"))
         XCTAssertTrue(toolChain.contains("activationMode.injectsPromptMaterial"))
+    }
+
+    func testStructuredTranscriptBudgetingFeedsRuntimeObservability() throws {
+        let estimator = try source("LLM/Core/PromptTokenEstimator.swift")
+        let llmTypes = try source("LLM/Core/LLMTypes.swift")
+        let memoryPolicy = try source("Agent/Engine/ConversationMemoryPolicy.swift")
+        let observation = try source("Agent/Engine/PromptObservation.swift")
+        let helpers = try source("Agent/Engine/PromptPipelineHelpers.swift")
+
+        XCTAssertTrue(estimator.contains("struct PromptTranscript"))
+        XCTAssertTrue(estimator.contains("enum PromptTranscriptRole"))
+        XCTAssertTrue(estimator.contains("struct PromptRuntimeProfile"))
+        XCTAssertTrue(estimator.contains("fromGemmaPrompt("))
+        XCTAssertTrue(estimator.contains("includeSystemTurnsInPrompt"))
+        XCTAssertTrue(estimator.contains("struct PromptTokenBreakdown"))
+        XCTAssertTrue(estimator.contains("estimateBreakdown(_ prompt: String)"))
+        XCTAssertTrue(estimator.contains("estimateTranscript("))
+        XCTAssertTrue(estimator.contains("totalTokens: rawTotal"))
+
+        XCTAssertTrue(llmTypes.contains("let promptTokenBreakdown: PromptTokenBreakdown"))
+        XCTAssertTrue(llmTypes.contains("promptTokenBreakdown: PromptTokenBreakdown? = nil"))
+        XCTAssertTrue(memoryPolicy.contains("PromptTokenEstimator.estimateBreakdown(prompt)"))
+        XCTAssertTrue(memoryPolicy.contains("estimatedPromptTokens = promptTokenBreakdown.totalTokens"))
+
+        XCTAssertTrue(observation.contains("let prompt_turn_count: Int"))
+        XCTAssertTrue(observation.contains("let prompt_system_tokens: Int"))
+        XCTAssertTrue(observation.contains("let prompt_user_tokens: Int"))
+        XCTAssertTrue(observation.contains("let prompt_assistant_tokens: Int"))
+        XCTAssertTrue(observation.contains("let prompt_tool_tokens: Int"))
+        XCTAssertTrue(observation.contains("let prompt_format_overhead_tokens: Int"))
+
+        XCTAssertTrue(helpers.contains("let promptTokenBreakdown = plan.budgetDecision.promptTokenBreakdown"))
+        XCTAssertTrue(helpers.contains("prompt_turn_count: promptTokenBreakdown.turnCount"))
+        XCTAssertTrue(helpers.contains("prompt_system_tokens: promptTokenBreakdown.systemTokens"))
     }
 
     func testIOS27FoundationRouterUsesIOS27ModelAPIsWithDiagnostics() throws {

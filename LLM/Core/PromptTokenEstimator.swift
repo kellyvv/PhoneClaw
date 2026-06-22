@@ -31,6 +31,65 @@ public enum PromptTokenEstimator {
         return max(1, Int((cjkTokens + otherTokens).rounded(.up)))
     }
 
+    /// 估算 prompt 的结构化 token 分布。`totalTokens` 保持等于旧的整段
+    /// `estimate(_:)` 结果，避免引入 transcript 后让 context budget 变松。
+    public static func estimateBreakdown(_ prompt: String) -> PromptTokenBreakdown {
+        let rawTotal = estimate(prompt)
+        let transcript = PromptTranscript(gemmaPrompt: prompt)
+        guard !transcript.turns.isEmpty else {
+            return PromptTokenBreakdown(
+                totalTokens: rawTotal,
+                systemTokens: 0,
+                userTokens: 0,
+                assistantTokens: 0,
+                toolTokens: 0,
+                otherTokens: rawTotal,
+                formatOverheadTokens: 0,
+                turnCount: 0
+            )
+        }
+        return estimateTranscript(transcript, rawPromptTokenEstimate: rawTotal)
+    }
+
+    public static func estimateTranscript(
+        _ transcript: PromptTranscript,
+        rawPromptTokenEstimate: Int? = nil
+    ) -> PromptTokenBreakdown {
+        var systemTokens = 0
+        var userTokens = 0
+        var assistantTokens = 0
+        var toolTokens = 0
+        var otherTokens = 0
+
+        for turn in transcript.turns {
+            switch turn.role {
+            case .system:
+                systemTokens += turn.tokenEstimate
+            case .user:
+                userTokens += turn.tokenEstimate
+            case .assistant:
+                assistantTokens += turn.tokenEstimate
+            case .tool:
+                toolTokens += turn.tokenEstimate
+            case .unknown:
+                otherTokens += turn.tokenEstimate
+            }
+        }
+
+        let contentTokens = systemTokens + userTokens + assistantTokens + toolTokens + otherTokens
+        let totalTokens = max(rawPromptTokenEstimate ?? contentTokens, contentTokens)
+        return PromptTokenBreakdown(
+            totalTokens: totalTokens,
+            systemTokens: systemTokens,
+            userTokens: userTokens,
+            assistantTokens: assistantTokens,
+            toolTokens: toolTokens,
+            otherTokens: otherTokens,
+            formatOverheadTokens: max(0, totalTokens - contentTokens),
+            turnCount: transcript.turns.count
+        )
+    }
+
     /// CJK 范围: 主要汉字 + 假名 + 韩文 + 全角标点。
     /// 这些字符在 SentencePiece BPE 中通常 1-2 token,远低于拉丁文的 4 字/token。
     private static func isCJK(_ scalar: Unicode.Scalar) -> Bool {
@@ -44,5 +103,204 @@ public enum PromptTokenEstimator {
             || (0xF900...0xFAFF).contains(v)   // CJK Compatibility Ideographs
             || (0xFF00...0xFFEF).contains(v)   // Halfwidth and Fullwidth Forms
             || (0x20000...0x2A6DF).contains(v) // CJK Unified Ideographs Ext B
+    }
+}
+
+public enum PromptTranscriptRole: String, Sendable, Codable, Hashable {
+    case system
+    case user
+    case assistant
+    case tool
+    case unknown
+
+    init(rawGemmaRole: String) {
+        switch rawGemmaRole.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "system":
+            self = .system
+        case "user":
+            self = .user
+        case "model", "assistant":
+            self = .assistant
+        case "tool", "skill", "skill_result":
+            self = .tool
+        default:
+            self = .unknown
+        }
+    }
+}
+
+public struct PromptTranscriptTurn: Sendable, Codable, Equatable {
+    public let role: PromptTranscriptRole
+    public let rawRole: String
+    public let content: String
+    public let tokenEstimate: Int
+
+    public init(
+        role: PromptTranscriptRole,
+        rawRole: String,
+        content: String,
+        tokenEstimate: Int? = nil
+    ) {
+        self.role = role
+        self.rawRole = rawRole
+        self.content = content
+        self.tokenEstimate = tokenEstimate ?? PromptTokenEstimator.estimate(content)
+    }
+}
+
+public struct PromptTranscript: Sendable, Codable, Equatable {
+    public let turns: [PromptTranscriptTurn]
+
+    public init(turns: [PromptTranscriptTurn]) {
+        self.turns = turns
+    }
+
+    public init(gemmaPrompt prompt: String) {
+        turns = Self.parseGemmaPrompt(prompt)
+    }
+
+    public static func parseGemmaPrompt(_ prompt: String) -> [PromptTranscriptTurn] {
+        let open = "<|turn>"
+        let close = "<turn|>"
+        var remainder = prompt[...]
+        var turns: [PromptTranscriptTurn] = []
+
+        while let openRange = remainder.range(of: open) {
+            remainder = remainder[openRange.upperBound...]
+            let endRange = remainder.range(of: close)
+            let body: Substring
+            if let endRange {
+                body = remainder[..<endRange.lowerBound]
+                remainder = remainder[endRange.upperBound...]
+            } else {
+                body = remainder
+                remainder = prompt[prompt.endIndex...]
+            }
+
+            let trimmedBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmedBody.isEmpty else { continue }
+            let parts = trimmedBody.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
+            guard let rolePart = parts.first else { continue }
+            let rawRole = rolePart.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let content = parts.count > 1
+                ? parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
+                : ""
+            let role = PromptTranscriptRole(rawGemmaRole: rawRole)
+            if role == .assistant, content.isEmpty {
+                continue
+            }
+            turns.append(
+                PromptTranscriptTurn(
+                    role: role,
+                    rawRole: rawRole,
+                    content: content
+                )
+            )
+        }
+
+        return turns
+    }
+}
+
+public struct PromptRuntimeProfile: Sendable, Codable, Equatable {
+    public let instructions: String?
+    public let prompt: String
+    public let transcript: PromptTranscript
+    public let tokenBreakdown: PromptTokenBreakdown
+
+    public init(
+        instructions: String?,
+        prompt: String,
+        transcript: PromptTranscript = PromptTranscript(turns: []),
+        tokenBreakdown: PromptTokenBreakdown? = nil
+    ) {
+        let trimmedInstructions = instructions?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.instructions = trimmedInstructions?.isEmpty == true ? nil : trimmedInstructions
+        self.prompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.transcript = transcript
+        self.tokenBreakdown = tokenBreakdown ?? PromptTokenEstimator.estimateBreakdown(prompt)
+    }
+
+    public static func fromGemmaPrompt(
+        _ prompt: String,
+        baseInstructions: String? = nil,
+        includeSystemTurnsInPrompt: Bool = false
+    ) -> PromptRuntimeProfile {
+        let transcript = PromptTranscript(gemmaPrompt: prompt)
+        guard !transcript.turns.isEmpty else {
+            return PromptRuntimeProfile(
+                instructions: baseInstructions,
+                prompt: prompt,
+                transcript: transcript,
+                tokenBreakdown: PromptTokenEstimator.estimateBreakdown(prompt)
+            )
+        }
+
+        let systemInstructions = transcript.turns
+            .filter { $0.role == .system }
+            .map(\.content)
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let instructionParts = ([baseInstructions ?? ""] + systemInstructions)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let promptTurns = includeSystemTurnsInPrompt
+            ? transcript.turns
+            : transcript.turns.filter { $0.role != .system }
+
+        return PromptRuntimeProfile(
+            instructions: instructionParts.joined(separator: "\n\n"),
+            prompt: renderPromptTurns(promptTurns),
+            transcript: transcript,
+            tokenBreakdown: PromptTokenEstimator.estimateBreakdown(prompt)
+        )
+    }
+
+    private static func renderPromptTurns(_ turns: [PromptTranscriptTurn]) -> String {
+        turns.map { turn in
+            switch turn.role {
+            case .system:
+                return "System:\n\(turn.content)"
+            case .user:
+                return "User:\n\(turn.content)"
+            case .assistant:
+                return "Assistant:\n\(turn.content)"
+            case .tool:
+                return "Tool:\n\(turn.content)"
+            case .unknown:
+                return "\(turn.rawRole.capitalized):\n\(turn.content)"
+            }
+        }
+        .joined(separator: "\n\n")
+    }
+}
+
+public struct PromptTokenBreakdown: Sendable, Codable, Equatable {
+    public let totalTokens: Int
+    public let systemTokens: Int
+    public let userTokens: Int
+    public let assistantTokens: Int
+    public let toolTokens: Int
+    public let otherTokens: Int
+    public let formatOverheadTokens: Int
+    public let turnCount: Int
+
+    public init(
+        totalTokens: Int,
+        systemTokens: Int,
+        userTokens: Int,
+        assistantTokens: Int,
+        toolTokens: Int,
+        otherTokens: Int,
+        formatOverheadTokens: Int,
+        turnCount: Int
+    ) {
+        self.totalTokens = totalTokens
+        self.systemTokens = systemTokens
+        self.userTokens = userTokens
+        self.assistantTokens = assistantTokens
+        self.toolTokens = toolTokens
+        self.otherTokens = otherTokens
+        self.formatOverheadTokens = formatOverheadTokens
+        self.turnCount = turnCount
     }
 }

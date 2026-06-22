@@ -148,17 +148,29 @@ public enum ReuseDecision: Sendable, Equatable {
 
 public struct BudgetDecision: Sendable, Equatable {
     public let estimatedPromptTokens: Int
+    public let promptTokenBreakdown: PromptTokenBreakdown
     public let reservedOutputTokens: Int
     public let historyMessagesIncluded: Int
     public let historyCharsIncluded: Int
 
     public init(
         estimatedPromptTokens: Int,
+        promptTokenBreakdown: PromptTokenBreakdown? = nil,
         reservedOutputTokens: Int,
         historyMessagesIncluded: Int,
         historyCharsIncluded: Int
     ) {
         self.estimatedPromptTokens = estimatedPromptTokens
+        self.promptTokenBreakdown = promptTokenBreakdown ?? PromptTokenBreakdown(
+            totalTokens: estimatedPromptTokens,
+            systemTokens: 0,
+            userTokens: 0,
+            assistantTokens: 0,
+            toolTokens: 0,
+            otherTokens: estimatedPromptTokens,
+            formatOverheadTokens: 0,
+            turnCount: 0
+        )
         self.reservedOutputTokens = reservedOutputTokens
         self.historyMessagesIncluded = historyMessagesIncluded
         self.historyCharsIncluded = historyCharsIncluded

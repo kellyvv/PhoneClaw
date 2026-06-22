@@ -327,11 +327,19 @@ extension AgentEngine {
         tokenCapHit: Bool = false,
         memoryFloorHit: Bool = false
     ) {
+        let promptTokenBreakdown = plan.budgetDecision.promptTokenBreakdown
         let observation = HotfixTurnObservation(
             prompt_shape: plan.shape.rawValue,
             session_group: plan.sessionGroup.rawValue,
             session_reset_reason: plan.sessionResetReason.rawValue,
             estimated_prompt_tokens: plan.budgetDecision.estimatedPromptTokens,
+            prompt_turn_count: promptTokenBreakdown.turnCount,
+            prompt_system_tokens: promptTokenBreakdown.systemTokens,
+            prompt_user_tokens: promptTokenBreakdown.userTokens,
+            prompt_assistant_tokens: promptTokenBreakdown.assistantTokens,
+            prompt_tool_tokens: promptTokenBreakdown.toolTokens,
+            prompt_other_tokens: promptTokenBreakdown.otherTokens,
+            prompt_format_overhead_tokens: promptTokenBreakdown.formatOverheadTokens,
             reserved_output_tokens: plan.budgetDecision.reservedOutputTokens,
             history_messages_included: plan.budgetDecision.historyMessagesIncluded,
             history_chars_included: plan.budgetDecision.historyCharsIncluded,

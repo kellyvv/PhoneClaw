@@ -115,4 +115,83 @@ final class PromptTokenEstimatorTests: XCTestCase {
         XCTAssertEqual(newEstimate, 67)
         XCTAssertEqual(legacyEstimate, 25)
     }
+
+    func testPromptTranscriptParsesGemmaTurnsAndSkipsEmptyModelTurn() {
+        let prompt = """
+        <|turn>system
+        You are PhoneClaw.
+        <turn|><|turn>user
+        查今天步数
+        <turn|><|turn>model
+
+        """
+
+        let transcript = PromptTranscript(gemmaPrompt: prompt)
+
+        XCTAssertEqual(transcript.turns.count, 2)
+        XCTAssertEqual(transcript.turns[0].role, .system)
+        XCTAssertEqual(transcript.turns[0].rawRole, "system")
+        XCTAssertEqual(transcript.turns[0].content, "You are PhoneClaw.")
+        XCTAssertEqual(transcript.turns[1].role, .user)
+        XCTAssertEqual(transcript.turns[1].rawRole, "user")
+        XCTAssertEqual(transcript.turns[1].content, "查今天步数")
+    }
+
+    func testPromptTokenBreakdownPreservesLegacyTotalWhileAttributingTurns() {
+        let system = "You are PhoneClaw's on-device assistant runtime."
+        let user = "请查询今天的运动情况。"
+        let assistant = "好的，我正在读取健康数据。"
+        let prompt = """
+        <|turn>system
+        \(system)
+        <turn|><|turn>user
+        \(user)
+        <turn|><|turn>model
+        \(assistant)
+        <turn|><|turn>model
+
+        """
+
+        let breakdown = PromptTokenEstimator.estimateBreakdown(prompt)
+        let contentTokens = PromptTokenEstimator.estimate(system)
+            + PromptTokenEstimator.estimate(user)
+            + PromptTokenEstimator.estimate(assistant)
+
+        XCTAssertEqual(breakdown.turnCount, 3)
+        XCTAssertEqual(breakdown.totalTokens, PromptTokenEstimator.estimate(prompt))
+        XCTAssertEqual(breakdown.systemTokens, PromptTokenEstimator.estimate(system))
+        XCTAssertEqual(breakdown.userTokens, PromptTokenEstimator.estimate(user))
+        XCTAssertEqual(breakdown.assistantTokens, PromptTokenEstimator.estimate(assistant))
+        XCTAssertEqual(breakdown.toolTokens, 0)
+        XCTAssertEqual(breakdown.otherTokens, 0)
+        XCTAssertEqual(breakdown.formatOverheadTokens, max(0, breakdown.totalTokens - contentTokens))
+    }
+
+    func testPromptRuntimeProfileLiftsSystemTurnsIntoInstructions() {
+        let baseInstructions = "Base runtime rules."
+        let system = "Use the active health skill contract."
+        let user = "查今天步数"
+        let assistant = "正在读取健康数据。"
+        let prompt = """
+        <|turn>system
+        \(system)
+        <turn|><|turn>user
+        \(user)
+        <turn|><|turn>model
+        \(assistant)
+        """
+
+        let profile = PromptRuntimeProfile.fromGemmaPrompt(
+            prompt,
+            baseInstructions: baseInstructions,
+            includeSystemTurnsInPrompt: false
+        )
+
+        XCTAssertEqual(profile.instructions, "\(baseInstructions)\n\n\(system)")
+        XCTAssertFalse(profile.prompt.contains("System:"))
+        XCTAssertTrue(profile.prompt.contains("User:\n\(user)"))
+        XCTAssertTrue(profile.prompt.contains("Assistant:\n\(assistant)"))
+        XCTAssertEqual(profile.transcript.turns.count, 3)
+        XCTAssertEqual(profile.tokenBreakdown.totalTokens, PromptTokenEstimator.estimate(prompt))
+    }
 }

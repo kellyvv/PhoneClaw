@@ -10,6 +10,13 @@ struct HotfixTurnObservation: Codable, Equatable {
     let session_group: String
     let session_reset_reason: String
     let estimated_prompt_tokens: Int
+    let prompt_turn_count: Int
+    let prompt_system_tokens: Int
+    let prompt_user_tokens: Int
+    let prompt_assistant_tokens: Int
+    let prompt_tool_tokens: Int
+    let prompt_other_tokens: Int
+    let prompt_format_overhead_tokens: Int
     let reserved_output_tokens: Int
     let history_messages_included: Int
     let history_chars_included: Int
