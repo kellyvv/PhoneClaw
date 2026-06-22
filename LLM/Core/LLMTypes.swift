@@ -196,6 +196,33 @@ public struct CanonicalToolResult: Sendable, Equatable {
     }
 }
 
+public enum RuntimeToolCallSource: String, Sendable {
+    case textProtocol
+    case nativeToolCall
+}
+
+public struct RuntimeToolCall: @unchecked Sendable {
+    public let name: String
+    public let arguments: [String: Any]
+    public let source: RuntimeToolCallSource
+    public let callID: String?
+    public let rawPayload: String?
+
+    public init(
+        name: String,
+        arguments: [String: Any],
+        source: RuntimeToolCallSource,
+        callID: String? = nil,
+        rawPayload: String? = nil
+    ) {
+        self.name = name
+        self.arguments = arguments
+        self.source = source
+        self.callID = callID
+        self.rawPayload = rawPayload
+    }
+}
+
 public struct PromptPlan: Sendable, Equatable {
     public let shape: PromptShape
     public let sessionGroup: SessionGroup

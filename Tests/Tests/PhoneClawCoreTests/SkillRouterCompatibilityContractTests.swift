@@ -259,6 +259,29 @@ final class SkillRouterCompatibilityContractTests: XCTestCase {
         XCTAssertFalse(remote.contains("gemmaPromptToMessages"))
     }
 
+    func testRuntimeToolCallEnvelopePreservesTextProtocolCompatibility() throws {
+        let llmTypes = try source("LLM/Core/LLMTypes.swift")
+        let parser = try source("Agent/Engine/ToolCallParser.swift")
+
+        XCTAssertTrue(llmTypes.contains("enum RuntimeToolCallSource"))
+        XCTAssertTrue(llmTypes.contains("case textProtocol"))
+        XCTAssertTrue(llmTypes.contains("case nativeToolCall"))
+        XCTAssertTrue(llmTypes.contains("struct RuntimeToolCall"))
+        XCTAssertTrue(llmTypes.contains("let source: RuntimeToolCallSource"))
+        XCTAssertTrue(llmTypes.contains("let callID: String?"))
+        XCTAssertTrue(llmTypes.contains("let rawPayload: String?"))
+
+        XCTAssertTrue(parser.contains("func parseToolCall(_ text: String) -> (name: String, arguments: [String: Any])?"))
+        XCTAssertTrue(parser.contains("func parseAllToolCalls(_ text: String) -> [(name: String, arguments: [String: Any])]"))
+        XCTAssertTrue(parser.contains("func parseRuntimeToolCalls(_ text: String) -> [RuntimeToolCall]"))
+        XCTAssertTrue(parser.contains("parseRuntimeToolCalls(text).map { ($0.name, $0.arguments) }"))
+        XCTAssertTrue(parser.contains("source: .textProtocol"))
+        XCTAssertTrue(parser.contains("rawPayload: json"))
+        XCTAssertTrue(parser.contains("source: call.source"))
+        XCTAssertTrue(parser.contains("callID: call.callID"))
+        XCTAssertTrue(parser.contains("rawPayload: call.rawPayload"))
+    }
+
     func testIOS27FoundationRouterUsesIOS27ModelAPIsWithDiagnostics() throws {
         let router = try source("Agent/Engine/Router.swift")
         let ios27Router = try source("Agent/Engine/IOS27FoundationSkillRouter.swift")

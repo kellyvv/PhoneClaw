@@ -170,6 +170,10 @@ extension AgentEngine {
     }
 
     func parseAllToolCalls(_ text: String) -> [(name: String, arguments: [String: Any])] {
+        parseRuntimeToolCalls(text).map { ($0.name, $0.arguments) }
+    }
+
+    func parseRuntimeToolCalls(_ text: String) -> [RuntimeToolCall] {
         let raw = rawParseToolCalls(text)
         return raw.compactMap { call in
             let canonical = canonicalToolName(call.name, arguments: call.arguments)
@@ -178,24 +182,42 @@ extension AgentEngine {
                     log("[Parser] dropped invalid load_skill request: \(call.arguments)")
                     return nil
                 }
-                return (canonical, normalizedArguments)
+                return RuntimeToolCall(
+                    name: canonical,
+                    arguments: normalizedArguments,
+                    source: call.source,
+                    callID: call.callID,
+                    rawPayload: call.rawPayload
+                )
             }
             if Self.protocolTools.contains(canonical) {
-                return (canonical, call.arguments)
+                return RuntimeToolCall(
+                    name: canonical,
+                    arguments: call.arguments,
+                    source: call.source,
+                    callID: call.callID,
+                    rawPayload: call.rawPayload
+                )
             }
             if toolRegistry.find(name: canonical) != nil {
-                return (canonical, call.arguments)
+                return RuntimeToolCall(
+                    name: canonical,
+                    arguments: call.arguments,
+                    source: call.source,
+                    callID: call.callID,
+                    rawPayload: call.rawPayload
+                )
             }
             log("[Parser] dropped invalid tool_call: \(call.name) (canonical: \(canonical))")
             return nil
         }
     }
 
-    /// 原始正则提取, 不做任何 registry 校验。
-    /// 仅供 parseAllToolCalls 内部使用; 外部 caller 必须走 parseAllToolCalls
-    /// 以确保 cage 校验不被绕过。
-    private func rawParseToolCalls(_ text: String) -> [(name: String, arguments: [String: Any])] {
-        var results: [(name: String, arguments: [String: Any])] = []
+    /// 原始文本协议提取, 不做任何 registry 校验。
+    /// 仅供 parseRuntimeToolCalls 内部使用; 外部 caller 必须走 parseRuntimeToolCalls
+    /// 或 parseAllToolCalls 以确保 cage 校验不被绕过。
+    private func rawParseToolCalls(_ text: String) -> [RuntimeToolCall] {
+        var results: [RuntimeToolCall] = []
         let patterns = [
             "<tool_call>\\s*(\\{.*?\\})\\s*</tool_call>",
             "```json\\s*(\\{.*?\\})\\s*```",
@@ -211,7 +233,14 @@ extension AgentEngine {
                     if let data = json.data(using: .utf8),
                        let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                        let name = dict["name"] as? String {
-                        results.append((name, dict["arguments"] as? [String: Any] ?? [:]))
+                        results.append(
+                            RuntimeToolCall(
+                                name: name,
+                                arguments: dict["arguments"] as? [String: Any] ?? [:],
+                                source: .textProtocol,
+                                rawPayload: json
+                            )
+                        )
                     }
                 }
             }
