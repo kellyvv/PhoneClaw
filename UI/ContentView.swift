@@ -85,6 +85,8 @@ struct ContentView: View {
     @State private var showHistory = false
     @State private var showLiveMode = false
     @State private var showLiveLand = false
+    @State private var pendingLiveLandEntryAfterModelLoad = false
+    @State private var pendingVoiceEntryAfterModelLoad = false
     @State private var liveLandRuntime = LiveLandVoiceRuntime()
     @State private var showModelSwitcher = false
     /// 记录每个 skill 卡片的展开状态（key = SkillCard.id）
@@ -692,9 +694,7 @@ struct ContentView: View {
     private func toggleThinkingMode() {
         guard engine.isModelLoaded else {
             showTransientTopNotice(
-                hasNoUsableModel
-                    ? tr("请先下载模型", "Download a model first", "モデルをダウンロードしてください")
-                    : tr("模型加载中，请稍候", "Model is loading, please wait", "モデルを読み込み中です")
+                modelUnavailableNoticeText
             )
             return
         }
@@ -950,13 +950,27 @@ struct ContentView: View {
     private var hasNoUsableModel: Bool {
         if engine.isModelLoaded { return false }
         let id = engine.config.selectedModelID
+        if engine.modelCanLoad(id) { return false }
         if id.hasPrefix("remote::") { return false }   // 远程模型:配对即可用
         let state = engine.installer.installState(for: id)
         return state != .downloaded && state != .bundled
     }
 
+    private var selectedModelCanRun: Bool {
+        engine.modelCanLoad(engine.config.selectedModelID)
+    }
+
+    private var modelUnavailableNoticeText: String {
+        hasNoUsableModel
+            ? tr("请先下载模型", "Download a model first", "先にモデルをダウンロード")
+            : tr("模型加载中，请稍候", "Model is loading, please wait", "モデルを読み込み中です")
+    }
+
     private var activeModelDownloadHint: TopStatusHint? {
         let selectedModel = engine.catalog.selectedModel
+        if engine.modelCanLoad(selectedModel.id) {
+            return nil
+        }
         let selectedState = engine.installer.installState(for: selectedModel.id)
         return downloadHint(for: selectedModel, state: selectedState)
     }
@@ -1073,6 +1087,18 @@ struct ContentView: View {
         }
 
         if case .ready = state {
+            if pendingLiveLandEntryAfterModelLoad {
+                pendingLiveLandEntryAfterModelLoad = false
+                dismissTransientTopNotice()
+                enterLiveLand()
+                return
+            }
+            if pendingVoiceEntryAfterModelLoad {
+                pendingVoiceEntryAfterModelLoad = false
+                dismissTransientTopNotice()
+                enterLiveMode()
+                return
+            }
             prewarmLiveIfPossible()
         }
     }
@@ -1099,6 +1125,12 @@ struct ContentView: View {
             guard !Task.isCancelled, transientTopNotice == notice else { return }
             transientTopNotice = nil
         }
+    }
+
+    private func dismissTransientTopNotice() {
+        topNoticeDismissTask?.cancel()
+        topNoticeDismissTask = nil
+        transientTopNotice = nil
     }
 
     // MARK: - 欢迎页
@@ -1492,8 +1524,7 @@ struct ContentView: View {
                 fgColor: Theme.textSecondary,
                 action: {
                     guard canSend else {
-                        let message = tr("请先下载模型", "Download a model first", "先にモデルをダウンロード")
-                        showTransientTopNotice(message)
+                        showTransientTopNotice(modelUnavailableNoticeText)
                         return
                     }
                     Task { await send() }
@@ -1907,15 +1938,21 @@ struct ContentView: View {
         await engine.processInput(text, images: images, audio: audioSnapshot, forcedContextAct: forcedContextAct)
     }
 
-    private func enterLiveMode() {
+    private func enterLiveMode(showLoadingNotice: Bool = true) {
         guard liveVoiceModelsReady else {
             showVoiceModelsRequiredPrompt()
             return
         }
         guard engine.isModelReady else {
-            showTransientTopNotice(tr("请先下载模型", "Download a model first", "先にモデルをダウンロード"))
+            if selectedModelCanRun {
+                pendingVoiceEntryAfterModelLoad = true
+            }
+            if showLoadingNotice || hasNoUsableModel {
+                showTransientTopNotice(modelUnavailableNoticeText)
+            }
             return
         }
+        pendingVoiceEntryAfterModelLoad = false
         guard currentModelCapabilities.supportsLive else {
             showTransientTopNotice(tr("当前模型不支持 LIVE", "Current model does not support LIVE", "現在のモデルは LIVE に非対応"))
             return
@@ -1933,15 +1970,21 @@ struct ContentView: View {
         showAttachmentTray = false
     }
 
-    private func enterLiveLand() {
+    private func enterLiveLand(showLoadingNotice: Bool = true) {
         guard liveVoiceModelsReady else {
             showVoiceModelsRequiredPrompt()
             return
         }
         guard engine.isModelLoaded else {
-            showTransientTopNotice(tr("请先下载模型", "Download a model first", "先にモデルをダウンロード"))
+            if selectedModelCanRun {
+                pendingLiveLandEntryAfterModelLoad = true
+            }
+            if showLoadingNotice || hasNoUsableModel {
+                showTransientTopNotice(modelUnavailableNoticeText)
+            }
             return
         }
+        pendingLiveLandEntryAfterModelLoad = false
         guard !showLiveLand else { return }
 
         showLiveMode = false
@@ -1996,7 +2039,7 @@ struct ContentView: View {
         showModelSwitcher = false
         showAttachmentTray = false
         isVoiceInputMode = false
-        enterLiveLand()
+        enterLiveLand(showLoadingNotice: false)
         return true
     }
 
@@ -2007,7 +2050,7 @@ struct ContentView: View {
         showConfigurations = false
         showModelSwitcher = false
         showLiveLand = false
-        enterLiveMode()
+        enterLiveMode(showLoadingNotice: false)
         return true
     }
 

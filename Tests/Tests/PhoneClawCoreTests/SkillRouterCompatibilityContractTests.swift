@@ -853,6 +853,38 @@ final class SkillRouterCompatibilityContractTests: XCTestCase {
         XCTAssertTrue(contentView.contains("consumePendingLiveLaunchIfNeeded()"))
     }
 
+    func testLiveLandWidgetLaunchWaitsForInstalledModelColdStart() throws {
+        let contentView = try source("UI/ContentView.swift")
+
+        XCTAssertTrue(contentView.contains("@State private var pendingLiveLandEntryAfterModelLoad = false"))
+        XCTAssertTrue(contentView.contains("if engine.modelCanLoad(id) { return false }"))
+        XCTAssertTrue(contentView.contains("""
+        if engine.modelCanLoad(selectedModel.id) {
+                    return nil
+                }
+        """))
+        XCTAssertTrue(contentView.contains("""
+        if pendingLiveLandEntryAfterModelLoad {
+                        pendingLiveLandEntryAfterModelLoad = false
+                        dismissTransientTopNotice()
+                        enterLiveLand()
+        """))
+        XCTAssertTrue(contentView.contains("""
+        if selectedModelCanRun {
+                        pendingLiveLandEntryAfterModelLoad = true
+                    }
+                    if showLoadingNotice || hasNoUsableModel {
+                        showTransientTopNotice(modelUnavailableNoticeText)
+                    }
+        """))
+        XCTAssertTrue(contentView.contains("private func dismissTransientTopNotice()"))
+        XCTAssertTrue(contentView.contains("enterLiveLand(showLoadingNotice: false)"))
+        XCTAssertFalse(contentView.contains("""
+        guard engine.isModelLoaded else {
+                    showTransientTopNotice(tr("请先下载模型"
+        """))
+    }
+
     func testLiveLandLauncherWidgetSupportsLockScreenAndHomeScreenEntryPoints() throws {
         let widget = try liveLandWidgetSource()
         let infoPlist = try source("LiveLand/Widget/Info.plist")
