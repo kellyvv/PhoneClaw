@@ -74,6 +74,7 @@ final class ContextFollowUpContractTests: XCTestCase {
         XCTAssertTrue(promptBuilder.contains("\\(thinkingPrefix)\\(defaultSystemPrompt)"))
         XCTAssertTrue(router.contains("enableThinking: effectiveEnableThinking"))
         XCTAssertTrue(router.contains("shape: effectiveEnableThinking ? .thinking : .lightFull"))
+        XCTAssertTrue(router.contains("PromptBuilder.sanitizedAssistantHistoryContent(cleanOutput(rawReply))"))
     }
 
     func testFollowUpSuggestionsCarryOperationAndTarget() throws {

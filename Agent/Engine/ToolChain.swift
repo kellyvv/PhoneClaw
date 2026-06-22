@@ -46,15 +46,21 @@ extension AgentEngine {
 
     // MARK: - Tool 注册查询
 
-    func registeredTools(for skillId: String) -> [RegisteredTool] {
+    func registeredTools(for skillId: String, allowedToolNames: [String]? = nil) -> [RegisteredTool] {
+        func scoped(_ tools: [RegisteredTool]) -> [RegisteredTool] {
+            guard let allowedToolNames else { return tools }
+            let allowed = Set(allowedToolNames)
+            return tools.filter { allowed.contains($0.name) }
+        }
+
         if let def = skillRegistry.getDefinition(skillId) {
             let tools = toolRegistry.toolsFor(names: def.metadata.allowedTools)
-            if !tools.isEmpty { return tools }
+            if !tools.isEmpty { return scoped(tools) }
         }
 
         if let entry = skillEntries.first(where: { $0.id == skillId }) {
             let tools = entry.tools.compactMap { toolRegistry.find(name: $0.name) }
-            if !tools.isEmpty { return tools }
+            if !tools.isEmpty { return scoped(tools) }
         }
 
         return []
@@ -355,7 +361,8 @@ extension AgentEngine {
     // MARK: - 单 Skill 自动 / 引导式工具调用
 
     func autoToolCallForLoadedSkills(
-        skillIds: [String]
+        skillIds: [String],
+        allowedToolNames: [String]? = nil
     ) -> (name: String, arguments: [String: Any])? {
         let uniqueSkillIds = Array(NSOrderedSet(array: skillIds)) as? [String] ?? skillIds
 
@@ -366,11 +373,9 @@ extension AgentEngine {
             return nil
         }
 
-        let uniqueToolNames = Array(NSOrderedSet(array: def.metadata.allowedTools)) as? [String]
-            ?? def.metadata.allowedTools
-        guard uniqueToolNames.count == 1,
-              let toolName = uniqueToolNames.first,
-              let tool = toolRegistry.find(name: toolName),
+        let tools = registeredTools(for: skillId, allowedToolNames: allowedToolNames)
+        guard tools.count == 1,
+              let tool = tools.first,
               tool.isParameterless else {
             return nil
         }
@@ -395,7 +400,8 @@ extension AgentEngine {
         userQuestion: String,
         skillInstructions: String,
         skillIds: [String],
-        images: [CIImage]
+        images: [CIImage],
+        allowedToolNames: [String]? = nil
     ) async -> SingleToolExtractionOutcome {
         let uniqueSkillIds = Array(NSOrderedSet(array: skillIds)) as? [String] ?? skillIds
         guard uniqueSkillIds.count == 1,
@@ -403,7 +409,7 @@ extension AgentEngine {
             return .failed
         }
 
-        let tools = registeredTools(for: skillId)
+        let tools = registeredTools(for: skillId, allowedToolNames: allowedToolNames)
             .filter { !$0.isParameterless }
         guard !tools.isEmpty else {
             return .failed
@@ -472,8 +478,12 @@ extension AgentEngine {
         return .failed
     }
 
-    func canFallbackToPreloadedSkillTool(skillIds: [String]) -> Bool {
-        if autoToolCallForLoadedSkills(skillIds: skillIds) != nil {
+    func canFallbackToPreloadedSkillTool(
+        skillIds: [String],
+        preloadedSkills: [PromptBuilder.PreloadedSkill]
+    ) -> Bool {
+        let scopedToolNames = scopedToolNames(for: skillIds, preloadedSkills: preloadedSkills)
+        if autoToolCallForLoadedSkills(skillIds: skillIds, allowedToolNames: scopedToolNames) != nil {
             return true
         }
 
@@ -483,7 +493,55 @@ extension AgentEngine {
             return false
         }
 
-        return registeredTools(for: skillId).contains { !$0.isParameterless }
+        return registeredTools(for: skillId, allowedToolNames: scopedToolNames).contains { !$0.isParameterless }
+    }
+
+    func scopedToolNames(
+        for skillIds: [String],
+        preloadedSkills: [PromptBuilder.PreloadedSkill]
+    ) -> [String]? {
+        let preloadedById = Dictionary(uniqueKeysWithValues: preloadedSkills.map { ($0.id, $0) })
+        let uniqueSkillIds = Array(NSOrderedSet(array: skillIds)) as? [String] ?? skillIds
+        guard uniqueSkillIds.count == 1,
+              let skillId = uniqueSkillIds.first,
+              let preloaded = preloadedById[skillId] else {
+            return nil
+        }
+        return preloaded.allowedTools
+    }
+
+    func inferredPriorToolScopeForCorrection(
+        skillIds: [String],
+        preloadedSkills: [PromptBuilder.PreloadedSkill],
+        userQuestion: String
+    ) -> [String]? {
+        if scopedToolNames(for: skillIds, preloadedSkills: preloadedSkills)?.count == 1 {
+            return nil
+        }
+
+        let preloadedById = Dictionary(uniqueKeysWithValues: preloadedSkills.map { ($0.id, $0) })
+        let uniqueSkillIds = Array(NSOrderedSet(array: skillIds)) as? [String] ?? skillIds
+        guard uniqueSkillIds.count == 1,
+              let skillId = uniqueSkillIds.first,
+              let artifact = latestRefreshablePriorToolArtifact(),
+              artifact.skillId == skillId,
+              let artifactToolName = artifact.toolName?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !artifactToolName.isEmpty,
+              let request = priorToolRequest(from: artifact),
+              request.toolName == artifactToolName,
+              lastIntegerMention(in: userQuestion) != nil,
+              correctableIntegerArgumentKey(in: request.arguments) != nil else {
+            return nil
+        }
+
+        let allowedTools =
+            preloadedById[skillId]?.allowedTools
+            ?? skillRegistry.getDefinition(skillId)?.metadata.allowedTools
+            ?? []
+        guard allowedTools.isEmpty || allowedTools.contains(artifactToolName) else {
+            return nil
+        }
+        return [artifactToolName]
     }
 
     func compactSkillInstructionsForToolFallback(
@@ -504,7 +562,10 @@ extension AgentEngine {
                 preloadedById[skillId]?.displayName
                 ?? skillRegistry.getDefinition(skillId)?.metadata.name
                 ?? skillId
-            let tools = registeredTools(for: skillId)
+            let tools = registeredTools(
+                for: skillId,
+                allowedToolNames: preloadedById[skillId]?.allowedTools
+            )
             let toolTuples = tools.map {
                 (
                     name: $0.name,
@@ -522,6 +583,117 @@ extension AgentEngine {
         .joined(separator: "\n\n")
     }
 
+    func scopedPriorToolContextInstructions(
+        scopedToolNames: [String]?
+    ) -> String {
+        guard let scopedToolNames,
+              scopedToolNames.count == 1,
+              let scopedToolName = scopedToolNames.first,
+              let artifact = latestRefreshablePriorToolArtifact(),
+              artifact.toolName == scopedToolName else {
+            return ""
+        }
+
+        let summary = artifact.promptSummary
+        let detail = String(artifact.detail.prefix(2_000))
+        return """
+
+        Previous tool context for parameter correction:
+        - tool: \(scopedToolName)
+        - source: \(artifact.sourceName)
+        - summary:
+        \(summary)
+        - detail:
+        \(detail)
+
+        If the current user only corrects a parameter, call the same tool again.
+        Preserve the prior metric/entity/query unless the user explicitly changes it.
+        Update only the corrected parameter from the current user message.
+        """
+    }
+
+    func priorToolRequest(from artifact: RecentContextArtifact) -> (toolName: String, arguments: [String: Any])? {
+        guard let payload = parseJSONObject(artifact.detail),
+              let request = payload["phoneclaw_tool_request"] as? [String: Any],
+              let toolName = request["tool"] as? String,
+              !toolName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let arguments = request["arguments"] as? [String: Any] else {
+            return nil
+        }
+        return (toolName, arguments)
+    }
+
+    func correctedPriorToolCall(
+        userQuestion: String,
+        scopedToolNames: [String]?
+    ) -> (name: String, arguments: [String: Any])? {
+        guard let scopedToolNames,
+              scopedToolNames.count == 1,
+              let scopedToolName = scopedToolNames.first,
+              let artifact = latestRefreshablePriorToolArtifact(),
+              artifact.toolName == scopedToolName,
+              let request = priorToolRequest(from: artifact),
+              request.toolName == scopedToolName,
+              let correctedInteger = lastIntegerMention(in: userQuestion),
+              let correctedKey = correctableIntegerArgumentKey(in: request.arguments) else {
+            return nil
+        }
+
+        var corrected = request.arguments
+        corrected[correctedKey] = correctedInteger
+
+        guard !NSDictionary(dictionary: corrected).isEqual(to: request.arguments),
+              toolRegistry.validatesArguments(corrected, for: scopedToolName) else {
+            return nil
+        }
+        return (scopedToolName, corrected)
+    }
+
+    func correctableIntegerArgumentKey(in arguments: [String: Any]) -> String? {
+        if arguments.keys.contains("days") {
+            return "days"
+        }
+
+        let numericKeys = arguments.keys.filter { key in
+            guard let value = arguments[key] else { return false }
+            return value is Int
+                || value is Double
+                || value is Float
+                || Int("\(value)") != nil
+        }
+        guard numericKeys.count == 1 else { return nil }
+        return numericKeys.first
+    }
+
+    func lastIntegerMention(in text: String) -> Int? {
+        let nsText = text as NSString
+        let pattern = #"(?<![\d.])\d{1,3}(?![\d.])"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let matches = regex.matches(in: text, range: NSRange(location: 0, length: nsText.length))
+        return matches.last.flatMap { Int(nsText.substring(with: $0.range)) }
+    }
+
+    func annotateToolResultDetailWithRequest(
+        _ detail: String,
+        toolName: String,
+        arguments: [String: Any]
+    ) -> String {
+        guard JSONSerialization.isValidJSONObject(arguments),
+              var payload = parseJSONObject(detail) else {
+            return detail
+        }
+        payload["phoneclaw_tool_request"] = [
+            "tool": toolName,
+            "arguments": arguments
+        ]
+        guard JSONSerialization.isValidJSONObject(payload),
+              let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]),
+              let encoded = String(data: data, encoding: .utf8) else {
+            return detail
+        }
+        return encoded
+    }
+
     func executePreloadedSkillToolFallback(
         extractionPromptBase: String,
         toolChainPrompt: String,
@@ -532,10 +704,17 @@ extension AgentEngine {
         msgIndex: Int,
         fallbackText: String
     ) async {
+        let scopedToolNames =
+            inferredPriorToolScopeForCorrection(
+                skillIds: skillIds,
+                preloadedSkills: preloadedSkills,
+                userQuestion: userQuestion
+            )
+            ?? scopedToolNames(for: skillIds, preloadedSkills: preloadedSkills)
         let skillInstructions = compactSkillInstructionsForToolFallback(
             skillIds: skillIds,
             preloadedSkills: preloadedSkills
-        )
+        ) + scopedPriorToolContextInstructions(scopedToolNames: scopedToolNames)
         guard !skillInstructions.isEmpty else {
             let finalReply = fallbackReplyAfterPreloadedSkillFallbackFailure(fallbackText)
             if messages.indices.contains(msgIndex) {
@@ -545,11 +724,26 @@ extension AgentEngine {
             return
         }
 
-        if let autoCall = autoToolCallForLoadedSkills(skillIds: skillIds) {
+        if let autoCall = autoToolCallForLoadedSkills(skillIds: skillIds, allowedToolNames: scopedToolNames) {
             log("[Agent] preloaded skill fallback auto tool: \(autoCall.name)")
             let syntheticToolCall = syntheticToolCallText(
                 name: autoCall.name,
                 arguments: autoCall.arguments
+            )
+            await executeToolChain(
+                prompt: toolChainPrompt,
+                fullText: syntheticToolCall,
+                userQuestion: userQuestion,
+                images: images
+            )
+            return
+        }
+
+        if let correctedCall = correctedPriorToolCall(userQuestion: userQuestion, scopedToolNames: scopedToolNames) {
+            log("[Agent] preloaded skill fallback corrected previous tool: \(correctedCall.name)")
+            let syntheticToolCall = syntheticToolCallText(
+                name: correctedCall.name,
+                arguments: correctedCall.arguments
             )
             await executeToolChain(
                 prompt: toolChainPrompt,
@@ -565,7 +759,8 @@ extension AgentEngine {
             userQuestion: userQuestion,
             skillInstructions: skillInstructions,
             skillIds: skillIds,
-            images: images
+            images: images,
+            allowedToolNames: scopedToolNames
         )
 
         switch extraction {
@@ -2444,6 +2639,11 @@ extension AgentEngine {
 
             messages[cardIndex].update(role: .system, content: "done", skillName: displayName)
             toolResultDetail = normalizePhoneGroundPayloadIfNeeded(toolName: call.name, detail: toolResultDetail)
+            toolResultDetail = annotateToolResultDetailWithRequest(
+                toolResultDetail,
+                toolName: call.name,
+                arguments: executionArguments
+            )
             messages.append(ChatMessage(role: .skillResult, content: toolResultDetail, skillName: call.name, skillResultKind: .toolExecution))
             log("[Agent] Tool \(call.name) round \(round) done")
 

@@ -16,6 +16,7 @@ private enum HotfixFlagKey: String {
     case enableGuardedSkillRouter = "ENABLE_GUARDED_SKILL_ROUTER"
     case enableIOS27FoundationRouter = "ENABLE_IOS27_FOUNDATION_ROUTER"
     case enableFoundationModelsInferenceService = "ENABLE_FOUNDATION_MODELS_INFERENCE_SERVICE"
+    case enableFoundationModelsNativeTools = "ENABLE_FOUNDATION_MODELS_NATIVE_TOOLS"
     case enableLiveFoundationTokenSource = "ENABLE_LIVE_FOUNDATION_TOKEN_SOURCE"
 }
 
@@ -54,6 +55,10 @@ enum HotfixFeatureFlags {
 
     static var enableFoundationModelsInferenceService: Bool {
         value(for: .enableFoundationModelsInferenceService, defaultValue: false)
+    }
+
+    static var enableFoundationModelsNativeTools: Bool {
+        value(for: .enableFoundationModelsNativeTools, defaultValue: false)
     }
 
     static var enableLiveFoundationTokenSource: Bool {

@@ -477,6 +477,59 @@ extension AgentEngine {
         return nil
     }
 
+    func latestRefreshablePriorToolArtifact(maxMessages: Int = 32) -> RecentContextArtifact? {
+        var skippedCurrentUser = false
+        var inspected = 0
+
+        for message in messages.reversed() {
+            if message.role == .user, !skippedCurrentUser {
+                skippedCurrentUser = true
+                continue
+            }
+            guard skippedCurrentUser else { continue }
+
+            inspected += 1
+            if inspected > maxMessages {
+                break
+            }
+
+            guard message.role == .skillResult,
+                  message.skillResultKind == .toolExecution,
+                  let toolName = message.skillName,
+                  !toolName.isEmpty else {
+                continue
+            }
+
+            let normalizedDetail = message.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !normalizedDetail.isEmpty else { continue }
+
+            let skillId = skillRegistry.findSkillId(forTool: toolName)
+                ?? skillRegistry.canonicalSkillId(for: toolName)
+            guard let definition = skillRegistry.getDefinition(skillId) else {
+                continue
+            }
+
+            let canonical = canonicalToolResult(toolName: toolName, toolResult: message.content)
+            let normalizedSummary = canonical.summary.trimmingCharacters(in: .whitespacesAndNewlines)
+            let summary = normalizedSummary.isEmpty ? normalizedDetail : normalizedSummary
+
+            return RecentContextArtifact(
+                id: message.id,
+                kind: .toolResult,
+                skillId: skillId,
+                skillDisplayName: definition.metadata.displayName,
+                toolName: toolName,
+                visibleAnswer: nil,
+                summary: summary,
+                detail: normalizedDetail,
+                supportsRefresh: true,
+                createdAt: message.timestamp
+            )
+        }
+
+        return nil
+    }
+
     func latestPriorToolObservation() -> RecentToolObservation? {
         var skippedCurrentUser = false
         var priorUserTurnsSeen = 0
@@ -687,7 +740,7 @@ extension AgentEngine {
             return
         }
 
-        let cleaned = cleanOutput(rawReply)
+        let cleaned = PromptBuilder.sanitizedAssistantHistoryContent(cleanOutput(rawReply))
         let finalReply: String
         if parseToolCall(rawReply) != nil
             || cleaned.isEmpty

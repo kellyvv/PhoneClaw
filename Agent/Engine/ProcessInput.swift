@@ -116,12 +116,16 @@ extension AgentEngine {
             matchedSkillIdsForTurn = await modelIntentRoutedSkillIds(for: normalizedText)
         }
         var allowPreloadedSkillFallbackForTurn = !matchedSkillIdsForTurn.isEmpty
+        var forcedToolNameForTurn: String?
         var suppressStickySkillRoutingForTurn = false
         if !requiresMultimodal,
            !forceImageFollowUpTextPrompt,
            let previousArtifact = latestPriorContextArtifact() {
-            let previousSkillId = previousArtifact.skillId
-            let previousToolName = previousArtifact.toolName ?? ""
+            let refreshablePreviousToolArtifact = latestRefreshablePriorToolArtifact()
+            let previousSkillId = previousArtifact.skillId ?? refreshablePreviousToolArtifact?.skillId
+            let previousToolName = previousArtifact.toolName ?? refreshablePreviousToolArtifact?.toolName ?? ""
+            let previousSupportsRefresh = previousArtifact.supportsRefresh
+                || refreshablePreviousToolArtifact?.supportsRefresh == true
             let routesToPreviousSkill = previousSkillId.map { matchedSkillIdsForTurn.contains($0) } == true
                 || (!previousToolName.isEmpty && matchedSkillIdsForTurn.contains(previousToolName))
             let stickySkillId = matchedSkillIdsForTurn.isEmpty ? recentActiveSkillId() : nil
@@ -154,22 +158,35 @@ extension AgentEngine {
                     if matchedSkillIdsForTurn.isEmpty,
                        decision.targetPreviousResult,
                        decision.act.allowsToolExecution,
-                       previousArtifact.supportsRefresh,
+                       previousSupportsRefresh,
                        let previousSkillId {
                         matchedSkillIdsForTurn = [previousSkillId]
                         allowPreloadedSkillFallbackForTurn = true
+                    }
+                    if decision.targetPreviousResult,
+                       (decision.act == .correctParameters || decision.act == .refreshResult),
+                       previousSupportsRefresh,
+                       !previousToolName.isEmpty {
+                        forcedToolNameForTurn = previousToolName
                     }
                 }
                 if matchedSkillIdsForTurn.isEmpty,
                    !suppressStickySkillRoutingForTurn,
                    let stickySkillId {
                     matchedSkillIdsForTurn = [stickySkillId]
+                    allowPreloadedSkillFallbackForTurn = true
+                    if stickySkillId == previousSkillId,
+                       previousSupportsRefresh,
+                       !previousToolName.isEmpty {
+                        forcedToolNameForTurn = previousToolName
+                    }
                 }
             }
         } else if !requiresMultimodal,
                   matchedSkillIdsForTurn.isEmpty,
                   let stickySkillId = recentActiveSkillId() {
             matchedSkillIdsForTurn = [stickySkillId]
+            allowPreloadedSkillFallbackForTurn = true
         }
         // 暴露给 CLI harness (ScenarioRunner) 做断言. iOS UI 不读, 0 行为影响.
         self.lastTurnMatchedSkillIds = matchedSkillIdsForTurn
@@ -339,7 +356,22 @@ extension AgentEngine {
         let preloadedSkills: [PromptBuilder.PreloadedSkill] = matchedSkillIdsForTurn.compactMap { id in
             guard let body = skillRegistry.loadBody(skillId: id),
                   let def = skillRegistry.getDefinition(id) else { return nil }
-            let registered = registeredTools(for: id)
+            let defaultAllowedTools = def.metadata.allowedTools
+            let scopedAllowedTools: [String] = {
+                guard let forcedToolNameForTurn else {
+                    return defaultAllowedTools
+                }
+                let canonicalForcedTool = canonicalToolName(
+                    forcedToolNameForTurn,
+                    arguments: [:],
+                    preferredSkillId: id
+                )
+                guard defaultAllowedTools.contains(canonicalForcedTool) else {
+                    return defaultAllowedTools
+                }
+                return [canonicalForcedTool]
+            }()
+            let registered = toolRegistry.toolsFor(names: scopedAllowedTools)
             let toolTuples = registered.map { (name: $0.name, description: $0.description, parameters: $0.parameters, requiredParameters: $0.requiredParameters) }
             let compact = PromptBuilder.PreloadedSkill.makeCompactSchema(
                 skillName: def.metadata.name,
@@ -347,13 +379,14 @@ extension AgentEngine {
             )
             // 当 headroom 充裕, 把 body 同时塞进 compactSchema 字段, prompt 用的就是 body
             // (零行为变化). 当 headroom 紧, compactSchema 是真紧凑版本, prompt 用紧凑.
+            // 参数修正/刷新上一轮结果时, 只暴露上一轮工具, 避免小模型把单项查询升级成报告。
             return PromptBuilder.PreloadedSkill(
                 id: id,
                 displayName: def.metadata.name,
                 activationMode: def.metadata.activationMode,
                 body: body,
-                allowedTools: def.metadata.allowedTools,
-                compactSchema: useCompactSchema ? compact : body
+                allowedTools: scopedAllowedTools,
+                compactSchema: (useCompactSchema || scopedAllowedTools != defaultAllowedTools) ? compact : body
             )
         }
 
@@ -483,6 +516,10 @@ extension AgentEngine {
         let lightPrompt = promptBundle.lightPrompt
         let plannerInputPrompt = promptBundle.plannerInputPrompt
         let streamingPrompt = promptBundle.streamingPrompt
+        let runtimeToolScope = runtimeToolScope(
+            for: preloadedSkills,
+            shouldUseFullAgentPrompt: shouldUseFullAgentPrompt
+        )
         lastTurnStreamingPrompt = streamingPrompt
         let canUseDelta = promptBundle.canUseDelta
         if canUseDelta {
@@ -534,6 +571,7 @@ extension AgentEngine {
         markStreamingStarted()
         inference.generate(
             prompt: streamingPrompt,
+            runtimeToolScope: runtimeToolScope,
             onToken: { [weak self] token in
                 guard let self = self,
                       self.messages.indices.contains(msgIndex) else { return }
@@ -601,7 +639,10 @@ extension AgentEngine {
                     if shouldUseFullAgentPrompt,
                        matchedSkillIdsForTurn.count == 1,
                        !preloadedSkills.isEmpty,
-                       self.canFallbackToPreloadedSkillTool(skillIds: matchedSkillIdsForTurn) {
+                       self.canFallbackToPreloadedSkillTool(
+                           skillIds: matchedSkillIdsForTurn,
+                           preloadedSkills: preloadedSkills
+                       ) {
                         if allowPreloadedSkillFallbackForTurn {
                             log("[Agent] preloaded skill fallback triggered after missing tool_call")
                             self.setStreamingMessageContent(at: msgIndex, content: "")
@@ -666,6 +707,16 @@ extension AgentEngine {
                 }
             }
         )
+    }
+
+    func runtimeToolScope(
+        for preloadedSkills: [PromptBuilder.PreloadedSkill],
+        shouldUseFullAgentPrompt: Bool
+    ) -> RuntimeToolScope {
+        guard shouldUseFullAgentPrompt else {
+            return RuntimeToolScope()
+        }
+        return RuntimeToolScope(toolNames: preloadedSkills.flatMap(\.allowedTools))
     }
 
 

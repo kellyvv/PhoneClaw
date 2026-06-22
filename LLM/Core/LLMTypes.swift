@@ -223,6 +223,26 @@ public struct RuntimeToolCall: @unchecked Sendable {
     }
 }
 
+public struct RuntimeToolScope: Sendable, Equatable {
+    public let toolNames: [String]
+
+    public init(toolNames: [String] = []) {
+        var seen = Set<String>()
+        var normalized: [String] = []
+        for name in toolNames {
+            let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, !seen.contains(trimmed) else { continue }
+            seen.insert(trimmed)
+            normalized.append(trimmed)
+        }
+        self.toolNames = normalized.sorted()
+    }
+
+    public var isEmpty: Bool {
+        toolNames.isEmpty
+    }
+}
+
 public struct PromptPlan: Sendable, Equatable {
     public let shape: PromptShape
     public let sessionGroup: SessionGroup

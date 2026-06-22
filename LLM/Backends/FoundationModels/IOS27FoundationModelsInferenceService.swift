@@ -106,7 +106,15 @@ final class FoundationModelsInferenceService: InferenceService {
     }
 
     func generate(prompt: String) -> AsyncThrowingStream<String, Error> {
-        streamProfile(Self.runtimeProfile(fromGemmaPrompt: prompt), using: session)
+        generate(prompt: prompt, runtimeToolScope: RuntimeToolScope())
+    }
+
+    func generate(prompt: String, runtimeToolScope: RuntimeToolScope) -> AsyncThrowingStream<String, Error> {
+        streamProfile(
+            Self.runtimeProfile(fromGemmaPrompt: prompt),
+            using: session,
+            runtimeToolScope: runtimeToolScope
+        )
     }
 
     func generateRaw(text: String, images: [CIImage]) -> AsyncThrowingStream<String, Error> {
@@ -151,19 +159,29 @@ final class FoundationModelsInferenceService: InferenceService {
 
     private func streamProfile(
         _ profile: PromptRuntimeProfile,
-        using sourceSession: LanguageModelSession?
+        using sourceSession: LanguageModelSession?,
+        runtimeToolScope: RuntimeToolScope = RuntimeToolScope()
     ) -> AsyncThrowingStream<String, Error> {
         guard isLoaded, sourceSession != nil else {
             return AsyncThrowingStream { $0.finish(throwing: ModelBackendError.modelNotLoaded) }
         }
 
-        let requestSession = profileSession(for: profile, fallback: sourceSession)
-        return streamText(prompt: profile.prompt, using: requestSession)
+        let requestSession = requestSession(
+            for: profile,
+            fallback: sourceSession,
+            runtimeToolScope: runtimeToolScope
+        )
+        return streamText(
+            prompt: profile.prompt,
+            using: requestSession.session,
+            toolCallingMode: requestSession.toolCallingMode
+        )
     }
 
     private func streamText(
         prompt: String,
-        using sourceSession: LanguageModelSession?
+        using sourceSession: LanguageModelSession?,
+        toolCallingMode: GenerationOptions.ToolCallingMode = .disallowed
     ) -> AsyncThrowingStream<String, Error> {
         guard isLoaded, let sourceSession else {
             return AsyncThrowingStream { $0.finish(throwing: ModelBackendError.modelNotLoaded) }
@@ -189,7 +207,7 @@ final class FoundationModelsInferenceService: InferenceService {
                             samplingMode: samplingMode,
                             temperature: Double(self.samplingTemperature),
                             maximumResponseTokens: self.maxOutputTokens,
-                            toolCallingMode: .disallowed
+                            toolCallingMode: toolCallingMode
                         ),
                         contextOptions: ContextOptions(includeSchemaInPrompt: false),
                         metadata: [
@@ -295,9 +313,56 @@ final class FoundationModelsInferenceService: InferenceService {
         return dynamicSession
     }
 
+    private struct RequestSession {
+        let session: LanguageModelSession?
+        let toolCallingMode: GenerationOptions.ToolCallingMode
+    }
+
+    private func requestSession(
+        for profile: PromptRuntimeProfile,
+        fallback: LanguageModelSession?,
+        runtimeToolScope: RuntimeToolScope
+    ) -> RequestSession {
+        if let nativeSession = nativeToolSession(for: profile, runtimeToolScope: runtimeToolScope) {
+            return RequestSession(session: nativeSession, toolCallingMode: .allowed)
+        }
+        return RequestSession(session: profileSession(for: profile, fallback: fallback), toolCallingMode: .disallowed)
+    }
+
+    private func nativeToolSession(
+        for profile: PromptRuntimeProfile,
+        runtimeToolScope: RuntimeToolScope
+    ) -> LanguageModelSession? {
+        guard HotfixFeatureFlags.enableFoundationModelsNativeTools,
+              !runtimeToolScope.isEmpty else {
+            return nil
+        }
+
+        let registeredTools = ToolRegistry.shared.toolsFor(names: runtimeToolScope.toolNames)
+        guard !registeredTools.isEmpty else {
+            return nil
+        }
+
+        let model = SystemLanguageModel.default
+        guard case .available = model.availability else {
+            return nil
+        }
+
+        let nativeTools: [any Tool] = registeredTools.map {
+            PhoneClawFoundationModelsTool(registeredTool: $0)
+        }
+        let dynamicSession = LanguageModelSession(
+            model: model,
+            tools: nativeTools,
+            instructions: Self.effectiveInstructions(profile.instructions)
+        )
+        dynamicSession.prewarm()
+        PCLog.debug("[FoundationModels] native tool scope enabled tools=\(registeredTools.map(\.name).joined(separator: ","))")
+        return dynamicSession
+    }
+
     private func makeSession(instructions: String) -> LanguageModelSession {
-        let normalizedInstructions = instructions.trimmingCharacters(in: .whitespacesAndNewlines)
-        let effectiveInstructions = normalizedInstructions.isEmpty ? Self.defaultInstructions : normalizedInstructions
+        let effectiveInstructions = Self.effectiveInstructions(instructions)
         let profile = LanguageModelSession.Profile {
             Instructions(effectiveInstructions)
         }
@@ -311,6 +376,11 @@ final class FoundationModelsInferenceService: InferenceService {
             PCLog.debug("[FoundationModels] native tool call observed but execution remains in PhoneClaw tool chain: \(call.toolName)")
         }
         return LanguageModelSession(profile: profile)
+    }
+
+    private static func effectiveInstructions(_ instructions: String?) -> String {
+        let normalizedInstructions = instructions?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return normalizedInstructions.isEmpty ? Self.defaultInstructions : normalizedInstructions
     }
 
     private static let maxTranscriptHistoryEntries = 24

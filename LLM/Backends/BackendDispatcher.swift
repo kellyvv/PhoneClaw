@@ -102,6 +102,10 @@ final class BackendDispatcher: InferenceService {
         active.generate(prompt: prompt)
     }
 
+    func generate(prompt: String, runtimeToolScope: RuntimeToolScope) -> AsyncThrowingStream<String, Error> {
+        active.generate(prompt: prompt, runtimeToolScope: runtimeToolScope)
+    }
+
     func generateMultimodal(
         images: [CIImage],
         audios: [AudioInput],

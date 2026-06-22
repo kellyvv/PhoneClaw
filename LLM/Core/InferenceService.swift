@@ -71,6 +71,13 @@ public protocol InferenceService: AnyObject {
     /// 后端按原样编码 + 生成。
     func generate(prompt: String) -> AsyncThrowingStream<String, Error>
 
+    /// 文本推理 + 本轮允许的 runtime tool scope。
+    ///
+    /// 非原生工具后端走默认实现, 继续使用文本工具协议。
+    /// 支持原生 tool calling 的后端只能把 `runtimeToolScope` 中声明的工具暴露给模型,
+    /// 不得自行注册全量工具表。
+    func generate(prompt: String, runtimeToolScope: RuntimeToolScope) -> AsyncThrowingStream<String, Error>
+
     // MARK: - Multimodal Generation
 
     /// 多模态推理。传入图片/音频 + 文本 prompt + 可选 system prompt。
@@ -348,6 +355,10 @@ private func streamWithBatchedCallbacks(
 
 public extension InferenceService {
 
+    func generate(prompt: String, runtimeToolScope: RuntimeToolScope) -> AsyncThrowingStream<String, Error> {
+        generate(prompt: prompt)
+    }
+
     func generate(
         prompt: String,
         onToken: @escaping @MainActor @Sendable (String) -> Void,
@@ -355,6 +366,19 @@ public extension InferenceService {
     ) {
         streamWithBatchedCallbacks(
             source: generate(prompt: prompt),
+            onToken: onToken,
+            onComplete: onComplete
+        )
+    }
+
+    func generate(
+        prompt: String,
+        runtimeToolScope: RuntimeToolScope,
+        onToken: @escaping @MainActor @Sendable (String) -> Void,
+        onComplete: @escaping @MainActor @Sendable (Result<String, Error>) -> Void
+    ) {
+        streamWithBatchedCallbacks(
+            source: generate(prompt: prompt, runtimeToolScope: runtimeToolScope),
             onToken: onToken,
             onComplete: onComplete
         )
