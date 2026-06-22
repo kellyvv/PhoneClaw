@@ -221,7 +221,7 @@ struct ConversationMemoryPolicy {
         guard let historyPolicyForSkillOrTool,
               let assistantIndex = priorHistory.indices.last,
               priorHistory[assistantIndex].role == .assistant,
-              looksLikePendingClarification(priorHistory[assistantIndex].content) else {
+              looksLikeExplicitQuestion(priorHistory[assistantIndex].content) else {
             return []
         }
 
@@ -237,25 +237,10 @@ struct ConversationMemoryPolicy {
         return Set(turnStart...assistantIndex)
     }
 
-    private static func looksLikePendingClarification(_ content: String) -> Bool {
+    private static func looksLikeExplicitQuestion(_ content: String) -> Bool {
         let text = content.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return false }
-        if text.contains("?") || text.contains("？") || text.contains("吗") || text.contains("呢") {
-            return true
-        }
-
-        let lowercased = text.lowercased()
-        let markers = [
-            "请提供", "请补充", "请告诉", "需要提供", "需要补充",
-            "什么时候", "什么时间", "哪一个", "哪个", "哪位",
-            "电话号", "电话号码", "手机号", "主题是什么", "标题是什么",
-            "要安排什么", "提醒您做什么",
-            "please provide", "please specify", "which one", "which contact",
-            "when should", "what time", "phone number", "what would you like",
-            "what's the topic", "what is the topic",
-            "教えて", "指定", "どれ", "いつ", "何時", "電話", "件名"
-        ]
-        return markers.contains { lowercased.contains($0.lowercased()) }
+        return text.contains("?") || text.contains("？")
     }
 
     private static func oldestDroppableTurnRange(
