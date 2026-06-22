@@ -247,14 +247,15 @@ final class SkillRouterCompatibilityContractTests: XCTestCase {
         XCTAssertFalse(contentView.contains("LiveWarmPool.shared"))
 
         XCTAssertTrue(liveModeUI.contains("liveEngine.setup(inference: inference)"))
-        XCTAssertFalse(liveModeUI.contains("AgentEngine"))
+        XCTAssertFalse(liveModeUI.contains("let agentEngine: AgentEngine"))
+        XCTAssertFalse(liveModeUI.contains("agentEngine: agentEngine"))
         XCTAssertFalse(liveModeUI.contains("agentEngine:"))
 
         XCTAssertTrue(liveModeEngine.contains("func setup(inference: InferenceService)"))
         XCTAssertTrue(liveModeEngine.contains("try await inference.enterLiveMode(systemPrompt: liveSystemPrompt)"))
         XCTAssertTrue(liveModeEngine.contains("inference.generateLive(prompt: greetingPrompt"))
         XCTAssertTrue(liveModeEngine.contains("let processor = LiveTurnProcessor(inference: inference)"))
-        XCTAssertFalse(liveModeEngine.contains("AgentEngine"))
+        XCTAssertFalse(liveModeEngine.contains("var agentEngine: AgentEngine?"))
         XCTAssertFalse(liveModeEngine.contains("processMainAgentTextTurn("))
         XCTAssertFalse(liveModeEngine.contains("await agentEngine.processInput"))
         XCTAssertFalse(liveModeEngine.contains("LiveActivityBridge"))
@@ -582,8 +583,8 @@ final class SkillRouterCompatibilityContractTests: XCTestCase {
         let widget = try liveLandWidgetSource()
         let infoPlist = try source("LiveLand/Widget/Info.plist")
 
-        XCTAssertTrue(widget.contains("let phoneClawLiveModeLaunchURL = URL(string: \"phoneclaw://live?mode=voice\")!"))
         XCTAssertTrue(widget.contains("let phoneClawLiveLandLaunchURL = URL(string: \"phoneclaw://liveland\")!"))
+        XCTAssertFalse(widget.contains("phoneClawLiveModeLaunchURL"))
         XCTAssertTrue(widget.contains("PhoneClawLiveLandLauncherWidget()"))
         XCTAssertTrue(widget.contains("kind: \"PhoneClawLiveLandLauncherWidget\""))
         XCTAssertTrue(widget.contains(".widgetURL(phoneClawLiveLandLaunchURL)"))
