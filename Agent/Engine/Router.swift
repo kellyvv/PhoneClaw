@@ -780,10 +780,14 @@ extension AgentEngine {
         guard shouldAttemptIOS27FoundationSkillRoute(for: userQuestion) else {
             return nil
         }
+        let candidates = ios27FoundationSkillCandidates()
+        guard !candidates.isEmpty else {
+            return nil
+        }
 
         guard let result = await IOS27FoundationSkillRouter.route(
             for: userQuestion,
-            enabledSkillIDs: enabledRouteSkillIDs()
+            candidates: candidates
         ) else {
             return nil
         }
@@ -804,18 +808,68 @@ extension AgentEngine {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else { return false }
 
-        return containsAnyRouteSignal(normalized, [
-            "帮我", "给我", "替我", "安排", "创建", "添加", "新建", "预约",
-            "提醒", "待办", "记得", "翻译", "译成", "翻成", "译为",
-            "日程", "会议", "开会", "约会", "评审会", "同步会",
-            "schedule", "book", "create", "add", "remind", "translate"
-        ])
+        return containsRegistryRouteSignal(normalized)
     }
 
-    private func containsAnyRouteSignal(_ text: String, _ signals: [String]) -> Bool {
-        signals.contains { signal in
-            text.contains(signal)
+    private func ios27FoundationSkillCandidates() -> [IOS27FoundationSkillCandidate] {
+        let enabled = enabledRouteSkillIDs()
+        return skillEntries.compactMap { entry in
+            guard entry.isEnabled,
+                  enabled.contains(entry.id),
+                  let definition = skillRegistry.getDefinition(entry.id),
+                  definition.isEnabled else {
+                return nil
+            }
+
+            let tools = registeredTools(for: entry.id).map { tool in
+                IOS27FoundationSkillToolCandidate(
+                    name: tool.name,
+                    description: tool.description,
+                    parameters: tool.parameters,
+                    isParameterless: tool.isParameterless
+                )
+            }
+
+            return IOS27FoundationSkillCandidate(
+                id: entry.id,
+                displayName: entry.name,
+                description: entry.description,
+                type: entry.type.rawValue,
+                triggers: definition.metadata.triggers,
+                exampleQueries: definition.metadata.examples.map(\.query),
+                tools: tools
+            )
         }
+    }
+
+    private func containsRegistryRouteSignal(_ normalizedText: String) -> Bool {
+        for entry in skillEntries where entry.isEnabled {
+            guard let definition = skillRegistry.getDefinition(entry.id),
+                  definition.isEnabled else {
+                continue
+            }
+
+            let routeSignals = [
+                entry.id,
+                entry.name,
+                entry.description,
+                definition.metadata.name,
+                definition.metadata.localizedNameZh ?? ""
+            ]
+                + definition.metadata.triggers
+                + definition.metadata.examples.map(\.query)
+                + registeredTools(for: entry.id).map(\.name)
+
+            if routeSignals.contains(where: { signal in
+                let normalizedSignal = signal
+                    .lowercased()
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                return !normalizedSignal.isEmpty && containsAsWord(normalizedSignal, in: normalizedText)
+            }) {
+                return true
+            }
+        }
+        return false
     }
 
     private func logIOS27FoundationRouteDiagnostics(_ result: IOS27FoundationSkillRouteResult) {

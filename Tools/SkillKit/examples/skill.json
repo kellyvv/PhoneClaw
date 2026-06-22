@@ -1,0 +1,30 @@
+{
+  "id": "sample",
+  "name": "Sample",
+  "name_zh": "示例",
+  "description": "Demonstrates the SkillKit skeleton.",
+  "type": "device",
+  "icon": "wrench",
+  "version": "1.0.0",
+  "disabled": false,
+  "requires_time_anchor": false,
+  "triggers": [
+    "sample"
+  ],
+  "allowed_tools": [
+    "sample-query"
+  ],
+  "examples": [
+    {
+      "query": "sample query",
+      "scenario": "sample route"
+    }
+  ],
+  "chip_prompt": "Run sample",
+  "chip_label": "Sample",
+  "body": {
+    "zh": "# 示例\n\n按契约处理请求。",
+    "en": "# Sample\n\nHandle requests according to the contract.",
+    "ja": "# サンプル\n\n契約に従ってリクエストを処理します。"
+  }
+}

@@ -26,19 +26,74 @@ struct IOS27FoundationSkillRouteDiagnostics {
     let errorDescription: String?
 }
 
+struct IOS27FoundationSkillToolCandidate: Equatable, Sendable {
+    let name: String
+    let description: String
+    let parameters: String
+    let isParameterless: Bool
+}
+
+struct IOS27FoundationSkillCandidate: Equatable, Sendable {
+    let id: String
+    let displayName: String
+    let description: String
+    let type: String
+    let triggers: [String]
+    let exampleQueries: [String]
+    let tools: [IOS27FoundationSkillToolCandidate]
+
+    var promptBlock: String {
+        let toolText = tools.isEmpty
+            ? "none"
+            : tools.map { tool in
+                let suffix = tool.isParameterless ? " (no arguments)" : ""
+                let parameters = Self.compact(tool.parameters, limit: 180)
+                let parameterText = parameters.isEmpty ? "" : " Parameters: \(parameters)"
+                return "\(tool.name)\(suffix): \(Self.compact(tool.description, limit: 120)).\(parameterText)"
+            }.joined(separator: "; ")
+        let triggerText = triggers.isEmpty
+            ? "none"
+            : triggers.prefix(10).map { Self.compact($0, limit: 40) }.joined(separator: ", ")
+        let exampleText = exampleQueries.isEmpty
+            ? "none"
+            : exampleQueries.prefix(4).map { Self.compact($0, limit: 80) }.joined(separator: " | ")
+
+        return """
+        - id: \(id)
+          name: \(Self.compact(displayName, limit: 80))
+          type: \(type)
+          description: \(Self.compact(description, limit: 180))
+          tools: \(toolText)
+          triggers: \(triggerText)
+          examples: \(exampleText)
+        """
+    }
+
+    private static func compact(_ rawValue: String, limit: Int) -> String {
+        let normalized = rawValue
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\r", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalized.count > limit else { return normalized }
+        return String(normalized.prefix(limit))
+    }
+}
+
 enum IOS27FoundationSkillRouter {
     static func route(
         for userQuestion: String,
-        enabledSkillIDs: Set<String>,
+        candidates: [IOS27FoundationSkillCandidate],
         minimumConfidence: Double = 0.82
     ) async -> IOS27FoundationSkillRouteResult? {
         guard HotfixFeatureFlags.enableIOS27FoundationRouter else { return nil }
+        let routeCandidates = candidates.filter { !$0.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        guard !routeCandidates.isEmpty else { return nil }
 
         #if canImport(FoundationModels)
         if #available(iOS 27.0, macOS 27.0, *) {
             return await IOS27FoundationSkillRouterRuntime.route(
                 for: userQuestion,
-                enabledSkillIDs: enabledSkillIDs,
+                candidates: routeCandidates,
                 minimumConfidence: minimumConfidence
             )
         }
@@ -55,10 +110,10 @@ private struct IOS27GeneratedSkillRoute {
     @Guide(description: "Routing action.", .anyOf(["answerDirectly", "useSkill", "askClarification"]))
     var action: String
 
-    @Guide(description: "Selected skill identifier, or null.", .anyOf(["calendar", "reminders", "clipboard", "health", "translate", "web-search", "null"]))
+    @Guide(description: "Selected skill identifier from Available Skills, or null.")
     var skillID: String
 
-    @Guide(description: "Selected tool name, or null.", .anyOf(["calendar-create-event", "reminders-create", "null"]))
+    @Guide(description: "Selected tool name from the selected skill's tools, or null.")
     var toolName: String
 
     @Guide(description: "Confidence from 0.0 to 1.0.", .range(0.0...1.0))
@@ -72,7 +127,7 @@ private struct IOS27GeneratedSkillRoute {
 private enum IOS27FoundationSkillRouterRuntime {
     static func route(
         for userQuestion: String,
-        enabledSkillIDs: Set<String>,
+        candidates: [IOS27FoundationSkillCandidate],
         minimumConfidence: Double
     ) async -> IOS27FoundationSkillRouteResult? {
         let normalized = userQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -111,7 +166,7 @@ private enum IOS27FoundationSkillRouterRuntime {
             prewarmMilliseconds = milliseconds(since: prewarmStart)
 
             let response = try await session.respond(
-                to: prompt(for: normalized),
+                to: prompt(for: normalized, candidates: candidates),
                 generating: IOS27GeneratedSkillRoute.self,
                 options: GenerationOptions(
                     samplingMode: .greedy,
@@ -127,7 +182,7 @@ private enum IOS27FoundationSkillRouterRuntime {
             let route = response.content
             let decision = decision(
                 from: route,
-                enabledSkillIDs: enabledSkillIDs,
+                candidates: candidates,
                 minimumConfidence: minimumConfidence
             )
             let routeMilliseconds = milliseconds(since: routeStart)
@@ -149,7 +204,7 @@ private enum IOS27FoundationSkillRouterRuntime {
                     rawToolName: route.toolName,
                     reason: decision?.reason ?? noDecisionReason(
                         for: route,
-                        enabledSkillIDs: enabledSkillIDs,
+                        candidates: candidates,
                         minimumConfidence: minimumConfidence
                     ),
                     errorDescription: nil
@@ -180,7 +235,7 @@ private enum IOS27FoundationSkillRouterRuntime {
 
     private static func decision(
         from route: IOS27GeneratedSkillRoute,
-        enabledSkillIDs: Set<String>,
+        candidates: [IOS27FoundationSkillCandidate],
         minimumConfidence: Double
     ) -> GuardedSkillRouteDecision? {
         guard route.confidence >= minimumConfidence else {
@@ -195,10 +250,9 @@ private enum IOS27FoundationSkillRouterRuntime {
                 reason: "foundation_direct_answer"
             )
         case "useSkill", "askClarification":
-            let skillID = normalizedSkillID(route.skillID)
-            guard let skillID,
-                  enabledSkillIDs.contains(skillID),
-                  isSupportedRoute(skillID: skillID, toolName: route.toolName) else {
+            guard let skillID = resolvedSkillID(route.skillID, candidates: candidates),
+                  let candidate = candidates.first(where: { $0.id == skillID }),
+                  isSupportedRoute(candidate: candidate, toolName: route.toolName) else {
                 return nil
             }
             let reasonPrefix = route.action == "askClarification"
@@ -216,7 +270,7 @@ private enum IOS27FoundationSkillRouterRuntime {
 
     private static func noDecisionReason(
         for route: IOS27GeneratedSkillRoute,
-        enabledSkillIDs: Set<String>,
+        candidates: [IOS27FoundationSkillCandidate],
         minimumConfidence: Double
     ) -> String {
         guard route.confidence >= minimumConfidence else {
@@ -225,13 +279,11 @@ private enum IOS27FoundationSkillRouterRuntime {
 
         switch route.action {
         case "useSkill", "askClarification":
-            guard let skillID = normalizedSkillID(route.skillID) else {
+            guard let skillID = resolvedSkillID(route.skillID, candidates: candidates) else {
                 return "missing_skill"
             }
-            guard enabledSkillIDs.contains(skillID) else {
-                return "disabled_skill"
-            }
-            guard isSupportedRoute(skillID: skillID, toolName: route.toolName) else {
+            guard let candidate = candidates.first(where: { $0.id == skillID }),
+                  isSupportedRoute(candidate: candidate, toolName: route.toolName) else {
                 return "unsupported_tool"
             }
             return "unhandled_skill"
@@ -242,33 +294,39 @@ private enum IOS27FoundationSkillRouterRuntime {
         }
     }
 
-    private static func normalizedSkillID(_ rawValue: String) -> String? {
-        let normalized = rawValue
-            .lowercased()
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+    private static func resolvedSkillID(_ rawValue: String, candidates: [IOS27FoundationSkillCandidate]) -> String? {
+        let normalized = normalizedIdentifier(rawValue)
         guard !normalized.isEmpty, normalized != "null" else { return nil }
-        switch normalized {
-        case "reminder":
-            return "reminders"
-        default:
-            return normalized
+
+        for candidate in candidates {
+            let ids = [
+                candidate.id,
+                candidate.displayName
+            ]
+            if ids.contains(where: { normalizedIdentifier($0) == normalized }) {
+                return candidate.id
+            }
+        }
+        return nil
+    }
+
+    private static func isSupportedRoute(candidate: IOS27FoundationSkillCandidate, toolName: String) -> Bool {
+        let normalizedTool = normalizedIdentifier(toolName)
+        if normalizedTool.isEmpty || normalizedTool == "null" || normalizedTool == "none" {
+            return true
+        }
+
+        return candidate.tools.contains { tool in
+            normalizedIdentifier(tool.name) == normalizedTool
         }
     }
 
-    private static func isSupportedRoute(skillID: String, toolName: String) -> Bool {
-        let normalizedTool = toolName
-            .lowercased()
+    private static func normalizedIdentifier(_ rawValue: String) -> String {
+        rawValue
+            .folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: .current)
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        switch skillID {
-        case "calendar":
-            return normalizedTool == "calendar-create-event"
-        case "reminders":
-            return normalizedTool == "reminders-create"
-        case "translate":
-            return normalizedTool == "null" || normalizedTool.isEmpty
-        default:
-            return false
-        }
+            .replacingOccurrences(of: "_", with: "-")
+            .lowercased()
     }
 
     private static func availabilityDescription(_ availability: SystemLanguageModel.Availability) -> String {
@@ -328,25 +386,29 @@ private enum IOS27FoundationSkillRouterRuntime {
     Do not invent skill IDs or tool names.
     """
 
-    private static func prompt(for request: String) -> String {
-        """
+    private static func prompt(for request: String, candidates: [IOS27FoundationSkillCandidate]) -> String {
+        let availableSkills = candidates
+            .sorted { $0.id < $1.id }
+            .map(\.promptBlock)
+            .joined(separator: "\n")
+
+        return """
         Route this request.
 
         User request:
         \(request)
 
-        Available Skills:
-        - calendar: creates calendar events for meetings, appointments, and schedules. Tool: calendar-create-event.
-        - reminders: creates reminders and to-do items. Tool: reminders-create.
-        - translate: translates text. Tool: null.
+        Available Skills (use the id exactly):
+        \(availableSkills)
 
         Decision hints:
-        - Meeting scheduling with date or time present => useSkill/calendar/calendar-create-event.
-        - Meeting scheduling without date or time => askClarification/calendar/calendar-create-event.
-        - Reminder creation with time or task information => useSkill/reminders/reminders-create.
-        - Explicit translation requests => useSkill/translate/null.
+        - Return useSkill only when the request clearly matches one listed skill id, name, description, trigger, example, or tool.
+        - Return askClarification when one listed skill matches but required details appear missing.
+        - For skillID, copy the exact id from Available Skills.
+        - For toolName, copy one listed tool for that skill, or return null when tool choice should be decided later.
         - Explanation, definition, introduction, or summary requests => answerDirectly/null/null.
-        - Never answerDirectly for a request that should change calendar, reminders, or another device/app state.
+        - Never answerDirectly for a request that should read or change private device/app state.
+        - Do not invent skill IDs or tool names that are not listed above.
         """
     }
 }

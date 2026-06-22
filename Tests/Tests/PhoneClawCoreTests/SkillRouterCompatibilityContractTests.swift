@@ -89,8 +89,36 @@ final class SkillRouterCompatibilityContractTests: XCTestCase {
         XCTAssertTrue(processInput.contains("!guardedRouteBlocksModelIntent"))
         XCTAssertTrue(processInput.contains("!ios27RouteBlocksModelIntent"))
         XCTAssertTrue(router.contains("shouldAttemptIOS27FoundationSkillRoute"))
+        XCTAssertTrue(router.contains("ios27FoundationSkillCandidates()"))
+        XCTAssertTrue(router.contains("containsRegistryRouteSignal"))
         XCTAssertTrue(ios27Router.contains("#if canImport(FoundationModels)"))
         XCTAssertTrue(ios27Router.contains("if #available(iOS 27.0, macOS 27.0, *)"))
+    }
+
+    func testIOS27FoundationRouterIsRegistryDriven() throws {
+        let router = try source("Agent/Engine/Router.swift")
+        let ios27Router = try source("Agent/Engine/IOS27FoundationSkillRouter.swift")
+
+        XCTAssertTrue(ios27Router.contains("struct IOS27FoundationSkillCandidate"))
+        XCTAssertTrue(ios27Router.contains("candidates: [IOS27FoundationSkillCandidate]"))
+        XCTAssertTrue(ios27Router.contains("Available Skills (use the id exactly):"))
+        XCTAssertTrue(ios27Router.contains("isSupportedRoute(candidate:"))
+        XCTAssertTrue(router.contains("registeredTools(for: entry.id).map"))
+        XCTAssertTrue(router.contains("definition.metadata.triggers"))
+        XCTAssertTrue(router.contains("definition.metadata.examples.map(\\.query)"))
+
+        XCTAssertFalse(router.contains("containsAnyRouteSignal"))
+        XCTAssertFalse(router.contains("\"help me\""))
+        XCTAssertFalse(router.contains("\"创建\", \"添加\", \"新建\""))
+        XCTAssertFalse(ios27Router.contains("- calendar: creates calendar events"))
+        XCTAssertFalse(ios27Router.contains("- reminders: creates reminders"))
+        XCTAssertFalse(ios27Router.contains("- translate: translates text"))
+        XCTAssertFalse(ios27Router.contains(".anyOf([\"calendar\""))
+        XCTAssertFalse(ios27Router.contains("case \"calendar\":"))
+        XCTAssertFalse(ios27Router.contains("case \"reminders\":"))
+        XCTAssertFalse(ios27Router.contains("case \"translate\":"))
+        XCTAssertFalse(ios27Router.contains("dropLast()"))
+        XCTAssertFalse(ios27Router.contains("hasSuffix(\"s\")"))
     }
 
     func testIOS27FoundationRouterUsesIOS27ModelAPIsWithDiagnostics() throws {

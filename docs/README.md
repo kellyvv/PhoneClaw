@@ -8,6 +8,9 @@ Public technical notes and launch materials for PhoneClaw.
 - [PhoneClaw Skill System](SKILL_SYSTEM.md)
 - [iOS Memory and Context Limits](IOS_MEMORY_LIMITS.md)
 - [Promotion Kit](PROMOTION_KIT.md)
+- [AI Runtime Compatibility Plan](AI_RUNTIME_COMPATIBILITY_PLAN.md)
+- [Skill Contract V2](SKILL_CONTRACT_V2.md)
+- [Prompt Pack Strategy](PROMPT_PACK_STRATEGY.md)
 
 ## Existing engineering notes
 
