@@ -358,9 +358,9 @@ private struct PhoneClawFoundationModelsTool: Tool, @unchecked Sendable {
 
     var parameters: GenerationSchema {
         let root = DynamicGenerationSchema(
-            name: "\(Self.schemaNamePrefix)\(registeredTool.name)",
-            description: "Arguments for \(registeredTool.name). \(registeredTool.parameters)",
-            properties: []
+            name: Self.schemaName(for: registeredTool.name),
+            description: Self.schemaDescription(for: registeredTool),
+            properties: Self.schemaProperties(for: registeredTool)
         )
         return (try? GenerationSchema(root: root, dependencies: [])) ?? GeneratedContent.generationSchema
     }
@@ -378,6 +378,94 @@ private struct PhoneClawFoundationModelsTool: Tool, @unchecked Sendable {
     }
 
     private static let schemaNamePrefix = "PhoneClawToolArguments_"
+
+    private static func schemaName(for rawName: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_"))
+        let cleaned = rawName.unicodeScalars.map { scalar in
+            allowed.contains(scalar) ? Character(scalar) : "_"
+        }
+        return schemaNamePrefix + String(cleaned)
+    }
+
+    private static func schemaDescription(for tool: RegisteredTool) -> String {
+        var parts = ["Arguments for \(tool.name). \(tool.parameters)"]
+        if !tool.requiredAnyOfParameters.isEmpty {
+            parts.append("At least one of these parameters should be present: \(tool.requiredAnyOfParameters.joined(separator: ", ")).")
+        }
+        return parts.joined(separator: " ")
+    }
+
+    private static func schemaProperties(for tool: RegisteredTool) -> [DynamicGenerationSchema.Property] {
+        if tool.isParameterless {
+            return []
+        }
+        if let jsonProperties = jsonParameterProperties(for: tool) {
+            return jsonProperties
+        }
+        return colonParameterProperties(for: tool)
+    }
+
+    private static func jsonParameterProperties(for tool: RegisteredTool) -> [DynamicGenerationSchema.Property]? {
+        guard let data = tool.parameters.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+
+        let properties = object.keys.sorted().compactMap { name -> DynamicGenerationSchema.Property? in
+            guard let spec = object[name] as? [String: Any] else { return nil }
+            let description = spec["description"] as? String
+            let typeName = (spec["type"] as? String) ?? "string"
+            let required = (spec["required"] as? Bool) ?? tool.requiredParameters.contains(name)
+            return DynamicGenerationSchema.Property(
+                name: name,
+                description: description,
+                schema: dynamicSchema(for: typeName, propertyName: name),
+                isOptional: !required
+            )
+        }
+        return properties.isEmpty ? nil : properties
+    }
+
+    private static func colonParameterProperties(for tool: RegisteredTool) -> [DynamicGenerationSchema.Property] {
+        let separators = CharacterSet(charactersIn: ",，;；\n")
+        return tool.parameters
+            .components(separatedBy: separators)
+            .compactMap { segment -> DynamicGenerationSchema.Property? in
+                let parts = segment.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
+                guard parts.count == 2 else { return nil }
+                let name = parts[0]
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .replacingOccurrences(of: " ", with: "_")
+                guard !name.isEmpty,
+                      name.range(of: #"^[A-Za-z_][A-Za-z0-9_-]*$"#, options: .regularExpression) != nil else {
+                    return nil
+                }
+                let description = parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
+                return DynamicGenerationSchema.Property(
+                    name: name,
+                    description: description.isEmpty ? nil : description,
+                    schema: DynamicGenerationSchema(type: String.self),
+                    isOptional: !tool.requiredParameters.contains(name)
+                )
+            }
+    }
+
+    private static func dynamicSchema(for typeName: String, propertyName: String) -> DynamicGenerationSchema {
+        switch typeName.lowercased() {
+        case "boolean", "bool":
+            return DynamicGenerationSchema(type: Bool.self)
+        case "integer", "int":
+            return DynamicGenerationSchema(type: Int.self)
+        case "number", "double", "float":
+            return DynamicGenerationSchema(type: Double.self)
+        case "array":
+            return DynamicGenerationSchema(arrayOf: DynamicGenerationSchema(type: String.self))
+        case "object":
+            return DynamicGenerationSchema(name: schemaName(for: propertyName), properties: [])
+        default:
+            return DynamicGenerationSchema(type: String.self)
+        }
+    }
 
     private static func dictionary(from content: GeneratedContent) -> [String: Any] {
         if let value = anyValue(from: content) as? [String: Any] {
