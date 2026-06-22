@@ -365,7 +365,9 @@ struct ContentView: View {
                 userSystemPrompt: engine.config.systemPrompt
             )
         }
-        .fullScreenCover(isPresented: $showConfigurations) {
+        .fullScreenCover(isPresented: $showConfigurations, onDismiss: {
+            engine.loadSelectedModelIfInstalled()
+        }) {
             ConfigurationsView(engine: engine)
         }
         .sheet(isPresented: $showModelSwitcher) {
@@ -1066,6 +1068,9 @@ struct ContentView: View {
     ) {
         for (modelID, newState) in newStates where oldStates[modelID] != newState {
             guard !newState.isTransientInstallState else { continue }
+            if newState == .downloaded || newState == .bundled {
+                loadInstalledSelectedModelIfNeeded(modelID)
+            }
             if case .failed = newState {
                 showTransientTopNotice(
                     tr("模型下载失败", "Model download failed", "モデルのダウンロードに失敗"),
@@ -1074,6 +1079,17 @@ struct ContentView: View {
                 )
             }
         }
+    }
+
+    private func loadInstalledSelectedModelIfNeeded(_ modelID: String) {
+        // Avoid loading a large LLM behind the settings cover; wait for onDismiss.
+        guard modelID == engine.config.selectedModelID,
+              !showConfigurations,
+              !engine.isModelLoaded else {
+            return
+        }
+
+        engine.loadSelectedModelIfInstalled(refreshInstallStates: false)
     }
 
     private func handleRuntimeStateChange(_ state: RuntimeSessionState) {
@@ -1910,6 +1926,15 @@ struct ContentView: View {
     /// 录音只作 ASR 输入, 不当附件发给模型. 内部还是会显式 consume / 清理
     /// audioCapture 里的 snapshot, 防止下一轮误带。
     private func send(includeAudio: Bool = true) async {
+        guard engine.isModelReady else {
+            showTransientTopNotice(
+                tr("模型加载中，请稍候", "Model is loading, please wait", "モデルを読み込み中です"),
+                symbolName: "hourglass",
+                isWarning: true
+            )
+            return
+        }
+
         let text = inputText
         let images = selectedImages
         let lastDisplayItemID = displayItems.last?.id

@@ -29,8 +29,7 @@ struct LiveAssetDownloadPlan: Sendable {
 }
 
 enum LiveDownloadPlanner {
-    private static let hosts = [
-        "hf-mirror.com",
+    private static let huggingFaceFallbackHosts = [
         "huggingface.co"
     ]
     private static let treeRequestTimeout: TimeInterval = 12
@@ -44,17 +43,18 @@ enum LiveDownloadPlanner {
     }
 
     static func makePlan(for asset: LiveModelAsset) async throws -> LiveAssetDownloadPlan {
-        // Baked manifest → 直连下载, 跳过 HF tree API (跟 LLM ModelDownloader 一致)。
-        // hf-mirror.com 不镜像列目录 /api/.../tree (会 308 → huggingface.co 国内被墙),
-        // 但文件 /resolve/main 走 mirror 正常 → 列目录是 LIVE 下载卡顿的根因。有清单的 asset 直接绕开。
+        // Baked manifest → 直连下载, 跳过 tree API (跟 LLM ModelDownloader 一致)。
+        // 中英文/VAD 资产都在我们自己的 LIVE 仓库里有固定清单, 直接走:
+        // ModelScope(kilywei/LIVE) → HuggingFace(kellyxiaowei/LIVE)。
+        // 这避免每次安装前访问 HF tree API, 也是国内 LIVE 下载卡顿的主要优化点。
         if let manifest = asset.downloadManifest, !manifest.isEmpty {
-            let downloadFiles = manifest.map { local in
+            let downloadFiles = manifest.map { entry in
                 DownloadFile(
-                    relativePath: local,
-                    expectedSize: nil,
+                    relativePath: entry.path,
+                    expectedSize: normalizedExpectedSize(entry.expectedSize),
                     sources: downloadSources(
                         for: asset,
-                        remoteFile: LiveModelDefinition.remotePath(for: local, in: asset)
+                        remoteFile: LiveModelDefinition.remotePath(for: entry.path, in: asset)
                     )
                 )
             }
@@ -64,7 +64,7 @@ enum LiveDownloadPlanner {
 
         var lastError: Error?
 
-        for host in hosts {
+        for host in huggingFaceFallbackHosts {
             do {
                 // 1. 拉 repo tree (full repo paths, 包含可能的 prefix)
                 // 2. 用 LiveModelDefinition.localPath(...) 把每个 entry 映射成 (remote, local) tuple,
@@ -247,19 +247,26 @@ enum LiveDownloadPlanner {
         return files.contains { $0.path.hasPrefix(directoryPrefix) }
     }
 
-    /// 拼下载 URL 用 **repository 相对路径** (含 prefix), 跟 HF 上文件实际位置对应。
+    /// 拼下载 URL 用 **repository 相对路径** (含 prefix), 跟远端文件实际位置对应。
     private static func downloadSources(
         for asset: LiveModelAsset,
-        remoteFile: String,
-        sourceOrder: [String] = hosts
+        remoteFile: String
     ) -> [DownloadFile.Source] {
-        sourceOrder.enumerated().compactMap { index, host in
-            let encodedFile = encodedPath(remoteFile)
-            guard let url = URL(string: "https://\(host)/\(asset.repositoryID)/resolve/main/\(encodedFile)") else {
-                return nil
-            }
-            return DownloadFile.Source(label: host, url: url, priority: index)
+        let encodedFile = encodedPath(remoteFile)
+        var sources: [DownloadFile.Source] = []
+
+        if let modelScopeRepositoryID = asset.modelScopeRepositoryID,
+           let url = URL(string: "https://modelscope.cn/models/\(modelScopeRepositoryID)/resolve/master/\(encodedFile)") {
+            sources.append(DownloadFile.Source(label: "modelscope.cn", url: url, priority: sources.count))
         }
+
+        for host in huggingFaceFallbackHosts {
+            if let url = URL(string: "https://\(host)/\(asset.repositoryID)/resolve/main/\(encodedFile)") {
+                sources.append(DownloadFile.Source(label: host, url: url, priority: sources.count))
+            }
+        }
+
+        return sources
     }
 
     private static func encodedPath(_ path: String) -> String {

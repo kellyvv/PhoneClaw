@@ -4,8 +4,7 @@ import Foundation
 //
 // 手机端按需下载 ASR + TTS 模型，合并为一个 "LIVE 语音模型" 下载体验。
 // 完全独立于 LLM 的 ModelDownloader — 不修改 MLXLocalLLMService 的任何代码。
-// 下载源: hf-mirror.com (国内优先) → huggingface.co (需 VPN)
-// 注: 不走 modelscope.cn (csukuangfj/ 的 repo 在 ModelScope 上 404)
+// 下载源: modelscope.cn (国内优先) → huggingface.co (fallback)。
 
 @Observable
 class LiveModelDownloader {
@@ -16,8 +15,7 @@ class LiveModelDownloader {
 
     // MARK: - Download Source Hosts
 
-    private static let hosts = [
-        "hf-mirror.com",
+    private static let huggingFaceFallbackHosts = [
         "huggingface.co"
     ]
 
@@ -63,7 +61,7 @@ class LiveModelDownloader {
 
                 let assets = LiveModelDefinition.all
 
-                // Phase 1: 使用 HF API 获取所有资产的完整文件列表
+                // Phase 1: fixed manifest first; dynamic assets fall back to HF tree API.
                 var allFiles: [(asset: LiveModelAsset, files: [String])] = []
                 for asset in assets {
                     // 跳过已就绪的资产
@@ -231,12 +229,24 @@ class LiveModelDownloader {
     /// 递归列出 repo 中所有文件 (通过 HF /tree API)
     /// 自动排除 excludePatterns 中的文件
     private func listRepoFiles(for asset: LiveModelAsset) async throws -> [String] {
-        // 尝试所有 host，直到成功
+        if let manifest = asset.downloadManifest, !manifest.isEmpty {
+            return manifest.map(\.path)
+        }
+
+        // 尝试所有 HuggingFace fallback host，直到成功
         var lastError: Error?
-        for host in Self.hosts {
+        for host in Self.huggingFaceFallbackHosts {
             do {
                 let files = try await fetchTreeRecursive(host: host, repo: asset.repositoryID, path: "")
-                let filtered = files.filter { LiveModelDefinition.shouldDownload($0, for: asset) }
+                let filtered = files.compactMap { remote -> String? in
+                    guard let local = LiveModelDefinition.localPath(forRepository: remote, in: asset) else {
+                        return nil
+                    }
+                    guard LiveModelDefinition.shouldDownload(remote, for: asset) else {
+                        return nil
+                    }
+                    return local
+                }
                 PCLog.debug("[LiveDL] \(host): \(asset.id) found \(filtered.count) files (excluded \(files.count - filtered.count))")
                 return filtered
             } catch {
@@ -281,18 +291,25 @@ class LiveModelDownloader {
         return files
     }
 
-    // MARK: - Download Sources (hf-mirror + huggingface only, NO ModelScope)
+    // MARK: - Download Sources
 
-    /// LIVE 模型下载源: hf-mirror (国内优先) → huggingface.co
-    /// 注意: 与 LLM 的三源策略不同, csukuangfj/ 在 ModelScope 上返回 404, 所以不走 ModelScope。
+    /// LIVE 模型下载源: ModelScope (国内优先) → HuggingFace fallback。
     /// LLM (E2B/E4B) 的三源下载逻辑在 ModelDownloader.swift 中, 完全不受影响。
     private static func downloadSources(for asset: LiveModelAsset, file: String) -> [DownloadSource] {
         var sources: [DownloadSource] = []
-        for host in hosts {
-            // 文件路径可能包含子目录，需要对每段编码
-            let encodedFile = file.components(separatedBy: "/")
-                .map { $0.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? $0 }
-                .joined(separator: "/")
+        let remoteFile = LiveModelDefinition.remotePath(for: file, in: asset)
+        let encodedFile = remoteFile.components(separatedBy: "/")
+            .map { $0.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? $0 }
+            .joined(separator: "/")
+
+        if let modelScopeRepositoryID = asset.modelScopeRepositoryID {
+            let urlString = "https://modelscope.cn/models/\(modelScopeRepositoryID)/resolve/master/\(encodedFile)"
+            if let url = URL(string: urlString) {
+                sources.append(.init(label: "modelscope.cn", url: url))
+            }
+        }
+
+        for host in huggingFaceFallbackHosts {
             let urlString = "https://\(host)/\(asset.repositoryID)/resolve/main/\(encodedFile)"
             if let url = URL(string: urlString) {
                 sources.append(.init(label: host, url: url))
