@@ -758,6 +758,7 @@ extension AgentEngine {
             return
         }
 
+        let fallbackSessionID = sessionStore.currentSessionID
         let extraction = await extractToolCallForLoadedSkills(
             originalPrompt: extractionPromptBase,
             userQuestion: userQuestion,
@@ -766,6 +767,10 @@ extension AgentEngine {
             images: images,
             allowedToolNames: scopedToolNames
         )
+        guard sessionStore.currentSessionID == fallbackSessionID else {
+            log("[Agent] preloaded skill fallback abandoned after session change")
+            return
+        }
 
         switch extraction {
         case .toolCall(let name, let arguments):
@@ -775,7 +780,8 @@ extension AgentEngine {
                 prompt: toolChainPrompt,
                 fullText: syntheticToolCall,
                 userQuestion: userQuestion,
-                images: images
+                images: images,
+                sessionID: fallbackSessionID
             )
 
         case .needsClarification(let clarification):
@@ -2503,8 +2509,55 @@ extension AgentEngine {
         userQuestion: String,
         images: [CIImage],
         round: Int = 1,
-        maxRounds: Int = 10
+        maxRounds: Int = 10,
+        sessionID: UUID? = nil
     ) async {
+        let toolChainSessionID = sessionID ?? sessionStore.currentSessionID
+
+        func isCurrentToolChainSession() -> Bool {
+            sessionStore.currentSessionID == toolChainSessionID
+        }
+
+        func continueIfCurrentToolChainSession() -> Bool {
+            guard isCurrentToolChainSession() else {
+                log("[Agent] tool chain abandoned after session change")
+                return false
+            }
+            return true
+        }
+
+        func finishTurnIfCurrentToolChainSession() {
+            guard continueIfCurrentToolChainSession() else { return }
+            finishTurn()
+        }
+
+        @discardableResult
+        func updateMessageContentIfCurrent(at index: Int, content: String) -> Bool {
+            guard continueIfCurrentToolChainSession() else { return false }
+            guard messages.indices.contains(index) else {
+                log("[Agent] tool chain message index \(index) no longer exists")
+                return false
+            }
+            messages[index].update(content: content)
+            return true
+        }
+
+        @discardableResult
+        func updateMessageStateIfCurrent(
+            at index: Int,
+            role: ChatMessage.Role,
+            content: String,
+            skillName: String? = nil
+        ) -> Bool {
+            guard continueIfCurrentToolChainSession() else { return false }
+            guard messages.indices.contains(index) else {
+                log("[Agent] tool chain message index \(index) no longer exists")
+                return false
+            }
+            messages[index].update(role: role, content: content, skillName: skillName)
+            return true
+        }
+
         // P1-D (2026-04-17): 内存紧 + 进入 tool_call 链 → 限轮数 + skip duplicates.
         // 真机 E4B 真机 multi-SKILL: 模型可能跟自己第二次调同 tool (不进步) — 单
         // 短路会把后续合法的 reminders/contacts 步骤一起砍掉. 设计:
@@ -2516,7 +2569,7 @@ extension AgentEngine {
         let effectiveMax = (MemoryStats.headroomMB < 1500) ? min(maxRounds, 6) : maxRounds
         guard round <= effectiveMax else {
             log("[Agent] 达到最大工具链轮数 \(effectiveMax) (memory-aware)")
-            finishTurn()
+            finishTurnIfCurrentToolChainSession()
             return
         }
 
@@ -2557,23 +2610,28 @@ extension AgentEngine {
                 let followUpIndex = messages.count - 1
 
                 guard let nextText = await streamLLM(prompt: followUpPrompt, msgIndex: followUpIndex, images: images) else {
-                    finishTurn()
+                    finishTurnIfCurrentToolChainSession()
                     return
                 }
+                guard continueIfCurrentToolChainSession() else { return }
 
                 if parseToolCall(nextText) != nil {
-                    messages[followUpIndex].update(content: "")
+                    guard updateMessageContentIfCurrent(at: followUpIndex, content: "") else { return }
                     await executeToolChain(
                         prompt: followUpPrompt,
                         fullText: nextText,
                         userQuestion: userQuestion,
                         images: images,
                         round: round + 1,
-                        maxRounds: maxRounds
+                        maxRounds: maxRounds,
+                        sessionID: toolChainSessionID
                     )
                 } else {
-                    messages[followUpIndex].update(content: normalizeWebSourcesFromRecentTurn(cleanOutput(nextText)))
-                    finishTurn()
+                    guard updateMessageContentIfCurrent(
+                        at: followUpIndex,
+                        content: normalizeWebSourcesFromRecentTurn(cleanOutput(nextText))
+                    ) else { return }
+                    finishTurnIfCurrentToolChainSession()
                 }
                 return
             }
@@ -2582,9 +2640,12 @@ extension AgentEngine {
         guard let parsedCall = parseToolCall(fullText) else {
             let cleaned = cleanOutput(fullText)
             if let lastAssistant = messages.lastIndex(where: { $0.role == .assistant }) {
-                messages[lastAssistant].update(content: cleaned.isEmpty ? PromptLocale.current.emptyReplyPlaceholder : cleaned)
+                guard updateMessageContentIfCurrent(
+                    at: lastAssistant,
+                    content: cleaned.isEmpty ? PromptLocale.current.emptyReplyPlaceholder : cleaned
+                ) else { return }
             }
-            finishTurn()
+            finishTurnIfCurrentToolChainSession()
             return
         }
 
@@ -2629,21 +2690,26 @@ extension AgentEngine {
             let followUpIndex = messages.count - 1
 
             guard let nextText = await streamLLM(prompt: followUpPrompt, msgIndex: followUpIndex, images: images) else {
-                finishTurn()
+                finishTurnIfCurrentToolChainSession()
                 return
             }
+            guard continueIfCurrentToolChainSession() else { return }
 
             if parseToolCall(nextText) != nil {
                 log("[Agent] list_skills 后检测到 tool 调用 (round \(round + 1))")
-                messages[followUpIndex].update(content: "")
+                guard updateMessageContentIfCurrent(at: followUpIndex, content: "") else { return }
                 await executeToolChain(
                     prompt: followUpPrompt, fullText: nextText,
-                    userQuestion: userQuestion, images: images, round: round + 1, maxRounds: maxRounds
+                    userQuestion: userQuestion, images: images, round: round + 1, maxRounds: maxRounds,
+                    sessionID: toolChainSessionID
                 )
             } else {
                 let cleaned = cleanOutput(nextText)
-                messages[followUpIndex].update(content: cleaned.isEmpty ? PromptLocale.current.emptyReplyPlaceholder : cleaned)
-                finishTurn()
+                guard updateMessageContentIfCurrent(
+                    at: followUpIndex,
+                    content: cleaned.isEmpty ? PromptLocale.current.emptyReplyPlaceholder : cleaned
+                ) else { return }
+                finishTurnIfCurrentToolChainSession()
             }
             return
         }
@@ -2669,19 +2735,29 @@ extension AgentEngine {
                 let cardIdx = messages.count - 1
 
                 guard let instructions = handleLoadSkill(skillName: skillName) else {
-                    messages[cardIdx].update(role: .system, content: "done", skillName: displayName)
+                    guard updateMessageStateIfCurrent(
+                        at: cardIdx,
+                        role: .system,
+                        content: "done",
+                        skillName: displayName
+                    ) else { return }
                     continue
                 }
 
                 try? await Task.sleep(for: .milliseconds(300))
-                messages[cardIdx].update(role: .system, content: "loaded", skillName: displayName)
+                guard updateMessageStateIfCurrent(
+                    at: cardIdx,
+                    role: .system,
+                    content: "loaded",
+                    skillName: displayName
+                ) else { return }
                 messages.append(ChatMessage(role: .skillResult, content: instructions, skillName: skillName, skillResultKind: .skillInstructions))
                 allInstructions += instructions + "\n\n"
                 loadedSkillIds.append(skillName)
             }
 
             guard !allInstructions.isEmpty else {
-                finishTurn()
+                finishTurnIfCurrentToolChainSession()
                 return
             }
 
@@ -2696,7 +2772,8 @@ extension AgentEngine {
                     userQuestion: userQuestion,
                     images: images,
                     round: round + 1,
-                    maxRounds: maxRounds
+                    maxRounds: maxRounds,
+                    sessionID: toolChainSessionID
                 )
                 return
             }
@@ -2708,6 +2785,7 @@ extension AgentEngine {
                 skillIds: loadedSkillIds,
                 images: images
             )
+            guard continueIfCurrentToolChainSession() else { return }
             switch singleToolExtraction {
             case .toolCall(let name, let arguments):
                 log("[Agent] load_skill 参数提取后执行工具: \(name)")
@@ -2718,14 +2796,15 @@ extension AgentEngine {
                     userQuestion: userQuestion,
                     images: images,
                     round: round + 1,
-                    maxRounds: maxRounds
+                    maxRounds: maxRounds,
+                    sessionID: toolChainSessionID
                 )
                 return
 
             case .needsClarification(let clarification):
                 messages.append(ChatMessage(role: .assistant, content: clarification))
                 markSkillsDone(loadedDisplayNames)
-                finishTurn()
+                finishTurnIfCurrentToolChainSession()
                 return
 
             case .failed:
@@ -2760,16 +2839,18 @@ extension AgentEngine {
             let followUpIndex = messages.count - 1
 
             guard let nextText = await streamLLM(prompt: followUpPrompt, msgIndex: followUpIndex, images: images) else {
-                finishTurn()
+                finishTurnIfCurrentToolChainSession()
                 return
             }
+            guard continueIfCurrentToolChainSession() else { return }
 
             if parseToolCall(nextText) != nil {
                 log("[Agent] load_skill 后检测到 tool 调用 (round \(round + 1))")
-                messages[followUpIndex].update(content: "")
+                guard updateMessageContentIfCurrent(at: followUpIndex, content: "") else { return }
                 await executeToolChain(
                     prompt: followUpPrompt, fullText: nextText,
-                    userQuestion: userQuestion, images: images, round: round + 1, maxRounds: maxRounds
+                    userQuestion: userQuestion, images: images, round: round + 1, maxRounds: maxRounds,
+                    sessionID: toolChainSessionID
                 )
             } else {
                 let cleaned = cleanOutput(nextText)
@@ -2787,20 +2868,22 @@ extension AgentEngine {
                     )
 
                     guard let retryText = await streamLLM(prompt: retryPrompt, msgIndex: followUpIndex, images: images) else {
-                        finishTurn()
+                        finishTurnIfCurrentToolChainSession()
                         return
                     }
+                    guard continueIfCurrentToolChainSession() else { return }
 
                     if parseToolCall(retryText) != nil {
                         log("[Agent] load_skill 重试后检测到 tool 调用 (round \(round + 1))")
-                        messages[followUpIndex].update(content: "")
+                        guard updateMessageContentIfCurrent(at: followUpIndex, content: "") else { return }
                         await executeToolChain(
                             prompt: retryPrompt,
                             fullText: retryText,
                             userQuestion: userQuestion,
                             images: images,
                             round: round + 1,
-                            maxRounds: maxRounds
+                            maxRounds: maxRounds,
+                            sessionID: toolChainSessionID
                         )
                     } else {
                         let retryCleaned = cleanOutput(retryText)
@@ -2812,14 +2895,20 @@ extension AgentEngine {
                             || looksLikePromptEcho(retryCleaned)
                             ? fallbackReplyForEmptySkillFollowUp(skillName: loadedSkillName)
                             : retryCleaned
-                        messages[followUpIndex].update(content: normalizeWebSourcesFromRecentTurn(finalReply))
+                        guard updateMessageContentIfCurrent(
+                            at: followUpIndex,
+                            content: normalizeWebSourcesFromRecentTurn(finalReply)
+                        ) else { return }
                         markSkillsDone(loadedDisplayNames)
-                        finishTurn()
+                        finishTurnIfCurrentToolChainSession()
                     }
                 } else {
-                    messages[followUpIndex].update(content: normalizeWebSourcesFromRecentTurn(cleaned))
+                    guard updateMessageContentIfCurrent(
+                        at: followUpIndex,
+                        content: normalizeWebSourcesFromRecentTurn(cleaned)
+                    ) else { return }
                     markSkillsDone(loadedDisplayNames)
-                    finishTurn()
+                    finishTurnIfCurrentToolChainSession()
                 }
             }
             return
@@ -2842,25 +2931,35 @@ extension AgentEngine {
         }
 
         guard let ownerSkillId else {
-            messages[cardIndex].update(role: .system, content: "done", skillName: displayName)
+            guard updateMessageStateIfCurrent(
+                at: cardIndex,
+                role: .system,
+                content: "done",
+                skillName: displayName
+            ) else { return }
             messages.append(ChatMessage(role: .assistant, content: tr(
                 "⚠️ 未知工具: \(call.name)",
                 "⚠️ Unknown tool: \(call.name)",
                 "⚠️ 不明なツール: \(call.name)"
             )))
-            finishTurn()
+            finishTurnIfCurrentToolChainSession()
             return
         }
 
         let enabledIds = Set(skillEntries.filter(\.isEnabled).map(\.id))
         guard enabledIds.contains(ownerSkillId) else {
-            messages[cardIndex].update(role: .system, content: "done", skillName: displayName)
+            guard updateMessageStateIfCurrent(
+                at: cardIndex,
+                role: .system,
+                content: "done",
+                skillName: displayName
+            ) else { return }
             messages.append(ChatMessage(role: .assistant, content: tr(
                 "⚠️ Skill \(displayName) 未启用",
                 "⚠️ Skill \(displayName) is not enabled",
                 "⚠️ Skill \(displayName) は有効になっていません"
             )))
-            finishTurn()
+            finishTurnIfCurrentToolChainSession()
             return
         }
 
@@ -2878,19 +2977,30 @@ extension AgentEngine {
             arguments: normalizedCallArguments,
             userQuestion: userQuestion
         ) {
-            messages[cardIndex].update(role: .system, content: "done", skillName: displayName)
+            guard updateMessageStateIfCurrent(
+                at: cardIndex,
+                role: .system,
+                content: "done",
+                skillName: displayName
+            ) else { return }
             messages.append(ChatMessage(role: .assistant, content: block.reply))
-            finishTurn()
+            finishTurnIfCurrentToolChainSession()
             return
         }
 
-        messages[cardIndex].update(role: .system, content: "executing:\(call.name)", skillName: displayName)
+        guard updateMessageStateIfCurrent(
+            at: cardIndex,
+            role: .system,
+            content: "executing:\(call.name)",
+            skillName: displayName
+        ) else { return }
         await publishSkillActivityEvent(
             skillID: ownerSkillId,
             skillName: displayName,
             toolName: call.name,
             phase: .executing
         )
+        guard continueIfCurrentToolChainSession() else { return }
 
         do {
             var executionArguments = normalizedCallArguments
@@ -2906,6 +3016,7 @@ extension AgentEngine {
                     initialQuery: initialQuery,
                     images: images
                 )
+                guard continueIfCurrentToolChainSession() else { return }
                 if !plannedQueries.isEmpty {
                     executionArguments["planned_queries"] = plannedQueries
                 }
@@ -2916,6 +3027,7 @@ extension AgentEngine {
                 arguments: executionArguments,
                 source: .textProtocol
             ))
+            guard continueIfCurrentToolChainSession() else { return }
 
             var canonicalResult: CanonicalToolResult
             var toolResultDetail: String
@@ -2927,15 +3039,23 @@ extension AgentEngine {
                 canonicalResult = canonicalToolResult(toolName: call.name, toolResult: toolResult)
                 toolResultDetail = toolResult
             }
+            guard continueIfCurrentToolChainSession() else { return }
 
             if call.name == "web-fetch",
                webFetchResultNeedsSourceFallback(toolResultDetail, userQuestion: userQuestion),
                let fallbackResult = await fallbackWebFetchFromRecentSearch(excluding: executionArguments["url"] as? String, userQuestion: userQuestion) {
+                guard continueIfCurrentToolChainSession() else { return }
                 canonicalResult = fallbackResult
                 toolResultDetail = fallbackResult.detail
             }
+            guard continueIfCurrentToolChainSession() else { return }
 
-            messages[cardIndex].update(role: .system, content: "done", skillName: displayName)
+            guard updateMessageStateIfCurrent(
+                at: cardIndex,
+                role: .system,
+                content: "done",
+                skillName: displayName
+            ) else { return }
             toolResultDetail = normalizePhoneGroundPayloadIfNeeded(toolName: call.name, detail: toolResultDetail)
             toolResultDetail = annotateToolResultDetailWithRequest(
                 toolResultDetail,
@@ -2947,13 +3067,14 @@ extension AgentEngine {
 
             if !canonicalResult.success {
                 messages.append(ChatMessage(role: .assistant, content: canonicalResult.summary))
-                finishTurn()
+                finishTurnIfCurrentToolChainSession()
                 return
             }
 
             var followUpToolName = call.name
             if call.name == "web-search", webSearchResultNeedsFetch(toolResultDetail) {
                 if let fetchedResult = await automaticWebFetchFromSearchResult(toolResultDetail, userQuestion: userQuestion) {
+                    guard continueIfCurrentToolChainSession() else { return }
                     canonicalResult = fetchedResult
                     toolResultDetail = fetchedResult.detail
                     followUpToolName = "web-fetch"
@@ -2964,6 +3085,7 @@ extension AgentEngine {
                     userQuestion: userQuestion,
                     images: images
                 ) {
+                    guard continueIfCurrentToolChainSession() else { return }
                     canonicalResult = replannedSearchResult
                     toolResultDetail = replannedSearchResult.detail
                     followUpToolName = "web-search"
@@ -2972,6 +3094,7 @@ extension AgentEngine {
 
                     if webSearchResultNeedsFetch(toolResultDetail),
                        let fetchedResult = await automaticWebFetchFromSearchResult(toolResultDetail, userQuestion: userQuestion) {
+                        guard continueIfCurrentToolChainSession() else { return }
                         canonicalResult = fetchedResult
                         toolResultDetail = fetchedResult.detail
                         followUpToolName = "web-fetch"
@@ -2980,6 +3103,7 @@ extension AgentEngine {
                     }
                 }
             }
+            guard continueIfCurrentToolChainSession() else { return }
 
             if toolRegistry.shouldSkipFollowUp(for: followUpToolName) {
                 await publishSkillActivityEvent(
@@ -2988,8 +3112,9 @@ extension AgentEngine {
                     toolName: followUpToolName,
                     phase: .summarizing
                 )
+                guard continueIfCurrentToolChainSession() else { return }
                 messages.append(ChatMessage(role: .assistant, content: canonicalResult.summary))
-                finishTurn()
+                finishTurnIfCurrentToolChainSession()
                 return
             }
 
@@ -3000,12 +3125,15 @@ extension AgentEngine {
             // noise. Falls back to the raw summary when curation yields nothing.
             // Headless — no extra visible re-stream.
             var synthesisSummary = canonicalResult.summary
-            if usesGroundedSourcesContract(followUpToolName),
-               let digest = await curateWebEvidence(
+            let curatedDigest = usesGroundedSourcesContract(followUpToolName)
+                ? await curateWebEvidence(
                     userQuestion: userQuestion,
                     toolResultDetail: toolResultDetail,
                     images: images
-               ) {
+                )
+                : nil
+            guard continueIfCurrentToolChainSession() else { return }
+            if let digest = curatedDigest {
                 synthesisSummary = digest
             }
 
@@ -3048,37 +3176,47 @@ extension AgentEngine {
                 toolName: followUpToolName,
                 phase: .summarizing
             )
+            guard continueIfCurrentToolChainSession() else { return }
             let groundedWebFollowUp = usesGroundedSourcesContract(followUpToolName)
             let nextTextResult = groundedWebFollowUp
                 ? await streamLLM(prompt: selectedFollowUpPrompt, images: images)
                 : await streamLLM(prompt: selectedFollowUpPrompt, msgIndex: followUpIndex, images: images)
             guard let nextText = nextTextResult else {
-                messages[followUpIndex].update(role: .assistant, content: fallbackReplyForEmptyToolFollowUp(
-                    toolName: followUpToolName,
-                    toolResultSummary: canonicalResult.summary,
-                    toolResultDetail: toolResultDetail
-                ))
-                finishTurn()
+                guard updateMessageStateIfCurrent(
+                    at: followUpIndex,
+                    role: .assistant,
+                    content: fallbackReplyForEmptyToolFollowUp(
+                        toolName: followUpToolName,
+                        toolResultSummary: canonicalResult.summary,
+                        toolResultDetail: toolResultDetail
+                    )
+                ) else { return }
+                finishTurnIfCurrentToolChainSession()
                 return
             }
+            guard continueIfCurrentToolChainSession() else { return }
 
             if !parseAllToolCalls(nextText).isEmpty {
                 log("[Agent] 检测到第 \(round + 1) 轮工具调用")
-                messages[followUpIndex].update(content: "")
+                guard updateMessageContentIfCurrent(at: followUpIndex, content: "") else { return }
                 await executeToolChain(
                     prompt: selectedFollowUpPrompt, fullText: nextText,
-                    userQuestion: userQuestion, images: images, round: round + 1, maxRounds: maxRounds
+                    userQuestion: userQuestion, images: images, round: round + 1, maxRounds: maxRounds,
+                    sessionID: toolChainSessionID
                 )
             } else {
                 let cleaned = cleanOutput(nextText)
                 if cleaned.isEmpty
                     || looksLikeStructuredIntermediateOutput(cleaned)
                     || looksLikePromptEcho(cleaned) {
-                    messages[followUpIndex].update(content: fallbackReplyForEmptyToolFollowUp(
-                        toolName: followUpToolName,
-                        toolResultSummary: canonicalResult.summary,
-                        toolResultDetail: toolResultDetail
-                    ))
+                    guard updateMessageContentIfCurrent(
+                        at: followUpIndex,
+                        content: fallbackReplyForEmptyToolFollowUp(
+                            toolName: followUpToolName,
+                            toolResultSummary: canonicalResult.summary,
+                            toolResultDetail: toolResultDetail
+                        )
+                    ) else { return }
                 } else {
                     let finalAnswer: String
                     let finalToolName: String
@@ -3091,11 +3229,13 @@ extension AgentEngine {
                         userQuestion: userQuestion,
                         images: images
                     ) {
+                        guard continueIfCurrentToolChainSession() else { return }
                         finalAnswer = retry.answer
                         finalToolName = retry.toolName
                         finalToolResultSummary = retry.toolResultSummary
                         finalToolResultDetail = retry.toolResultDetail
                     } else {
+                        guard continueIfCurrentToolChainSession() else { return }
                         finalAnswer = cleaned
                         finalToolName = followUpToolName
                         finalToolResultSummary = canonicalResult.summary
@@ -3109,18 +3249,24 @@ extension AgentEngine {
                         userQuestion: userQuestion,
                         images: images
                     )
-                    messages[followUpIndex].update(content: finalizedAnswer)
+                    guard continueIfCurrentToolChainSession() else { return }
+                    guard updateMessageContentIfCurrent(at: followUpIndex, content: finalizedAnswer) else { return }
                 }
-                finishTurn()
+                finishTurnIfCurrentToolChainSession()
             }
         } catch {
-            messages[cardIndex].update(role: .system, content: "done", skillName: displayName)
+            guard updateMessageStateIfCurrent(
+                at: cardIndex,
+                role: .system,
+                content: "done",
+                skillName: displayName
+            ) else { return }
             messages.append(ChatMessage(role: .system, content: tr(
                 "这项操作没有完成：\(error.localizedDescription)",
                 "This action could not be completed: \(error.localizedDescription)",
                 "この操作は完了できませんでした: \(error.localizedDescription)"
             )))
-            finishTurn()
+            finishTurnIfCurrentToolChainSession()
         }
     }
 }

@@ -731,7 +731,9 @@ extension AgentEngine {
         let msgIndex = messages.count - 1
 
         markStreamingStarted()
+        let contextSessionID = sessionStore.currentSessionID
         guard let rawReply = await streamLLM(prompt: prompt, msgIndex: msgIndex, images: []) else {
+            guard sessionStore.currentSessionID == contextSessionID else { return }
             if messages.indices.contains(msgIndex) {
                 messages[msgIndex].update(content: fallbackReplyForPriorContextArtifact(artifact))
             }
@@ -739,6 +741,7 @@ extension AgentEngine {
             finishTurn()
             return
         }
+        guard sessionStore.currentSessionID == contextSessionID else { return }
 
         let cleaned = PromptBuilder.sanitizedAssistantHistoryContent(cleanOutput(rawReply))
         let finalReply: String

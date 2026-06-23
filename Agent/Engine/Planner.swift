@@ -277,6 +277,48 @@ extension AgentEngine {
         let matchedSkills = matchedSkillIds(for: userQuestion)
         log("[Agent] \(plannerRevision) matchedSkills=\(matchedSkills.joined(separator: ","))")
         let recentContextSummary = recentPlannerContextSummary()
+        let planningSessionID = sessionStore.currentSessionID
+
+        func continueIfCurrentPlanningSession() -> Bool {
+            guard sessionStore.currentSessionID == planningSessionID else {
+                log("[Agent] planner abandoned after session change")
+                return false
+            }
+            return true
+        }
+
+        func finishTurnIfCurrentPlanningSession() {
+            guard continueIfCurrentPlanningSession() else { return }
+            finishTurn()
+        }
+
+        @discardableResult
+        func updatePlannerMessageContentIfCurrent(at index: Int, content: String) -> Bool {
+            guard continueIfCurrentPlanningSession() else { return false }
+            guard messages.indices.contains(index) else {
+                log("[Agent] planner message index \(index) no longer exists")
+                return false
+            }
+            messages[index].update(content: content)
+            return true
+        }
+
+        @discardableResult
+        func updatePlannerMessageStateIfCurrent(
+            at index: Int,
+            role: ChatMessage.Role,
+            content: String,
+            skillName: String? = nil
+        ) -> Bool {
+            guard continueIfCurrentPlanningSession() else { return false }
+            guard messages.indices.contains(index) else {
+                log("[Agent] planner message index \(index) no longer exists")
+                return false
+            }
+            messages[index].update(role: role, content: content, skillName: skillName)
+            return true
+        }
+
         // T2c (2026-04-17): 移除"matched>=2 跳过 Selection"的本地短路.
         // Router 可能命中 2 个 SKILL 但漏第 3 个 (#02 fail), 必须让 Selection LLM
         // 拿全 enabled skill set 决策. matched 仅作 candidates 优先 hint.
@@ -290,7 +332,7 @@ extension AgentEngine {
                 "⚠️ 当前没有可用于编排的 Skill。",
                 "⚠️ No Skills are currently available for orchestration."
             )))
-            finishTurn()
+            finishTurnIfCurrentPlanningSession()
             return true
         }
 
@@ -324,6 +366,7 @@ extension AgentEngine {
         let placeholderClarification = "请说明具体需要什么帮助"
 
         let rawSelection = await streamLLM(prompt: selectionPrompt, images: images)
+        guard continueIfCurrentPlanningSession() else { return true }
         let cleanedSelection = rawSelection.map { cleanOutput($0) } ?? ""
 
         let parsedSelection = parseSkillSelection(cleanedSelection)
@@ -349,7 +392,7 @@ extension AgentEngine {
            !clarificationLooksFake,
            !hasSkills {
             messages.append(ChatMessage(role: .assistant, content: clar))
-            finishTurn()
+            finishTurnIfCurrentPlanningSession()
             return true
         }
 
@@ -383,11 +426,12 @@ extension AgentEngine {
         var planningPass = 0
 
         func finishPlanning(with message: String? = nil) {
+            guard continueIfCurrentPlanningSession() else { return }
             if let message, !message.isEmpty {
                 messages.append(ChatMessage(role: .assistant, content: message))
             }
             markSkillsDone(Array(loadedDisplayNames.values))
-            finishTurn()
+            finishTurnIfCurrentPlanningSession()
         }
 
         while !remainingSkillIds.isEmpty, planningPass < 3 {
@@ -422,6 +466,7 @@ extension AgentEngine {
                 finishPlanning(with: message)
                 return true
             }
+            guard continueIfCurrentPlanningSession() else { return true }
 
             let cleanedPlan = cleanOutput(rawPlan)
             guard let parsedPlan = parseExecutionPlan(cleanedPlan),
@@ -465,7 +510,12 @@ extension AgentEngine {
                     skillCardIndices[step.skill] = cardIndex
 
                     guard let instructions = handleLoadSkill(skillName: step.skill) else {
-                        messages[cardIndex].update(role: .system, content: "done", skillName: displayName)
+                        guard updatePlannerMessageStateIfCurrent(
+                            at: cardIndex,
+                            role: .system,
+                            content: "done",
+                            skillName: displayName
+                        ) else { return true }
                         finishPlanning(with: tr(
                             "⚠️ 无法加载 Skill \(displayName)，已停止执行。",
                             "⚠️ Could not load Skill \(displayName). Execution stopped."
@@ -474,7 +524,12 @@ extension AgentEngine {
                     }
 
                     try? await Task.sleep(for: .milliseconds(300))
-                    messages[cardIndex].update(role: .system, content: "loaded", skillName: displayName)
+                    guard updatePlannerMessageStateIfCurrent(
+                        at: cardIndex,
+                        role: .system,
+                        content: "loaded",
+                        skillName: displayName
+                    ) else { return true }
                     messages.append(ChatMessage(role: .skillResult, content: instructions, skillName: step.skill, skillResultKind: .skillInstructions))
                     loadedInstructions[step.skill] = instructions
                 }
@@ -503,27 +558,44 @@ extension AgentEngine {
                         currentImageCount: images.count
                     )
 
-                    messages[cardIndex].update(role: .system, content: "executing:\(step.skill)", skillName: displayName)
+                    guard updatePlannerMessageStateIfCurrent(
+                        at: cardIndex,
+                        role: .system,
+                        content: "executing:\(step.skill)",
+                        skillName: displayName
+                    ) else { return true }
                     await publishSkillActivityEvent(
                         skillID: step.skill,
                         skillName: displayName,
                         toolName: nil,
                         phase: .executing
                     )
+                    guard continueIfCurrentPlanningSession() else { return true }
 
                     guard let rawOutput = await streamLLM(prompt: contentPrompt, images: images) else {
-                        messages[cardIndex].update(role: .system, content: "done", skillName: displayName)
+                        guard updatePlannerMessageStateIfCurrent(
+                            at: cardIndex,
+                            role: .system,
+                            content: "done",
+                            skillName: displayName
+                        ) else { return true }
                         finishPlanning(with: tr(
                             "⚠️ \(displayName) 步骤无回复，请重试。",
                             "⚠️ \(displayName) step produced no reply. Please retry."
                         ))
                         return true
                     }
+                    guard continueIfCurrentPlanningSession() else { return true }
 
                     let cleanedOutput = cleanOutput(rawOutput)
                     let summary = cleanedOutput.isEmpty ? tr("(无输出)", "(no output)", "(出力なし)") : cleanedOutput
 
-                    messages[cardIndex].update(role: .system, content: "done", skillName: displayName)
+                    guard updatePlannerMessageStateIfCurrent(
+                        at: cardIndex,
+                        role: .system,
+                        content: "done",
+                        skillName: displayName
+                    ) else { return true }
                     messages.append(ChatMessage(role: .skillResult, content: summary, skillName: step.skill, skillResultKind: .generatedContent))
 
                     completedSteps.append(
@@ -568,6 +640,7 @@ extension AgentEngine {
                         ))
                         return true
                     }
+                    guard continueIfCurrentPlanningSession() else { return true }
 
                     let cleanedArguments = cleanOutput(rawArguments)
                     guard let payload = parseJSONObject(cleanedArguments) else {
@@ -595,17 +668,19 @@ extension AgentEngine {
                     arguments = payload
                 }
 
-                messages[cardIndex].update(
+                guard updatePlannerMessageStateIfCurrent(
+                    at: cardIndex,
                     role: .system,
                     content: "executing:\(step.tool)",
                     skillName: displayName
-                )
+                ) else { return true }
                 await publishSkillActivityEvent(
                     skillID: step.skill,
                     skillName: displayName,
                     toolName: step.tool,
                     phase: .executing
                 )
+                guard continueIfCurrentPlanningSession() else { return true }
 
                 do {
                     let canonicalResult: CanonicalToolResult
@@ -621,8 +696,14 @@ extension AgentEngine {
                         canonicalResult = canonicalToolResult(toolName: step.tool, toolResult: toolResult)
                         toolResultDetail = toolResult
                     }
+                    guard continueIfCurrentPlanningSession() else { return true }
 
-                    messages[cardIndex].update(role: .system, content: "done", skillName: displayName)
+                    guard updatePlannerMessageStateIfCurrent(
+                        at: cardIndex,
+                        role: .system,
+                        content: "done",
+                        skillName: displayName
+                    ) else { return true }
                     toolResultDetail = normalizePhoneGroundPayloadIfNeeded(toolName: step.tool, detail: toolResultDetail)
                     messages.append(ChatMessage(role: .skillResult, content: toolResultDetail, skillName: step.tool, skillResultKind: .toolExecution))
 
@@ -640,7 +721,12 @@ extension AgentEngine {
                     )
                     toolResultsForAnswer.append((toolName: step.tool, result: canonicalResult.summary))
                 } catch {
-                    messages[cardIndex].update(role: .system, content: "done", skillName: displayName)
+                    guard updatePlannerMessageStateIfCurrent(
+                        at: cardIndex,
+                        role: .system,
+                        content: "done",
+                        skillName: displayName
+                    ) else { return true }
                     finishPlanning(with: tr(
                         "这项操作没有完成：\(error.localizedDescription)",
                         "This action could not be completed: \(error.localizedDescription)"
@@ -677,22 +763,26 @@ extension AgentEngine {
                 toolName: lastStep.step.tool,
                 phase: .summarizing
             )
+            guard continueIfCurrentPlanningSession() else { return true }
         }
 
         guard let nextText = await streamLLM(prompt: followUpPrompt, msgIndex: followUpIndex, images: images) else {
+            guard continueIfCurrentPlanningSession() else { return true }
             markSkillsDone(Array(loadedDisplayNames.values))
-            finishTurn()
+            finishTurnIfCurrentPlanningSession()
             return true
         }
+        guard continueIfCurrentPlanningSession() else { return true }
 
         if !parseAllToolCalls(nextText).isEmpty {
             log("[Agent] planner follow-up detected extra tool call")
-            messages[followUpIndex].update(content: "")
+            guard updatePlannerMessageContentIfCurrent(at: followUpIndex, content: "") else { return true }
             await executeToolChain(
                 prompt: followUpPrompt,
                 fullText: nextText,
                 userQuestion: userQuestion,
-                images: images
+                images: images,
+                sessionID: planningSessionID
             )
             return true
         }
@@ -707,9 +797,12 @@ extension AgentEngine {
             finalReply = cleaned
         }
 
-        messages[followUpIndex].update(content: normalizeWebSourcesFromRecentTurn(finalReply))
+        guard updatePlannerMessageContentIfCurrent(
+            at: followUpIndex,
+            content: normalizeWebSourcesFromRecentTurn(finalReply)
+        ) else { return true }
         markSkillsDone(Array(loadedDisplayNames.values))
-        finishTurn()
+        finishTurnIfCurrentPlanningSession()
         return true
     }
 }

@@ -38,19 +38,26 @@ class ModelConfig {
 
     private static func resolvePreferredBackend() -> String {
         let defaults = UserDefaults.standard
-        let stored = defaults.string(forKey: preferredBackendDefaultsKey)
+        let stored = normalizedPreferredBackend(
+            defaults.string(forKey: preferredBackendDefaultsKey)
+        )
 
         guard !defaults.bool(forKey: preferredBackendDefaultGPUMigrationKey) else {
             return stored ?? defaultPreferredBackend
         }
 
         defaults.set(true, forKey: preferredBackendDefaultGPUMigrationKey)
-        guard stored == nil || stored == "cpu" else {
-            return stored ?? defaultPreferredBackend
+        if let stored {
+            return stored
         }
 
         defaults.set(defaultPreferredBackend, forKey: preferredBackendDefaultsKey)
         return defaultPreferredBackend
+    }
+
+    private static func normalizedPreferredBackend(_ backend: String?) -> String? {
+        guard backend == "cpu" || backend == "gpu" else { return nil }
+        return backend
     }
 }
 

@@ -324,7 +324,9 @@ extension AgentEngine {
                         return
                     }
                     log("[Agent] multimodal failed: \(error.localizedDescription)")
-                    self.messages[msgIndex].update(role: .system, content: "❌ \(error.localizedDescription)")
+                    if self.messages.indices.contains(msgIndex) {
+                        self.messages[msgIndex].update(role: .system, content: "❌ \(error.localizedDescription)")
+                    }
                     self.recordCompletedObservation(
                         plan: multimodalPlan,
                         tokenCapHit: self.classifyTokenCapHit(error),
@@ -701,7 +703,9 @@ extension AgentEngine {
                         self.finishTurn(userCancelled: true)
                         return
                     }
-                    self.messages[msgIndex].update(role: .system, content: "❌ \(error.localizedDescription)")
+                    if self.messages.indices.contains(msgIndex) {
+                        self.messages[msgIndex].update(role: .system, content: "❌ \(error.localizedDescription)")
+                    }
                     self.recordCompletedObservation(
                         plan: textPromptPlan,
                         tokenCapHit: self.classifyTokenCapHit(error),

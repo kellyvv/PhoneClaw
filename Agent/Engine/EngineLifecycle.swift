@@ -105,17 +105,33 @@ extension AgentEngine {
         // 但 inference.load() 读取这个设置来构造 engine.
         inference.setEnableSpeculativeDecoding(config.enableSpeculativeDecoding)
         if selectedModelCanLoad() {
+            let selectedModelID = config.selectedModelID
+            let backend = startupAutoloadBackend(
+                modelID: selectedModelID,
+                preferredBackend: config.preferredBackend
+            )
             Task {
                 // Coordinator handles: setPreferredBackend → inference.load
                 // 同时维护 RuntimeSessionState: idle → loading → ready | failed
                 try? await coordinator.load(
-                    modelID: config.selectedModelID,
-                    backend: config.preferredBackend
+                    modelID: selectedModelID,
+                    backend: backend
                 )
             }
         } else {
             log("[Model] selected model \(config.selectedModelID) is not installed; waiting for user selection/download")
         }
+    }
+
+    private func startupAutoloadBackend(modelID: String, preferredBackend: String) -> String {
+        guard preferredBackend == "gpu",
+              modelID == ModelDescriptor.gemma4E4B.id else {
+            return preferredBackend
+        }
+
+        let fallbackBackend = "cpu"
+        log("[Model] startup autoload uses CPU for \(modelID) to avoid E4B cold-start memory pressure (headroom=\(MemoryStats.headroomMB) MB)")
+        return fallbackBackend
     }
 
     // MARK: - SYSPROMPT 注入
