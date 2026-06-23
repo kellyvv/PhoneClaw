@@ -23,7 +23,7 @@ struct PhoneClawApp: App {
         // LiteRT's accelerator registry is a process-level singleton that seals
         // on the first litert_lm_engine_create(). GPU Metal accelerator must be
         // registered before that happens, otherwise GPU engines can never be
-        // created in this process. See docs/RUNTIME_ARCHITECTURE_PLAN.md §VI.
+        // created in this process. See Docs/RUNTIME_ARCHITECTURE_PLAN.md §VI.
         LiteRTBootstrap.bootstrap()
         LiveLandBackgroundContinuation.shared.register()
 

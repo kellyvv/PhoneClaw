@@ -143,7 +143,7 @@ enum LiveDownloadPlanner {
     // App Store Review Guidelines 2.5.2 禁止下载并执行可执行代码 (native binary)。
     // Live 模型清单从 HF tree API 动态发现 — 如果 repo 里夹带 .framework / .dylib / .so 等,
     // 这里 fail-fast,避免被下到本地后试图加载导致拒包。
-    // 见 docs/RUNTIME_ARCHITECTURE_PLAN.md §10.3。
+    // 见 Docs/RUNTIME_ARCHITECTURE_PLAN.md §10.3。
 
     private static let forbiddenDownloadExtensions: [String] = [
         ".framework", ".xcframework", ".dylib", ".so", ".a", ".bundle"

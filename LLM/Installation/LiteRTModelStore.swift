@@ -194,7 +194,7 @@ final class LiteRTModelStore: ModelInstaller {
 
     func install(model: ModelDescriptor) async throws {
         // App Store Review Guidelines 2.5.2 红线: 禁止下载并执行可执行代码。
-        // 见 docs/RUNTIME_ARCHITECTURE_PLAN.md §10.3 — Native runtime 升级必须走 App 更新。
+        // 见 Docs/RUNTIME_ARCHITECTURE_PLAN.md §10.3 — Native runtime 升级必须走 App 更新。
         // ModelDescriptor 配错时 (e.g. 把 LiteRT framework 写成下载项) 在这里 fail-fast。
         try Self.assertNoNativeBinaryDownloads(in: model)
 

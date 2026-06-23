@@ -162,10 +162,10 @@ PhoneClaw is a private local Agent running on iPhone. It ships with multiple on-
 
 ## Technical Notes
 
-- [On-device Gemma on iPhone](docs/ON_DEVICE_GEMMA.md)
-- [PhoneClaw Skill System](docs/SKILL_SYSTEM.md)
-- [iOS Memory and Context Limits](docs/IOS_MEMORY_LIMITS.md)
-- [Promotion Kit](docs/PROMOTION_KIT.md)
+- [On-device Gemma on iPhone](Docs/ON_DEVICE_GEMMA.md)
+- [PhoneClaw Skill System](Docs/SKILL_SYSTEM.md)
+- [iOS Memory and Context Limits](Docs/IOS_MEMORY_LIMITS.md)
+- [Promotion Kit](Docs/PROMOTION_KIT.md)
 
 ## Built-in Skill Examples
 
@@ -363,7 +363,7 @@ Gateway listens on port `18080` by default and advertises the `_phoneclaw-llm._t
 **Option B: build from source**
 
 ```bash
-cd PhoneClawGateway
+cd MacGateway
 bash build-app.sh
 open PhoneClawGateway.app
 ```
@@ -475,7 +475,7 @@ Why does creating a reminder fail?
 The latest code first attempts to reuse an existing writable reminder list. If none is found, it tries to automatically create a PhoneClaw list. If that also fails, the system reminder source itself is likely read-only.
 
 Why can't my iPhone find the Mac client?
-Make sure `PhoneClawGateway.app` is running and macOS has allowed Local Network permission. The iPhone and Mac must be on the same LAN. If discovery still fails, check that the macOS firewall allows the app to accept incoming connections, or rebuild the app with `bash PhoneClawGateway/build-app.sh` and open the generated app again.
+Make sure `PhoneClawGateway.app` is running and macOS has allowed Local Network permission. The iPhone and Mac must be on the same LAN. If discovery still fails, check that the macOS firewall allows the app to accept incoming connections, or rebuild the app with `bash MacGateway/build-app.sh` and open the generated app again.
 
 ## Roadmap
 

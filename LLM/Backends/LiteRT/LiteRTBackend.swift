@@ -339,7 +339,7 @@ final class LiteRTBackend: InferenceService {
     /// Async unload — explicit completion semantics for Coordinator.switchBackend().
     /// 实际实现走同步路径 (`destroySynchronously()` 同步阻塞直到 C 层资源全释放),
     /// 但暴露 async 签名让 Coordinator 拿到明确的 "await unload 完成" 信号。
-    /// 见 docs/RUNTIME_ARCHITECTURE_PLAN.md §3.2 InferenceService 协议演进。
+    /// 见 Docs/RUNTIME_ARCHITECTURE_PLAN.md §3.2 InferenceService 协议演进。
     func unloadAsync() async {
         unload()
     }

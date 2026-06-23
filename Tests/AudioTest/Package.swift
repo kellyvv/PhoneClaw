@@ -9,8 +9,8 @@ let package = Package(
     name: "AudioTest",
     platforms: [.macOS(.v14)],
     dependencies: [
-        .package(path: "../Packages/InferenceKit"),
-        .package(path: "../Packages/mlx-swift"),
+        .package(path: "../../Packages/InferenceKit"),
+        .package(path: "../../Packages/mlx-swift"),
         .package(
             url: "https://github.com/DePasqualeOrg/swift-tokenizers",
             .upToNextMinor(from: "0.2.0")
