@@ -19,6 +19,15 @@ allowed-tools:
   - clipboard-read
   - clipboard-write
 
+side_effects:
+  level: read
+  tools:
+    clipboard-read:
+      level: read
+    clipboard-write:
+      level: write
+      requires_explicit_intent: true
+
 examples:
   - query: "读取我的剪贴板内容"
     scenario: "读取剪贴板"

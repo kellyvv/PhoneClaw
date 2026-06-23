@@ -23,6 +23,18 @@ allowed-tools:
   - contacts-upsert
   - contacts-delete
 
+side_effects:
+  level: read
+  tools:
+    contacts-search:
+      level: read
+    contacts-upsert:
+      level: write
+      requires_explicit_intent: true
+    contacts-delete:
+      level: destructive
+      confirmation: always
+
 examples:
   - query: "Add John Smith 555-123-4567 to my contacts"
     scenario: "Create or update a contact"
@@ -32,8 +44,8 @@ examples:
     scenario: "Delete a contact"
 
 # Sync anchor (see scripts/check-skill-sync.sh):
-translation-source-commit: 034c373
-translation-source-sha256: 68c61e791b64028f30754419ba40b49d8595ef64bb9e6e36223cf5e73411eaae
+translation-source-commit: afa08ec1
+translation-source-sha256: 75e6621c9d9ff05a822b7395716be9b1bbc008d5cc7b348ca90c6eaec092e056
 ---
 
 # Contact Lookup and Management
@@ -86,7 +98,7 @@ You help the user search, create, update, or delete address book contacts.
 
 - Lookup: give only the contact information found. Do not mention tool names, JSON, or internal steps.
 - Create/update: briefly confirm "Saved contact X."
-- Delete: briefly confirm "Deleted contact X." or "Deleted N contacts: ..."
+- Delete: briefly confirm "Deleted contact X."
 - If nothing is found or the user needs to choose, explain the next step in one natural sentence.
 
 ## Multi-turn clarification
@@ -99,7 +111,7 @@ After calling `contacts-search` or `contacts-delete`, if the tool result shows m
 > (1) [phone1] · [extra info]
 > (2) [phone2] · [extra info]
 >
-> Which one? Reply with a number, the last digits of a phone, or "all".
+> Which one? Reply with a number, the last digits of a phone, an email, or the contact identifier. Bulk delete is not currently supported.
 
 **Keep** these candidates in your reply — you'll need to reference them on the next user turn.
 
@@ -112,17 +124,12 @@ If on the previous turn you just asked "which one", **the current user message i
 | Full phone `5551234567` | Exact pick | Pass the full number via the `phone` parameter |
 | Last digits `4567` / "ends in 4567" | Fuzzy pinpoint | Pass the trailing digits via the `query` parameter |
 | Number `1` / `(1)` / "the first one" | Pick the Nth candidate | Use the Nth candidate's phone from the previous turn as `phone` |
-| "all" / "both" / "delete them all" / "all of them" | Bulk delete every candidate | **Call `contacts-delete` only once**, keep the original `name`, and add `all: true`. **Never** loop manually |
+| "all" / "both" / "delete them all" / "all of them" | User wants to bulk delete candidates | Do not call the delete tool while there is no confirmation gate. Ask for a number, phone, email, or identifier to narrow to one contact |
 | Other info (company / notes / relationship etc.) | Tool does not support precise matching on these fields | Ask the user for a phone number or the candidate index; do not pass these as tool parameters |
 
-**Important — bulk delete is a single tool_call**:
+**Important — bulk delete is not currently supported**:
 
-When the user says "delete all" / "both", the correct approach is:
-<tool_call>
-{"name": "contacts-delete", "arguments": {"name": "John Smith", "all": true}}
-</tool_call>
-
-After the tool returns `deletedCount=2, deletedNames=...`, you can faithfully reply "Deleted 2 contacts named John Smith: ...". **Do not** emit multiple tool_calls trying to delete them one by one — small models have very low success rates on looped calls.
+When the user says "delete all" / "both", do not emit `contacts-delete`, do not pass `all:true`, and do not manually loop over candidates. Ask for a number, phone, email, or identifier to narrow to one contact. Bulk delete can only be enabled after the system confirmation gate is implemented.
 
 Example call (user answered "5551234"):
 <tool_call>

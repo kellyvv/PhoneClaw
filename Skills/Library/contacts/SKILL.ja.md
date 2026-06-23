@@ -29,6 +29,18 @@ allowed-tools:
   - contacts-upsert
   - contacts-delete
 
+side_effects:
+  level: read
+  tools:
+    contacts-search:
+      level: read
+    contacts-upsert:
+      level: write
+      requires_explicit_intent: true
+    contacts-delete:
+      level: destructive
+      confirmation: always
+
 examples:
   - query: "John Smith 555-123-4567 を連絡先に追加して"
     scenario: "連絡先を作成または更新"
@@ -38,8 +50,8 @@ examples:
     scenario: "連絡先を削除"
 
 # Sync anchor (see scripts/check-skill-sync.sh):
-translation-source-commit: 034c373
-translation-source-sha256: 68c61e791b64028f30754419ba40b49d8595ef64bb9e6e36223cf5e73411eaae
+translation-source-commit: afa08ec1
+translation-source-sha256: 75e6621c9d9ff05a822b7395716be9b1bbc008d5cc7b348ca90c6eaec092e056
 ---
 
 # 連絡先の検索と管理
@@ -105,7 +117,7 @@ translation-source-sha256: 68c61e791b64028f30754419ba40b49d8595ef64bb9e6e36223cf
 > (1) [phone1] · [extra info]
 > (2) [phone2] · [extra info]
 >
-> どれですか? 番号、電話番号の下4桁、または「全部」と答えてください。
+> どれですか? 番号、電話番号の下4桁、メールアドレス、または連絡先 identifier で指定してください。一括削除は現在サポートしていません。
 
 **候補を返信内に残すこと**。次のユーザーターンで参照するために必要です。
 
@@ -118,17 +130,12 @@ translation-source-sha256: 68c61e791b64028f30754419ba40b49d8595ef64bb9e6e36223cf
 | 完全な電話番号 `5551234567` | 正確に選択 | `phone` パラメータに完全な番号を渡す |
 | 下4桁 `4567` / "4567で終わる番号" | あいまいに絞り込み | `query` パラメータに末尾の数字を渡す |
 | `1` / `(1)` / "1番目" | N番目の候補を選択 | 前ターンの N 番目候補の電話番号を `phone` として使う |
-| "全部" / "両方" / "全員削除" | すべて削除 | **`contacts-delete` を1回だけ呼び出し**、元の `name` を保ち、`all: true` を追加する。手動ループは禁止 |
+| "全部" / "両方" / "全員削除" | 候補を一括削除したい | 現在は確認ゲートがないため削除ツールを呼び出さない。番号、電話番号、メールアドレス、または identifier で1件に絞るよう促す |
 | その他の情報(会社、メモ、関係など) | ツールでは精密照合できない | 電話番号または候補番号を尋ねる。これらをツールパラメータに渡さない |
 
-**重要 — 一括削除は単一 tool_call**:
+**重要 — 一括削除は現在サポートしません**:
 
-ユーザーが「全部削除」「両方」と言った場合の正しい方法:
-<tool_call>
-{"name": "contacts-delete", "arguments": {"name": "John Smith", "all": true}}
-</tool_call>
-
-ツールが `deletedCount=2, deletedNames=...` を返したら、「John Smith という連絡先を2件削除しました: ...」と正確に返せます。**1件ずつ削除する複数 tool_call を出してはいけません**。
+ユーザーが「全部削除」「両方」と言っても、`contacts-delete` を emit せず、`all:true` も渡さず、手動ループ削除もしないでください。番号、電話番号、メールアドレス、または identifier で1件に絞るよう促してください。一括削除はシステム確認ゲートが実装された後にのみ許可します。
 
 例(ユーザーが "5551234" と答えた場合):
 <tool_call>

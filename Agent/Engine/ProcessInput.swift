@@ -386,6 +386,7 @@ extension AgentEngine {
             return PromptBuilder.PreloadedSkill(
                 id: id,
                 displayName: def.metadata.name,
+                type: def.metadata.type,
                 activationMode: def.metadata.activationMode,
                 body: body,
                 allowedTools: scopedAllowedTools,

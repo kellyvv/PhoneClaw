@@ -267,6 +267,7 @@ struct PromptBuilder {
     struct PreloadedSkill {
         let id: String
         let displayName: String
+        let type: SkillType
         let activationMode: SkillActivationMode
         /// Full SKILL.md body — 旧字段, Live voice 路径仍在用. 主 agent 路径改用 compactSchema.
         let body: String
@@ -441,6 +442,12 @@ struct PromptBuilder {
                 prompt += sanitizedPreloadedSkillInstructions(sk.compactSchema) + "\n"
                 prompt += "</untrusted_skill_instruction_block>\n"
             }
+            if let contentInputBlock = structuredContentInputBlock(
+                userMessage: userMessage,
+                preloadedSkills: preloadedSkills
+            ) {
+                prompt += contentInputBlock
+            }
             prompt += "━━━━━━━━━━━━━━━━━━━━\n"
         }
 
@@ -505,7 +512,11 @@ struct PromptBuilder {
             userMessage,
             imageFollowUpBridgeSummary: imageFollowUpBridgeSummary
         )
-        prompt += "<|turn>user\n\(currentUserContent)\(imagePromptSuffix(count: currentImageCount))<turn|>\n"
+        let contentInputSuffix = structuredContentInputUserSuffix(
+            userMessage: userMessage,
+            preloadedSkills: preloadedSkills
+        )
+        prompt += "<|turn>user\n\(currentUserContent)\(contentInputSuffix)\(imagePromptSuffix(count: currentImageCount))<turn|>\n"
         prompt += "<|turn>model\n"
 
         return prompt
@@ -517,6 +528,143 @@ struct PromptBuilder {
             .replacingOccurrences(of: "</untrusted_skill_instruction_block>", with: "[escaped-skill-block-tag]")
             .replacingOccurrences(of: "<|turn>", with: "<|turn escaped>")
             .replacingOccurrences(of: "<turn|>", with: "<turn escaped>")
+    }
+
+    private static func structuredContentInputBlock(
+        userMessage: String,
+        preloadedSkills: [PreloadedSkill]
+    ) -> String? {
+        let contentSkills = preloadedSkills.filter { $0.type == .content }
+        guard contentSkills.count == 1,
+              let sourceText = explicitSourceText(from: userMessage) else {
+            return nil
+        }
+        let unitsBlock = structuredSourceUnitsBlock(sourceText)
+
+        return tr(
+            """
+
+            【结构化内容输入】
+            用户明确提供的 source_text 如下。content-type Skill 必须完整处理整段 source_text；不要只处理最后一个分句, 不要漏掉问候、语气或并列片段。
+            source_text:
+            \"\"\"
+            \(sourceText)
+            \"\"\"
+            \(unitsBlock.zh)
+
+            """,
+            """
+
+            [Structured content input]
+            The user explicitly provided this source_text. The content-type Skill must process the whole source_text; do not process only the last clause, and do not omit greetings, tone, or parallel fragments.
+            source_text:
+            \"\"\"
+            \(sourceText)
+            \"\"\"
+            \(unitsBlock.en)
+
+            """,
+            """
+
+            【構造化コンテンツ入力】
+            ユーザーが明示した source_text は以下です。content-type Skill は source_text 全体を処理し、最後の句だけを処理したり、挨拶・語気・並列部分を省略したりしないでください。
+            source_text:
+            \"\"\"
+            \(sourceText)
+            \"\"\"
+            \(unitsBlock.ja)
+
+            """
+        )
+    }
+
+    private static func structuredContentInputUserSuffix(
+        userMessage: String,
+        preloadedSkills: [PreloadedSkill]
+    ) -> String {
+        let contentSkills = preloadedSkills.filter { $0.type == .content }
+        guard contentSkills.count == 1,
+              let sourceText = explicitSourceText(from: userMessage) else {
+            return ""
+        }
+        let unitsBlock = structuredSourceUnitsBlock(sourceText)
+
+        return tr(
+            """
+
+
+            当前请求的结构化输入:
+            source_text = \"\"\"\(sourceText)\"\"\"
+            \(unitsBlock.zh)
+            请把 source_text 整段作为本次 content-type Skill 的处理对象；如果 source_units 存在, 每个 unit 都必须在结果中有对应内容。
+            """,
+            """
+
+
+            Structured input for this request:
+            source_text = \"\"\"\(sourceText)\"\"\"
+            \(unitsBlock.en)
+            Treat the whole source_text as the object of this content-type Skill; if source_units are present, every unit must be represented in the result.
+            """,
+            """
+
+
+            このリクエストの構造化入力:
+            source_text = \"\"\"\(sourceText)\"\"\"
+            \(unitsBlock.ja)
+            source_text 全体をこの content-type Skill の処理対象として扱い、source_units がある場合は各 unit を必ず結果に反映してください。
+            """
+        )
+    }
+
+    private static func structuredSourceUnitsBlock(_ sourceText: String) -> (zh: String, en: String, ja: String) {
+        let units = sourceText
+            .split { char in
+                [",", "，", "、", ";", "；", ".", "。", "!", "！", "?", "？", "\n"].contains(String(char))
+            }
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard units.count > 1 else { return ("", "", "") }
+
+        let lines = units.enumerated().map { index, unit in
+            "\(index + 1). \(unit)"
+        }.joined(separator: "\n")
+        return (
+            zh: "source_units:\n\(lines)",
+            en: "source_units:\n\(lines)",
+            ja: "source_units:\n\(lines)"
+        )
+    }
+
+    private static func explicitSourceText(from userMessage: String) -> String? {
+        let patterns = [
+            #"“([^”]+)”"#,
+            #""([^"]+)""#,
+            #"「([^」]+)」"#,
+            #"『([^』]+)』"#,
+            #"'([^']+)'"#
+        ]
+
+        for pattern in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+            let range = NSRange(userMessage.startIndex..., in: userMessage)
+            guard let match = regex.firstMatch(in: userMessage, range: range),
+                  match.numberOfRanges > 1,
+                  let sourceRange = Range(match.range(at: 1), in: userMessage) else {
+                continue
+            }
+            let source = String(userMessage[sourceRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !source.isEmpty { return source }
+        }
+
+        for delimiter in ["：", ":"] {
+            guard let range = userMessage.range(of: delimiter) else { continue }
+            let source = String(userMessage[range.upperBound...])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !source.isEmpty { return source }
+        }
+
+        return nil
     }
 
     static func buildLightweightTextPrompt(
@@ -628,7 +776,7 @@ struct PromptBuilder {
 
     static func buildSkillIntentRoutingPrompt(
         userQuestion: String,
-        availableNetworkSkillsSummary: String
+        availableSkillsSummary: String
     ) -> String {
         let trimmedQuestion = userQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
         let clippedQuestion = trimmedQuestion.count > 500
@@ -641,38 +789,32 @@ struct PromptBuilder {
         if LanguageService.shared.current.isChinese {
             systemBody = """
             你只做路由分类, 不回答用户问题。
-            判断用户这个问题是否需要调用下面某个 network skill。
-            network skill 只用于公开互联网或网页相关能力。
-            如果可靠回答必须依赖当前、近期、实时、会随时间变化、会随地点变化、或需要网页查证的公开信息, 输出最合适的 skill id。
-            不要因为用户没有写"搜索"或"联网"就输出 none; 要根据问题本身是否需要外部公开信息来判断。
-            如果不需要外部网页信息, 输出 none。
+            判断用户这个问题是否需要调用下面某个 skill。skill 可能是本机能力、内容转换、设备数据、联系人、日历、提醒或联网能力。
+            不要依赖用户是否说出 skill 名或工具名; 要根据用户任务本身的意图、对象和需要访问的数据/系统能力判断。
+            如果问题只是闲聊、解释常识、或不需要任何 listed skill, 输出 none。
             只输出一个 skill id 或 none, 不要解释, 不要输出 JSON, 不要输出 `<tool_call>`。
             """
-            skillsLabel = "可用 network skills:"
+            skillsLabel = "可用 skills:"
             questionLabel = "用户问题:"
         } else if LanguageService.shared.current.isJapanese {
             systemBody = """
             あなたはルーティング分類だけを行い, ユーザーの質問には答えません。
-            このユーザーの質問が下記のいずれかの network skill を必要とするか判断してください。
-            network skill は公開インターネットやウェブページに関する機能のみに使います。
-            確実な回答が, 現在・最近・リアルタイム・時間とともに変化する・場所によって変化する, またはウェブで確認が必要な公開情報に依存する場合は, 最も適切な skill id を出力してください。
-            ユーザーが「検索」や「ネット」と書いていないという理由だけで none を出力しないでください; 質問そのものが外部の公開情報を必要とするかどうかで判断してください。
-            外部のウェブ情報が不要なら, none を出力してください。
+            このユーザーの質問が下記のいずれかの skill を必要とするか判断してください。skill には端末機能、内容変換、端末データ、連絡先、カレンダー、リマインダー、ネットワーク機能が含まれます。
+            ユーザーが skill 名や tool 名を言ったかどうかに依存せず、タスクの意図、対象、必要なデータ/システム機能から判断してください。
+            雑談、一般的な説明、または listed skill が不要な質問なら none を出力してください。
             skill id を1つ, または none だけを出力し, 説明も JSON も `<tool_call>` も出力しないでください。
             """
-            skillsLabel = "利用可能な network skills:"
+            skillsLabel = "利用可能な skills:"
             questionLabel = "ユーザーの質問:"
         } else {
             systemBody = """
             You only classify routing; do not answer the user.
-            Decide whether this user message needs one of the network skills below.
-            A network skill is only for public internet or webpage capabilities.
-            If a reliable answer depends on current, recent, live, time-varying, location-varying, or web-verifiable public information, output the best skill id.
-            Do not output none merely because the user did not explicitly say "search" or "browse"; decide from whether the question itself requires external public information.
-            If no external web information is needed, output none.
+            Decide whether this user message needs one of the skills below. Skills may cover on-device capabilities, content transformation, device data, contacts, calendar, reminders, or network access.
+            Do not rely on whether the user names a skill or tool. Decide from the task intent, target entity, and data/system capability needed.
+            If the message is chit-chat, general explanation, or does not need any listed skill, output none.
             Output exactly one skill id or none. Do not explain, do not output JSON, and do not emit `<tool_call>`.
             """
-            skillsLabel = "Available network skills:"
+            skillsLabel = "Available skills:"
             questionLabel = "User message:"
         }
 
@@ -681,7 +823,7 @@ struct PromptBuilder {
         \(systemBody)
 
         \(skillsLabel)
-        \(availableNetworkSkillsSummary)
+        \(availableSkillsSummary)
         <turn|>
         <|turn>user
         \(questionLabel)
@@ -1361,10 +1503,12 @@ struct PromptBuilder {
         // (assistant tool_call → user tool_result → assistant text), 自然知道接下来
         // 该用文本回答. 长 anti-repeat / "严禁 X / 不要 Y / 不能 Z" 指令链实测让 E2B
         // 直接 emit EOS (0 token 空回复, 真机验证).
+        let guardInstructions = toolFollowUpGuardInstructions(toolName: toolName)
         return r1Prompt + r1Output + """
         <turn|>
         <|turn>user
         \(toolResultSummary)
+        \(guardInstructions)
         <turn|>
         <|turn>model
 
@@ -1388,6 +1532,7 @@ struct PromptBuilder {
             maxCharacters: toolName == "web-search" ? 5_200 : 3_200
         )
         let toolSpecificInstructions = compactToolAnswerInstructions(toolName: toolName)
+            + toolFollowUpGuardInstructions(toolName: toolName)
         let allowsFollowUpFetch = toolName == "web-search"
         if LanguageService.shared.current.isChinese {
             let thinkingPrefix = enableThinking ? "<|think|>" : ""
@@ -1537,6 +1682,19 @@ struct PromptBuilder {
                 "对 web-fetch：只使用已读取网页正文回答。必须全程使用当前会话语言回答，即使网页正文是其他语言。若正文包含按时间、排行或列表排列的数据，选最相关/最新的一条直接给结论；不要因为页面没有写“绝对最新”就空泛拒答。直接回答同样分成“总结”和“引用网址”，“总结”必须可扫描、结构化，不要写成单段长文；来源只放在“引用网址”段。只有正文确实没有覆盖用户问题时，才明确说明页面中没有找到对应信息。",
                 "For web-fetch: answer only from the fetched page text. Write the entire answer in the current conversation language, even if the page text uses another language. If the text contains dated, ranked, or listed data, choose the most relevant/latest entry and give the conclusion; do not refuse just because the page does not explicitly label it as “absolute latest.” Direct answers should also use “Summary” and “Sources”; the Summary must be scannable and structured, not one long paragraph, with source links only in Sources. Only say the requested information was not found when the page text truly does not cover the user question.",
                 "web-fetch について：読み取ったページ本文だけに基づいて答えます。たとえページ本文が他言語でも、回答は全編にわたり現在の会話の言語で書いてください。本文に時間・順位・リスト順に並んだデータが含まれる場合は、最も関連する/最新の1件を選んで結論を出します；ページに「絶対的な最新」と書いていないという理由で漠然と拒否しないでください。直接回答も同様に「総結」と「引用 URL」に分け、「総結」はスキャンしやすく構造化し、1段落の長文にしないでください；ソースは「引用 URL」段にのみ置きます。本文が本当にユーザーの質問をカバーしていない場合のみ、ページ内に該当する情報が見つからなかったとはっきり述べてください。"
+            )
+        default:
+            return ""
+        }
+    }
+
+    private static func toolFollowUpGuardInstructions(toolName: String) -> String {
+        switch toolName {
+        case "contacts-search":
+            return tr(
+                "\n\n对 contacts-search: 这是只读搜索结果, 没有创建、更新或删除任何联系人。即使用户想删除联系人, 也绝不能说“已删除”。如果结果里有多个候选, 请让用户提供电话、邮箱、编号或 identifier 来精确到单个联系人。",
+                "\n\nFor contacts-search: this is a read-only search result. It did not create, update, or delete any contact. Even if the user wanted deletion, never say a contact was deleted. If multiple candidates are present, ask for a phone number, email, index, or identifier to narrow to one contact.",
+                "\n\ncontacts-search について: これは読み取り専用の検索結果です。連絡先の作成・更新・削除は行っていません。ユーザーが削除を望んでいても、「削除しました」とは絶対に言わないでください。候補が複数ある場合は、電話番号・メールアドレス・番号・identifier で1件に絞るよう促してください。"
             )
         default:
             return ""

@@ -25,6 +25,7 @@ struct SkillEntry: Identifiable {
     var type: SkillType
     var activationMode: SkillActivationMode
     var history: SkillHistoryPolicy
+    var sideEffects: SkillSideEffectPolicy
     var requiresTimeAnchor: Bool = false
     var samplePrompt: String
     /// 欢迎页快捷 chip 的发送内容 (来源 SKILL.md `chip_prompt` 字段).
@@ -46,6 +47,7 @@ struct SkillEntry: Identifiable {
         self.type = def.metadata.type
         self.activationMode = def.metadata.activationMode
         self.history = def.metadata.history
+        self.sideEffects = def.metadata.sideEffects
         self.requiresTimeAnchor = def.metadata.requiresTimeAnchor
         self.samplePrompt = def.metadata.examples.first?.query ?? ""
         self.chipPrompt = def.metadata.chipPrompt?.isEmpty == true ? nil : def.metadata.chipPrompt
@@ -69,6 +71,7 @@ struct SkillInfo {
     var type: SkillType = .device
     var activationMode: SkillActivationMode = .prompt
     var history: SkillHistoryPolicy = .defaultPolicy(for: .device)
+    var sideEffects: SkillSideEffectPolicy = .undeclared
     var requiresTimeAnchor: Bool = false
     var samplePrompt: String = ""
     var chipPrompt: String? = nil

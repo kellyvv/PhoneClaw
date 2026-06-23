@@ -62,14 +62,14 @@ enum ContactsTools {
         registry.register(RegisteredTool(
             name: "contacts-delete",
             description: tr(
-                "删除联系人，可按姓名、手机号、邮箱、identifier 或关键词匹配后删除；匹配多个时可传 all=true 批量删除",
-                "Delete contacts matched by name, phone, email, identifier or a free-text query; when multiple matches are found, pass all=true to delete every match",
-                "連絡先を削除します。名前、電話番号、メールアドレス、identifier、またはキーワードで一致した連絡先を削除します。複数一致した場合は all=true を渡すとまとめて削除できます"
+                "删除联系人，可按姓名、手机号、邮箱、identifier 或关键词匹配后删除；匹配多个时必须继续消歧，不能批量删除",
+                "Delete a contact matched by name, phone, email, identifier or a free-text query; when multiple contacts match, the caller must disambiguate instead of deleting in bulk",
+                "連絡先を削除します。名前、電話番号、メールアドレス、identifier、またはキーワードで一致した連絡先を削除します。複数一致した場合は一括削除せず、必ず絞り込んでください"
             ),
             parameters: tr(
-                "query: 搜索关键词（可选）, identifier: 联系人标识（可选）, name: 姓名（可选）, phone: 手机号（可选）, email: 邮箱（可选）, all: 多匹配时是否全部删除（可选，默认 false）",
-                "query: search keyword (optional), identifier: contact identifier (optional), name: name (optional), phone: phone number (optional), email: email address (optional), all: whether to delete every match when more than one is found (optional, default false)",
-                "query: 検索キーワード（任意）, identifier: 連絡先の識別子（任意）, name: 名前（任意）, phone: 電話番号（任意）, email: メールアドレス（任意）, all: 複数一致した場合にすべて削除するか（任意、既定値 false）"
+                "query: 搜索关键词（可选）, identifier: 联系人标识（可选）, name: 姓名（可选）, phone: 手机号（可选）, email: 邮箱（可选）",
+                "query: search keyword (optional), identifier: contact identifier (optional), name: name (optional), phone: phone number (optional), email: email address (optional)",
+                "query: 検索キーワード（任意）, identifier: 連絡先の識別子（任意）, name: 名前（任意）, phone: 電話番号（任意）, email: メールアドレス（任意）"
             ),
             phoneGroundContract: contactsContract,
             requiredAnyOfParameters: ["query", "identifier", "name", "phone", "email"],
@@ -184,9 +184,54 @@ enum ContactsTools {
         return Array(NSOrderedSet(array: aliases)) as? [String] ?? aliases
     }
 
+    fileprivate static func normalizedPhoneDigits(_ raw: String) -> String {
+        raw.compactMap { character -> String? in
+            guard let value = character.wholeNumberValue else { return nil }
+            return String(value)
+        }.joined()
+    }
+
+    fileprivate static func displayPhoneNumber(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+
+        let digits = normalizedPhoneDigits(trimmed)
+        let localDigits: String
+        if digits.count == 13, digits.hasPrefix("86") {
+            localDigits = String(digits.dropFirst(2))
+        } else {
+            localDigits = digits
+        }
+
+        if localDigits.count == 11, localDigits.hasPrefix("1") {
+            let first = localDigits.prefix(3)
+            let middle = localDigits.dropFirst(3).prefix(4)
+            let last = localDigits.suffix(4)
+            return "\(first)-\(middle)-\(last)"
+        }
+
+        return trimmed
+    }
+
+    fileprivate static func phoneMatches(_ stored: String, query: String) -> Bool {
+        let stored = stored.trimmingCharacters(in: .whitespacesAndNewlines)
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !stored.isEmpty, !query.isEmpty else { return false }
+
+        if stored.localizedCaseInsensitiveContains(query) {
+            return true
+        }
+
+        let storedDigits = normalizedPhoneDigits(stored)
+        let queryDigits = normalizedPhoneDigits(query)
+        guard !storedDigits.isEmpty, !queryDigits.isEmpty else { return false }
+
+        return storedDigits.contains(queryDigits) || queryDigits.contains(storedDigits)
+    }
+
     private static func primaryPhone(_ contact: CNContact) -> String? {
         contact.phoneNumbers
-            .map { $0.value.stringValue.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .map { displayPhoneNumber($0.value.stringValue) }
             .first(where: { !$0.isEmpty })
     }
 
@@ -262,7 +307,7 @@ enum ContactsTools {
 
             if let phone, !phone.isEmpty,
                !contact.phoneNumbers.contains(where: {
-                   $0.value.stringValue.localizedCaseInsensitiveContains(phone)
+                   phoneMatches($0.value.stringValue, query: phone)
                }) {
                 return false
             }
@@ -282,7 +327,7 @@ enum ContactsTools {
                     }
                 }
                 let phoneMatch = contact.phoneNumbers.contains {
-                    $0.value.stringValue.localizedCaseInsensitiveContains(query)
+                    phoneMatches($0.value.stringValue, query: query)
                 }
                 let emailMatch = contact.emailAddresses.contains {
                     String($0.value).localizedCaseInsensitiveContains(query)
@@ -339,7 +384,7 @@ enum ContactsTools {
             extras: [
                 "action": result.action,
                 "name": result.entry.name,
-                "phone": result.entry.phone,
+                "phone": ContactsTools.displayPhoneNumber(result.entry.phone),
                 "company": result.entry.company,
                 "email": result.entry.email,
                 "notes": result.entry.notes,
@@ -420,7 +465,7 @@ enum ContactsTools {
             extras: [
                 "action": action,
                 "name": name,
-                "phone": phone ?? "",
+                "phone": phone.map(ContactsTools.displayPhoneNumber) ?? "",
                 "company": company ?? "",
                 "email": email ?? "",
                 "notes": notes ?? ""
@@ -536,12 +581,6 @@ enum ContactsTools {
         let email = (args["email"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         let query = (args["query"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         let name = rawName?.trimmingCharacters(in: CharacterSet(charactersIn: "，。,？！!? "))
-        let deleteAll: Bool = {
-            if let b = args["all"] as? Bool { return b }
-            if let s = args["all"] as? String { return ["true", "yes", "1"].contains(s.lowercased()) }
-            return false
-        }()
-
         guard identifier?.isEmpty == false
             || name?.isEmpty == false
             || phone?.isEmpty == false
@@ -572,18 +611,18 @@ enum ContactsTools {
             )
             return CanonicalToolResult(success: true, summary: summary, detail: detail)
         }
-        if matches.count > 1 && !deleteAll {
+        if matches.count > 1 {
             let previews = matches.prefix(5).map(MacContactsMock.summaryText).joined(separator: "；")
             return contactsFailure(
                 summary: tr(
-                    "匹配到多个联系人，请提供更具体的信息，或明确说全部删除。",
-                    "Multiple contacts matched. Please narrow the query, or explicitly confirm deleting all of them.",
-                    "複数の連絡先が一致しました。より具体的な条件を指定するか、すべて削除すると明示してください。"
+                    "匹配到多个联系人，请提供更具体的信息，例如电话、邮箱或联系人标识。",
+                    "Multiple contacts matched. Please narrow the query with a phone number, email address, or contact identifier.",
+                    "複数の連絡先が一致しました。電話番号、メールアドレス、または連絡先識別子で絞り込んでください。"
                 ),
                 detail: tr(
-                    "匹配到多个联系人，请提供更具体的信息，或传 all=true 全部删除：\(previews)",
-                    "Multiple contacts matched. Please narrow the query, or pass all=true to delete every match: \(previews)",
-                    "複数の連絡先が一致しました。より具体的な条件を指定するか、all=true を渡してすべて削除してください：\(previews)"
+                    "匹配到多个联系人，破坏性操作不会批量删除，请提供电话、邮箱或 identifier 消歧：\(previews)",
+                    "Multiple contacts matched. Destructive operations will not delete in bulk; provide a phone, email, or identifier to disambiguate: \(previews)",
+                    "複数の連絡先が一致しました。破壊的操作では一括削除しません。電話番号、メールアドレス、または identifier で絞り込んでください：\(previews)"
                 ),
                 errorCode: "CONTACTS_AMBIGUOUS_MATCH"
             )
@@ -602,7 +641,7 @@ enum ContactsTools {
                 extras: [
                     "identifier": contact.identifier,
                     "name": contact.name,
-                    "phone": contact.phone,
+                    "phone": ContactsTools.displayPhoneNumber(contact.phone),
                     "email": contact.email,
                     "deletedCount": "1",
                     "_macMock": true
@@ -656,18 +695,18 @@ enum ContactsTools {
             return CanonicalToolResult(success: true, summary: summary, detail: detail)
         }
 
-        if matches.count > 1 && !deleteAll {
+        if matches.count > 1 {
             let previews = matches.prefix(5).map(contactSummaryText).joined(separator: "；")
             return contactsFailure(
                 summary: tr(
-                    "匹配到多个联系人，请提供更具体的信息，或明确说全部删除。",
-                    "Multiple contacts matched. Please narrow the query, or explicitly confirm deleting all of them.",
-                    "複数の連絡先が一致しました。より具体的な条件を指定するか、すべて削除すると明示してください。"
+                    "匹配到多个联系人，请提供更具体的信息，例如电话、邮箱或联系人标识。",
+                    "Multiple contacts matched. Please narrow the query with a phone number, email address, or contact identifier.",
+                    "複数の連絡先が一致しました。電話番号、メールアドレス、または連絡先識別子で絞り込んでください。"
                 ),
                 detail: tr(
-                    "匹配到多个联系人，请提供更具体的信息，或传 all=true 全部删除：\(previews)",
-                    "Multiple contacts matched. Please narrow the query, or pass all=true to delete every match: \(previews)",
-                    "複数の連絡先が一致しました。より具体的な条件を指定するか、all=true を渡してすべて削除してください：\(previews)"
+                    "匹配到多个联系人，破坏性操作不会批量删除，请提供电话、邮箱或 identifier 消歧：\(previews)",
+                    "Multiple contacts matched. Destructive operations will not delete in bulk; provide a phone, email, or identifier to disambiguate: \(previews)",
+                    "複数の連絡先が一致しました。破壊的操作では一括削除しません。電話番号、メールアドレス、または identifier で絞り込んでください：\(previews)"
                 ),
                 errorCode: "CONTACTS_AMBIGUOUS_MATCH"
             )
@@ -751,7 +790,7 @@ enum MacContactsMock {
     static func upsert(name: String, phone: String?, company: String?, email: String?, notes: String?) -> (action: String, entry: Entry) {
         // phone 匹配 → 视为更新; 否则新建
         if let phone, !phone.isEmpty,
-           let idx = entries.firstIndex(where: { $0.phone == phone }) {
+           let idx = entries.firstIndex(where: { ContactsTools.phoneMatches($0.phone, query: phone) }) {
             entries[idx].name = name
             if let company { entries[idx].company = company }
             if let email   { entries[idx].email   = email   }
@@ -772,15 +811,15 @@ enum MacContactsMock {
 
     static func search(identifier: String?, name: String?, phone: String?, email: String?, query: String?) -> [Entry] {
         entries.filter { e in
-            if let identifier, !identifier.isEmpty, e.identifier == identifier { return true }
-            if let phone, !phone.isEmpty, e.phone == phone { return true }
-            if let email, !email.isEmpty, !e.email.isEmpty, e.email == email { return true }
-            if let name, !name.isEmpty, e.name.contains(name) { return true }
+            if let identifier, !identifier.isEmpty, e.identifier != identifier { return false }
+            if let phone, !phone.isEmpty, !ContactsTools.phoneMatches(e.phone, query: phone) { return false }
+            if let email, !email.isEmpty, e.email != email { return false }
+            if let name, !name.isEmpty, !e.name.contains(name) { return false }
             if let query, !query.isEmpty,
-               e.name.contains(query) || e.phone.contains(query) || e.company.contains(query) {
-                return true
+               !(e.name.contains(query) || ContactsTools.phoneMatches(e.phone, query: query) || e.company.contains(query)) {
+                return false
             }
-            return false
+            return true
         }
     }
 
@@ -790,11 +829,17 @@ enum MacContactsMock {
     }
 
     static func summaryDict(_ e: Entry) -> [String: String] {
-        ["identifier": e.identifier, "name": e.name, "phone": e.phone, "company": e.company, "email": e.email]
+        [
+            "identifier": e.identifier,
+            "name": e.name,
+            "phone": ContactsTools.displayPhoneNumber(e.phone),
+            "company": e.company,
+            "email": e.email
+        ]
     }
     static func summaryText(_ e: Entry) -> String {
         var parts = [e.name]
-        if !e.phone.isEmpty { parts.append(e.phone) }
+        if !e.phone.isEmpty { parts.append(ContactsTools.displayPhoneNumber(e.phone)) }
         if !e.company.isEmpty { parts.append(e.company) }
         return parts.joined(separator: " ")
     }

@@ -63,6 +63,71 @@ struct SkillHistoryPolicy: Sendable {
     }
 }
 
+enum SkillSideEffectLevel: String, Sendable, Comparable {
+    case none
+    case read
+    case write
+    case destructive
+
+    private var rank: Int {
+        switch self {
+        case .none: return 0
+        case .read: return 1
+        case .write: return 2
+        case .destructive: return 3
+        }
+    }
+
+    static func < (lhs: SkillSideEffectLevel, rhs: SkillSideEffectLevel) -> Bool {
+        lhs.rank < rhs.rank
+    }
+}
+
+enum SkillConfirmationPolicy: String, Sendable {
+    case never
+    case lowConfidence = "low_confidence"
+    case always
+}
+
+struct SkillToolSideEffectPolicy: Sendable {
+    let level: SkillSideEffectLevel?
+    let requiresExplicitIntent: Bool?
+    let confirmation: SkillConfirmationPolicy?
+}
+
+struct EffectiveToolSideEffectPolicy: Sendable {
+    let isDeclared: Bool
+    let level: SkillSideEffectLevel
+    let requiresExplicitIntent: Bool
+    let confirmation: SkillConfirmationPolicy
+}
+
+struct SkillSideEffectPolicy: Sendable {
+    let isDeclared: Bool
+    let level: SkillSideEffectLevel
+    let tools: [String: SkillToolSideEffectPolicy]
+
+    static let undeclared = SkillSideEffectPolicy(
+        isDeclared: false,
+        level: .none,
+        tools: [:]
+    )
+
+    func effectivePolicy(forTool toolName: String) -> EffectiveToolSideEffectPolicy {
+        let toolPolicy = tools[toolName]
+        let effectiveLevel = toolPolicy?.level ?? level
+        let effectiveConfirmation = toolPolicy?.confirmation
+            ?? (effectiveLevel == .destructive ? .always : .never)
+
+        return EffectiveToolSideEffectPolicy(
+            isDeclared: isDeclared || toolPolicy != nil,
+            level: effectiveLevel,
+            requiresExplicitIntent: toolPolicy?.requiresExplicitIntent ?? false,
+            confirmation: effectiveConfirmation
+        )
+    }
+}
+
 struct SkillMetadata {
     let id: String              // 目录名 "clipboard"
     let name: String            // 默认英文名 / 回退显示名
@@ -74,6 +139,7 @@ struct SkillMetadata {
     let type: SkillType         // 类别 (frontmatter `type:` 必填, 缺省视为 .device)
     let activationMode: SkillActivationMode
     let history: SkillHistoryPolicy
+    let sideEffects: SkillSideEffectPolicy
     let requiresTimeAnchor: Bool
     let triggers: [String]
     let allowedTools: [String]
@@ -177,6 +243,7 @@ enum SkillLoader {
         let type = SkillType(rawValue: typeRaw) ?? .device
         let activationMode = parseActivationMode(frontmatter["activation"])
         let history = parseHistoryPolicy(frontmatter["history"], defaultFor: type)
+        let sideEffects = parseSideEffectPolicy(frontmatter["side_effects"] ?? frontmatter["side-effects"])
 
         let metadata = SkillMetadata(
             id: id,
@@ -189,6 +256,7 @@ enum SkillLoader {
             type: type,
             activationMode: activationMode,
             history: history,
+            sideEffects: sideEffects,
             requiresTimeAnchor: frontmatter["requires-time-anchor"] as? Bool ?? false,
             triggers: frontmatter["triggers"] as? [String] ?? [],
             allowedTools: frontmatter["allowed-tools"] as? [String] ?? [],
@@ -260,6 +328,68 @@ enum SkillLoader {
             summarizeOldEvidence: boolValue(dict, keys: ["summarize_old_evidence", "summarize-old-evidence"]) ?? defaults.summarizeOldEvidence,
             preservePendingClarification: boolValue(dict, keys: ["preserve_pending_clarification", "preserve-pending-clarification"]) ?? defaults.preservePendingClarification
         )
+    }
+
+    private static func parseSideEffectPolicy(_ raw: Any?) -> SkillSideEffectPolicy {
+        guard let dict = raw as? [String: Any] else {
+            return .undeclared
+        }
+
+        let defaultLevel = sideEffectLevel(dict["level"]) ?? .none
+        let rawTools = (dict["tools"] as? [String: Any]) ?? [:]
+        var tools: [String: SkillToolSideEffectPolicy] = [:]
+        for (toolName, rawToolPolicy) in rawTools {
+            if let level = sideEffectLevel(rawToolPolicy) {
+                tools[toolName] = SkillToolSideEffectPolicy(
+                    level: level,
+                    requiresExplicitIntent: nil,
+                    confirmation: nil
+                )
+                continue
+            }
+
+            guard let toolDict = rawToolPolicy as? [String: Any] else { continue }
+            tools[toolName] = SkillToolSideEffectPolicy(
+                level: sideEffectLevel(toolDict["level"]),
+                requiresExplicitIntent: boolValue(
+                    toolDict,
+                    keys: ["requires_explicit_intent", "requires-explicit-intent"]
+                ),
+                confirmation: confirmationPolicy(
+                    toolDict["confirmation"] ?? toolDict["confirm"]
+                )
+            )
+        }
+
+        return SkillSideEffectPolicy(
+            isDeclared: true,
+            level: defaultLevel,
+            tools: tools
+        )
+    }
+
+    private static func sideEffectLevel(_ raw: Any?) -> SkillSideEffectLevel? {
+        guard let normalized = normalizedString(raw) else { return nil }
+        return SkillSideEffectLevel(rawValue: normalized)
+    }
+
+    private static func confirmationPolicy(_ raw: Any?) -> SkillConfirmationPolicy? {
+        if let value = raw as? Bool {
+            return value ? .always : .never
+        }
+        guard let normalized = normalizedString(raw) else { return nil }
+        switch normalized {
+        case "low-confidence", "low_confidence":
+            return .lowConfidence
+        default:
+            return SkillConfirmationPolicy(rawValue: normalized)
+        }
+    }
+
+    private static func normalizedString(_ raw: Any?) -> String? {
+        (raw as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
     }
 
     private static func boolValue(_ dict: [String: Any], keys: [String]) -> Bool? {

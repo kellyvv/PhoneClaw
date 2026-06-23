@@ -23,6 +23,18 @@ allowed-tools:
   - contacts-upsert
   - contacts-delete
 
+side_effects:
+  level: read
+  tools:
+    contacts-search:
+      level: read
+    contacts-upsert:
+      level: write
+      requires_explicit_intent: true
+    contacts-delete:
+      level: destructive
+      confirmation: always
+
 examples:
   - query: "把王总电话 13812345678 添加到联系人"
     scenario: "新建或更新联系人"
@@ -82,7 +94,7 @@ examples:
 
 - 查询: 只说查到的联系人信息, 不要提工具名、JSON 或内部步骤
 - 新建/更新: 简短确认 "已保存联系人 X。"
-- 删除: 简短确认 "已删除联系人 X。" 或 "已删除 N 位联系人：..."
+- 删除: 简短确认 "已删除联系人 X。"
 - 没找到或需要用户选择时, 用一句自然中文说明下一步
 
 ## 多轮澄清处理
@@ -95,7 +107,7 @@ examples:
 > (1) [phone1] · [extra info]
 > (2) [phone2] · [extra info]
 >
-> 要操作哪一个？回复编号、电话号码后几位，或"全部"。
+> 要操作哪一个？回复编号、电话号码后几位、邮箱或联系人标识。暂不支持批量删除。
 
 把这些候选信息**保留**在你的回答里，下一轮用户回应时你需要参考。
 
@@ -108,17 +120,12 @@ examples:
 | 完整电话 `15212345678` | 精确指定 | 用 `phone` 参数加完整号码 |
 | 尾号 `5678` / "尾号 5678" | 模糊定位 | 用 `query` 参数加尾号 |
 | 编号 `1` / `(1)` / "第一个" | 选候选列表第 N 个 | 取上一轮列出的第 N 个的电话作为 `phone` |
-| "全部" / "都删" / "两个都" / "一起删" | 批量删除所有候选 | **只调一次** `contacts-delete`, 参数保持原来的 `name`, 加 `all: true`。**禁止**手动循环调用 |
+| "全部" / "都删" / "两个都" / "一起删" | 用户想批量删除候选 | 当前没有确认门, 不要调用删除工具；请用户提供编号、电话、邮箱或 identifier 精确到单个联系人 |
 | 其他信息 (公司 / 备注 / 关系等) | tool 不支持按这些字段精确匹配 | 追问用户提供电话号或编号, 不要把这些信息当 tool 参数传 |
 
-**重要 — 批量删除只有一次 tool_call**:
+**重要 — 暂不支持批量删除**:
 
-用户说"全部删除" / "都删" 时, 正确做法:
-<tool_call>
-{"name": "contacts-delete", "arguments": {"name": "张总", "all": true}}
-</tool_call>
-
-Tool 返回 `deletedCount=2, deletedNames=...` 后, 你就可以如实回复 "已删除 2 位张总: ..."。**不要**多次 emit tool_call 试图一个一个删 — 小模型循环调用成功率极低。
+用户说"全部删除" / "都删" 时, 不要 emit `contacts-delete`, 不要传 `all:true`, 也不要手动循环删除。请回复一句让用户提供单个联系人编号、电话、邮箱或 identifier。批量删除必须等系统确认门落地后再开放。
 
 调用例（用户回答 "152123458"）：
 <tool_call>

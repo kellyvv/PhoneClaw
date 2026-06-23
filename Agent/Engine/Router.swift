@@ -983,15 +983,19 @@ extension AgentEngine {
 
     // MARK: - 模型意图路由
 
-    /// 当 trigger/sticky 都没有命中时, 用一个极小的模型分类器判断是否需要
-    /// network skill。候选集完全来自 SKILL.md metadata, 不在代码里维护业务词表。
+    /// 当 trigger/sticky/guarded route 都没有命中时, 用一个极小的模型分类器
+    /// 从 registry 里的 enabled skills 里选择候选。
+    ///
+    /// 候选集完全来自 SKILL.md metadata, 不在代码里维护业务词表。这样自然语言里
+    /// 没有出现"通讯录/联系人/联网"等内部能力词时, 仍可由模型根据能力描述把
+    /// "查张总电话"这类 entity + intent 请求路由到正确 skill。
     func modelIntentRoutedSkillIds(for userQuestion: String) async -> [String] {
-        let candidates = networkIntentRoutingCandidates()
+        let candidates = skillIntentRoutingCandidates()
         guard !candidates.ids.isEmpty, !candidates.summary.isEmpty else { return [] }
 
         let prompt = PromptBuilder.buildSkillIntentRoutingPrompt(
             userQuestion: userQuestion,
-            availableNetworkSkillsSummary: candidates.summary
+            availableSkillsSummary: candidates.summary
         )
 
         let rawDecision = await runIsolatedInferenceProbe(
@@ -1010,15 +1014,36 @@ extension AgentEngine {
         return [selected]
     }
 
-    private func networkIntentRoutingCandidates() -> (summary: String, ids: Set<String>) {
+    private func skillIntentRoutingCandidates() -> (summary: String, ids: Set<String>) {
         let entries = skillEntries.filter { entry in
-            entry.isEnabled && entry.type == .network
+            entry.isEnabled
         }
         let lines = entries.map { entry in
             let normalizedDescription = entry.description
                 .replacingOccurrences(of: "\n", with: " ")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            return "- \(entry.id): \(normalizedDescription)"
+            let type = entry.type.rawValue
+            let definition = skillRegistry.getDefinition(entry.id)
+            let triggers = definition?.metadata.triggers
+                .prefix(8)
+                .joined(separator: ", ") ?? ""
+            let examples = definition?.metadata.examples
+                .map(\.query)
+                .prefix(3)
+                .joined(separator: " | ") ?? ""
+            let tools = registeredTools(for: entry.id)
+                .map(\.name)
+                .prefix(6)
+                .joined(separator: ", ")
+            let signals = [
+                normalizedDescription.isEmpty ? nil : "desc=\(normalizedDescription)",
+                triggers.isEmpty ? nil : "triggers=\(triggers)",
+                examples.isEmpty ? nil : "examples=\(examples)",
+                tools.isEmpty ? nil : "tools=\(tools)"
+            ]
+                .compactMap { $0 }
+                .joined(separator: "; ")
+            return "- \(entry.id) [\(type)]: \(signals)"
         }
         return (lines.joined(separator: "\n"), Set(entries.map(\.id)))
     }

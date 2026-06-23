@@ -27,6 +27,16 @@ allowed-tools:
   - calendar-create-event
   - calendar-query-events
 
+side_effects:
+  level: read
+  tools:
+    calendar-create-event:
+      level: write
+      requires_explicit_intent: true
+      confirmation: low_confidence
+    calendar-query-events:
+      level: read
+
 examples:
   - query: "帮我创建明天下午两点的产品评审会议"
     scenario: "新建日历事项"

@@ -90,6 +90,7 @@ class AgentEngine {
     @ObservationIgnored private var isSessionPersistenceEnabled = true
     @ObservationIgnored var isLiveLandTurnActive = false
     @ObservationIgnored var activityEventSink: ((AgentActivityEvent) async -> Void)?
+    @ObservationIgnored var toolCallTraceSink: ((RuntimeToolCall) async -> Void)?
 
     // MARK: - Skill System
 
@@ -121,6 +122,7 @@ class AgentEngine {
                      type: $0.type,
                      activationMode: $0.activationMode,
                      history: $0.history,
+                     sideEffects: $0.sideEffects,
                      requiresTimeAnchor: $0.requiresTimeAnchor,
                      samplePrompt: $0.samplePrompt,
                      chipPrompt: $0.chipPrompt,

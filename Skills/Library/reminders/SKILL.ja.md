@@ -28,13 +28,21 @@ triggers:
 allowed-tools:
   - reminders-create
 
+side_effects:
+  level: write
+  tools:
+    reminders-create:
+      level: write
+      requires_explicit_intent: true
+      confirmation: low_confidence
+
 examples:
   - query: "今夜8時にファイルを送るようリマインドして"
     scenario: "新しいリマインダーを作成"
 
 # Sync anchor (see scripts/check-skill-sync.sh):
-translation-source-commit: 034c373
-translation-source-sha256: 5254c5a5720e4f300503c46280533d4e6c449c499f5bf39118939f1650fff26d
+translation-source-commit: afa08ec1
+translation-source-sha256: d79dd0f8a2f9270ec43c0814b1d269881f858f50c832296935d88b36f29ab4a9
 ---
 
 # リマインダー作成

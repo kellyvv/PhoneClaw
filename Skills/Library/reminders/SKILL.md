@@ -19,6 +19,14 @@ triggers:
 allowed-tools:
   - reminders-create
 
+side_effects:
+  level: write
+  tools:
+    reminders-create:
+      level: write
+      requires_explicit_intent: true
+      confirmation: low_confidence
+
 examples:
   - query: "提醒我今晚八点发文件"
     scenario: "新建提醒事项"

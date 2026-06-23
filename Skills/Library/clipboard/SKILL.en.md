@@ -19,6 +19,15 @@ allowed-tools:
   - clipboard-read
   - clipboard-write
 
+side_effects:
+  level: read
+  tools:
+    clipboard-read:
+      level: read
+    clipboard-write:
+      level: write
+      requires_explicit_intent: true
+
 examples:
   - query: "Read my clipboard"
     scenario: "Read the clipboard"
@@ -26,8 +35,8 @@ examples:
     scenario: "Write to the clipboard"
 
 # Sync anchor (see scripts/check-skill-sync.sh):
-translation-source-commit: 034c373
-translation-source-sha256: 26bacc9d376bc54c8433cbacd24beaa64c1c6c3034fee7f672fd7b709b81ff4a
+translation-source-commit: afa08ec1
+translation-source-sha256: ccaaf8896152a26a4c0edc9507edbec340c74900ea554ccc068c0a6b3b695d13
 ---
 
 # Clipboard Operations

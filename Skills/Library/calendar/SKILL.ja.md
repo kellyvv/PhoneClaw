@@ -34,6 +34,16 @@ allowed-tools:
   - calendar-create-event
   - calendar-query-events
 
+side_effects:
+  level: read
+  tools:
+    calendar-create-event:
+      level: write
+      requires_explicit_intent: true
+      confirmation: low_confidence
+    calendar-query-events:
+      level: read
+
 examples:
   - query: "明日の午後2時にプロダクトレビュー会議を作成して"
     scenario: "カレンダー予定を作成"
@@ -43,8 +53,8 @@ examples:
     scenario: "今週の予定を分析"
 
 # Sync anchor (see scripts/check-skill-sync.sh):
-translation-source-commit: bed7561
-translation-source-sha256: 6c1618a592a70a1621286d3fd4e785cefc06405eba511c6d39a971d979c01116
+translation-source-commit: afa08ec1
+translation-source-sha256: ff0c503e4d2982f6a93861a2decdcee8071bb083853bd3fb12c817de382986b0
 ---
 
 # カレンダー

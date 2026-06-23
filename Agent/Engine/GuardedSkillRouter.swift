@@ -30,6 +30,16 @@ enum GuardedSkillRouter {
             )
         }
 
+        let contactsSkillID = canonicalSkillID("contacts")
+        if let reason = contactsRouteReason(for: normalized),
+           enabledSkillIDs.contains(contactsSkillID) {
+            return GuardedSkillRouteDecision(
+                action: .useSkill,
+                skillID: contactsSkillID,
+                reason: reason
+            )
+        }
+
         let calendarSkillID = canonicalSkillID("calendar")
         if let reason = calendarRouteReason(for: normalized),
            enabledSkillIDs.contains(calendarSkillID) {
@@ -76,6 +86,41 @@ enum GuardedSkillRouter {
                 "安排", "创建", "添加", "新建", "预约", "约会", "日程", "提醒",
                 "待办", "schedule", "book", "remind"
             ])
+    }
+
+    private static func contactsRouteReason(for text: String) -> String? {
+        let hasContactField = containsAny(text, [
+            "电话", "手机号", "手机", "号码", "联系方式", "邮箱", "邮件",
+            "phone", "mobile", "email"
+        ])
+        let hasContactContainer = containsAny(text, [
+            "联系人", "通讯录", "contact", "contacts"
+        ])
+        let hasLookupVerb = containsAny(text, [
+            "查", "找", "看", "多少", "告诉", "lookup", "find", "show"
+        ])
+        let hasDeleteVerb = containsAny(text, [
+            "删除", "删掉", "删了", "移除", "delete", "remove"
+        ])
+        let hasSaveVerb = containsAny(text, [
+            "保存", "存", "添加", "加到", "新建", "更新", "改", "save", "add", "update"
+        ])
+        let hasStrongPerson = hasPersonReference(text, allowEnglishName: false)
+        let hasContactFieldPerson = hasPersonReference(text, allowEnglishName: true)
+
+        if hasContactContainer && (hasLookupVerb || hasDeleteVerb || hasSaveVerb || hasContactField) {
+            return "contacts_container_intent"
+        }
+        if hasContactField && (hasContactFieldPerson || hasLookupVerb) {
+            return "contacts_field_entity_intent"
+        }
+        if hasDeleteVerb && hasStrongPerson {
+            return "contacts_delete_entity_intent"
+        }
+        if hasSaveVerb && (hasContactField || hasStrongPerson) {
+            return "contacts_write_entity_intent"
+        }
+        return nil
     }
 
     private static func calendarRouteReason(for text: String) -> String? {
@@ -134,6 +179,22 @@ enum GuardedSkillRouter {
             #"(?<!\d)\d{1,2}\s*(am|pm)(?![a-z])"#,
             #"(?<!\d)\d{1,2}\s*月\s*\d{1,2}\s*(号|日)?"#
         ]
+        let range = NSRange(text.startIndex..., in: text)
+        return patterns.contains { pattern in
+            guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+                return false
+            }
+            return regex.firstMatch(in: text, options: [], range: range) != nil
+        }
+    }
+
+    private static func hasPersonReference(_ text: String, allowEnglishName: Bool) -> Bool {
+        var patterns = [
+            #"[\p{Han}a-z0-9·._'-]{1,24}(总|医生|老师|经理|先生|女士|同事|老板|哥|姐|叔|姨|妈|爸)"#
+        ]
+        if allowEnglishName {
+            patterns.append(#"\b[a-z][a-z0-9._'-]{1,30}(\s+[a-z][a-z0-9._'-]{1,30})?\b"#)
+        }
         let range = NSRange(text.startIndex..., in: text)
         return patterns.contains { pattern in
             guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
