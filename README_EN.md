@@ -38,6 +38,7 @@ PhoneClaw is a private local Agent running on iPhone. It ships with multiple on-
 - Fixed a LiveLand widget launch issue that could incorrectly show "download model first" or "model loading" even after the model was already installed
 - Safer actions: unclear times, titles, contacts, deletes, and bulk operations ask for clarification or confirmation before running
 - LiveLand still runs on local models by default, with no cloud inference required and no per-call token billing
+- TestFlight link: [https://testflight.apple.com/join/YuUSwq78](https://testflight.apple.com/join/YuUSwq78)
 
 **2026-06-08**
 
