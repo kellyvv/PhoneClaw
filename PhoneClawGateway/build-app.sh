@@ -20,8 +20,22 @@ mkdir -p "$APP/Contents/Resources"
 cp ".build/release/PhoneClawGateway" "$APP/Contents/MacOS/PhoneClawGateway"
 cp "Info.plist" "$APP/Contents/Info.plist"
 cp "Assets/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
-if [ -d ".build/release/PhoneClawGateway_PhoneClawGateway.bundle" ]; then
-  cp -R ".build/release/PhoneClawGateway_PhoneClawGateway.bundle" "$APP/Contents/Resources/"
+copied_resource_bundle=0
+for bundle in ".build/release/"*.bundle ".build/"*/release/*.bundle; do
+  if [ -d "$bundle" ]; then
+    bundle_name="$(basename "$bundle")"
+    if [ ! -d "$APP/Contents/Resources/$bundle_name" ]; then
+      cp -R "$bundle" "$APP/Contents/Resources/"
+      copied_resource_bundle=1
+    fi
+  fi
+done
+if [ ! -f "$APP/Contents/Resources/AppIcon.icns" ]; then
+  echo "error: missing $APP/Contents/Resources/AppIcon.icns" >&2
+  exit 1
+fi
+if [ "$copied_resource_bundle" -eq 0 ]; then
+  echo "[warn] 未找到 SwiftPM 资源 bundle; App 将使用主 bundle 内的 AppIcon.icns"
 fi
 touch "$APP"
 

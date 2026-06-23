@@ -44,7 +44,7 @@ PhoneClaw is a private local Agent running on iPhone. It ships with multiple on-
 - Added the PhoneClaw Gateway Mac client: keep it running on your Mac, advertise it over Bonjour, then pair from the iPhone to use Mac-side Ollama, Codex CLI, or Antigravity CLI as a remote inference source
 - Added a `Mac Remote` page in iPhone settings: discover Macs on the same LAN, approve pairing on the Mac, choose a Mac-side model, then use it from the normal chat screen
 - Remote models are only used after you explicitly pair a Mac and select one. With Ollama, inference stays on your Mac; with CLI or other upstream providers, data handling follows that provider's behavior
-- How to use: download [PhoneClawGateway-macOS-v0.1.0.zip](https://github.com/kellyvv/PhoneClaw/releases/download/mac-gateway-v0.1.0/PhoneClawGateway-macOS-v0.1.0.zip), unzip it, open `PhoneClawGateway.app`, allow Local Network permission, then pair from `Mac Remote` on the iPhone; see [Use the Mac client for remote inference](#7-use-the-mac-client-for-remote-inference)
+- How to use: download [PhoneClawGateway-macOS-v0.1.1.zip](https://github.com/kellyvv/PhoneClaw/releases/download/mac-gateway-v0.1.1/PhoneClawGateway-macOS-v0.1.1.zip), unzip it, open `PhoneClawGateway.app`, allow Local Network permission, then pair from `Mac Remote` on the iPhone; see [Use the Mac client for remote inference](#7-use-the-mac-client-for-remote-inference)
 
 **2026-06-05**
 
@@ -353,7 +353,7 @@ The Mac client turns a Mac on the same LAN into an optional remote inference sou
 
 **Option A: download the release (recommended)**
 
-1. Download [PhoneClawGateway-macOS-v0.1.0.zip](https://github.com/kellyvv/PhoneClaw/releases/download/mac-gateway-v0.1.0/PhoneClawGateway-macOS-v0.1.0.zip)
+1. Download [PhoneClawGateway-macOS-v0.1.1.zip](https://github.com/kellyvv/PhoneClaw/releases/download/mac-gateway-v0.1.1/PhoneClawGateway-macOS-v0.1.1.zip)
 2. Unzip it and open `PhoneClawGateway.app`
 3. On first launch, allow the macOS Local Network permission prompt
 4. If macOS blocks first launch, open Finder, right-click `PhoneClawGateway.app`, then choose `Open`

@@ -46,7 +46,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 private enum GatewayAppIcon {
     static func install() {
         guard
-            let iconURL = Bundle.module.url(forResource: "AppIcon", withExtension: "icns"),
+            let iconURL = iconURL(),
             let icon = NSImage(contentsOf: iconURL)
         else {
             return
@@ -60,6 +60,32 @@ private enum GatewayAppIcon {
         imageView.imageScaling = .scaleProportionallyUpOrDown
         NSApplication.shared.dockTile.contentView = imageView
         NSApplication.shared.dockTile.display()
+    }
+
+    private static func iconURL() -> URL? {
+        if let bundledURL = Bundle.main.url(forResource: "AppIcon", withExtension: "icns") {
+            return bundledURL
+        }
+
+        let executableDirectory = Bundle.main.executableURL?.deletingLastPathComponent()
+        let resourceDirectory = Bundle.main.resourceURL
+        let currentDirectory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        let baseDirectories = [executableDirectory, resourceDirectory, currentDirectory].compactMap { $0 }
+        let relativePaths = [
+            "PhoneClawGateway_PhoneClawGateway.bundle/Contents/Resources/AppIcon.icns",
+            "PhoneClawGateway_PhoneClawGateway.bundle/AppIcon.icns"
+        ]
+
+        for baseDirectory in baseDirectories {
+            for relativePath in relativePaths {
+                let candidate = baseDirectory.appendingPathComponent(relativePath)
+                if FileManager.default.fileExists(atPath: candidate.path) {
+                    return candidate
+                }
+            }
+        }
+
+        return nil
     }
 }
 
