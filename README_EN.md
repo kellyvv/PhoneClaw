@@ -31,12 +31,13 @@ PhoneClaw is a private local Agent running on iPhone. It ships with multiple on-
 
 **2026-06-23**
 
-- Added **LiveLand**: a system-level voice entry point for the local PhoneClaw Agent, launchable from Home Screen widgets, Lock Screen widgets, Control Widgets, App Intents / Shortcuts, and the in-app entry, with results surfaced through Dynamic Island
-- LiveLand now exposes the Agent's execution stages clearly: command received, understanding, reading/executing a Skill, summarizing, and result display. Health, Calendar, Reminders, Contacts, and other local Skills share the same event pipeline
-- Fixed the LiveLand widget cold-start path that could incorrectly show "download model first" or "model loading" after the model was already installed; widget launches now wait for runtime recovery before entering LiveLand
-- Improved local Skill generalization: routing is now driven by the Skill registry and structured candidates instead of narrow trigger phrases, backed by black-box test matrices for real user phrasing across time, contacts, reminders, and calendar tasks
-- Added safer write-operation gates: destructive contact actions, bulk operations, low-confidence time slots, and generic calendar/reminder titles now require clarification or confirmation before execution
-- iOS 27 / Foundation Models integrations are opt-in while the LiteRT / Gemma 4 on-device path remains the default; non-iOS 27 systems continue using the existing local inference and Skill loop
+- Added **LiveLand**: use PhoneClaw from Dynamic Island. The local AI listens, understands your request, runs the task, and shows the result right there
+- Launch LiveLand from Home Screen widgets, Lock Screen widgets, Shortcuts, Control Center widgets, or inside the app. It also works on non-iOS 27 systems
+- Task progress is easier to follow: PhoneClaw now shows when it received your command, is understanding it, is querying or executing, is preparing the result, and is done
+- More natural phone tasks: ask for health data, create reminders, schedule calendar events, find contacts, translate text, and more without memorizing fixed commands
+- Fixed a LiveLand widget launch issue that could incorrectly show "download model first" or "model loading" even after the model was already installed
+- Safer actions: unclear times, titles, contacts, deletes, and bulk operations ask for clarification or confirmation before running
+- LiveLand still runs on local models by default, with no cloud inference required and no per-call token billing
 
 **2026-06-08**
 
