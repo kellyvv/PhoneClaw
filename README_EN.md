@@ -29,6 +29,15 @@ PhoneClaw is a private local Agent running on iPhone. It ships with multiple on-
 
 ## Latest Updates
 
+**2026-06-23**
+
+- Added **LiveLand**: a system-level voice entry point for the local PhoneClaw Agent, launchable from Home Screen widgets, Lock Screen widgets, Control Widgets, App Intents / Shortcuts, and the in-app entry, with results surfaced through Dynamic Island
+- LiveLand now exposes the Agent's execution stages clearly: command received, understanding, reading/executing a Skill, summarizing, and result display. Health, Calendar, Reminders, Contacts, and other local Skills share the same event pipeline
+- Fixed the LiveLand widget cold-start path that could incorrectly show "download model first" or "model loading" after the model was already installed; widget launches now wait for runtime recovery before entering LiveLand
+- Improved local Skill generalization: routing is now driven by the Skill registry and structured candidates instead of narrow trigger phrases, backed by black-box test matrices for real user phrasing across time, contacts, reminders, and calendar tasks
+- Added safer write-operation gates: destructive contact actions, bulk operations, low-confidence time slots, and generic calendar/reminder titles now require clarification or confirmation before execution
+- iOS 27 / Foundation Models integrations are opt-in while the LiteRT / Gemma 4 on-device path remains the default; non-iOS 27 systems continue using the existing local inference and Skill loop
+
 **2026-06-08**
 
 - Added the PhoneClaw Gateway Mac client: keep it running on your Mac, advertise it over Bonjour, then pair from the iPhone to use Mac-side Ollama, Codex CLI, or Antigravity CLI as a remote inference source
