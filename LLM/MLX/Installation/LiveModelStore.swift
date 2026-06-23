@@ -8,6 +8,8 @@ import Foundation
 
 @Observable
 final class LiveModelStore {
+    static let shared = LiveModelStore()
+
     private(set) var installState: ModelInstallState = .notInstalled
     private(set) var downloadMetrics: ModelDownloadMetrics?
     private(set) var resumableAssetCount: Int = 0

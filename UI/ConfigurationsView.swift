@@ -21,7 +21,7 @@ struct ConfigurationsView: View {
     @State private var systemPrompt: String = ""
     @State private var permissionStatuses: [AppPermissionKind: AppPermissionStatus] = [:]
     @State private var requestingPermission: AppPermissionKind?
-    @State private var liveDownloader = LiveModelStore()
+    @State private var liveDownloader = LiveModelStore.shared
     @State private var didLoadCurrentSettings = false
     @State private var activeInfoTopic: SettingsInfoTopic?
     @State private var modelSelectionMessage: String?
