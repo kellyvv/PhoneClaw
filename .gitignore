@@ -45,8 +45,13 @@ LiteRT-LM/
 # ─── 环境 / 密钥 ──────────────────────────────────────────────────
 .env
 *.pem
+*.p8
 *.p12
+*.cer
 *.mobileprovision
+private_keys/
+.private_keys/
+.appstoreconnect/
 
 # ─── 编辑器 ───────────────────────────────────────────────────────
 .vscode/
@@ -67,4 +72,3 @@ LiteRT-LM/
 
 # ─── PhoneClawCLI (本地开发测试工具, 不入仓库) ───────────────────
 PhoneClawCLI/
-

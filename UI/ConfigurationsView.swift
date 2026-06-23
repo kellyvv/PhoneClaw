@@ -1363,25 +1363,7 @@ struct ConfigurationsView: View {
             HStack(spacing: 8) {
                 Button(modelDownloadButtonTitle(for: model, isResumable: isResumable)) {
                     modelSelectionMessage = nil
-                    Task {
-                        do {
-                            try await engine.installer.install(model: model)
-                            await MainActor.run {
-                                engine.installer.refreshInstallStates()
-                                selectModelIfCurrentUnavailable(model)
-                            }
-                        } catch is CancellationError {
-                            await MainActor.run {
-                                engine.installer.refreshInstallStates()
-                                modelSelectionMessage = nil
-                            }
-                        } catch {
-                            await MainActor.run {
-                                engine.installer.refreshInstallStates()
-                                modelSelectionMessage = modelInstallFailureMessage(error)
-                            }
-                        }
-                    }
+                    installModel(model)
                 }
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(SettingsStyle.ink)
@@ -1431,25 +1413,7 @@ struct ConfigurationsView: View {
             HStack(spacing: 8) {
                 Button(tr("重试", "Retry", "再試行")) {
                     modelSelectionMessage = nil
-                    Task {
-                        do {
-                            try await engine.installer.install(model: model)
-                            await MainActor.run {
-                                engine.installer.refreshInstallStates()
-                                selectModelIfCurrentUnavailable(model)
-                            }
-                        } catch is CancellationError {
-                            await MainActor.run {
-                                engine.installer.refreshInstallStates()
-                                modelSelectionMessage = nil
-                            }
-                        } catch {
-                            await MainActor.run {
-                                engine.installer.refreshInstallStates()
-                                modelSelectionMessage = modelInstallFailureMessage(error)
-                            }
-                        }
-                    }
+                    installModel(model)
                 }
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(SettingsStyle.ink)

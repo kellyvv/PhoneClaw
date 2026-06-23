@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Live Turn Metrics
 //
-// Structured per-turn telemetry for the Live Mode pipeline.
+// Structured per-turn metrics for the Live Mode pipeline.
 // Each completed turn prints one summary line with E2E breakdown.
 // Used to drive performance tuning and identify bottlenecks.
 
