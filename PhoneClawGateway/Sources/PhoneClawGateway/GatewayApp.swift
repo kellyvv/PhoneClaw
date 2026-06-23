@@ -150,6 +150,7 @@ enum ProviderKind: String, Codable, CaseIterable, Identifiable {
     case miniMax
     case miMo
     case aiHubMix
+    case atlasCloud
     case senseAudio
     case lmStudio
     case liteLLM
@@ -160,7 +161,7 @@ enum ProviderKind: String, Codable, CaseIterable, Identifiable {
     var id: String { rawValue }
 
     static var catalogCases: [ProviderKind] {
-        [.codexCLI, .antigravityCLI, .ollama]
+        [.codexCLI, .antigravityCLI, .ollama, .atlasCloud]
     }
 
     static func catalogCases(in category: ProviderCategory) -> [ProviderKind] {
@@ -178,6 +179,7 @@ enum ProviderKind: String, Codable, CaseIterable, Identifiable {
         case .miniMax: return "MiniMax"
         case .miMo: return "MiMo"
         case .aiHubMix: return "AIHubMix"
+        case .atlasCloud: return "Atlas Cloud"
         case .senseAudio: return "SenseAudio"
         case .lmStudio: return "LM Studio"
         case .liteLLM: return "LiteLLM"
@@ -191,7 +193,7 @@ enum ProviderKind: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .codexCLI, .antigravityCLI, .ollama, .lmStudio, .liteLLM, .vLLM, .echo:
             return .cli
-        case .openai, .openRouter, .deepSeek, .miniMax, .miMo, .aiHubMix, .senseAudio, .openAICompatible:
+        case .openai, .openRouter, .deepSeek, .miniMax, .miMo, .aiHubMix, .atlasCloud, .senseAudio, .openAICompatible:
             return .byok
         }
     }
@@ -207,6 +209,7 @@ enum ProviderKind: String, Codable, CaseIterable, Identifiable {
         case .miniMax: return "bolt.horizontal"
         case .miMo: return "m.circle"
         case .aiHubMix: return "square.grid.2x2"
+        case .atlasCloud: return "cloud"
         case .senseAudio: return "waveform"
         case .lmStudio: return "desktopcomputer"
         case .liteLLM: return "switch.2"
@@ -227,6 +230,7 @@ enum ProviderKind: String, Codable, CaseIterable, Identifiable {
         case .miniMax: return "MiniMax API"
         case .miMo: return "小米 MiMo API"
         case .aiHubMix: return "AIHubMix 聚合"
+        case .atlasCloud: return "Atlas Cloud 聚合"
         case .senseAudio: return "SenseAudio API"
         case .lmStudio: return "本机 LM Studio"
         case .liteLLM: return "自托管 LiteLLM"
@@ -247,6 +251,7 @@ enum ProviderKind: String, Codable, CaseIterable, Identifiable {
         case .miniMax: return "minimax"
         case .miMo: return "mimo"
         case .aiHubMix: return "aihubmix"
+        case .atlasCloud: return "atlascloud"
         case .senseAudio: return "senseaudio"
         case .lmStudio: return "lmstudio"
         case .liteLLM: return "litellm"
@@ -267,6 +272,7 @@ enum ProviderKind: String, Codable, CaseIterable, Identifiable {
         case .miniMax: return "https://api.minimaxi.com/v1"
         case .miMo: return "https://token-plan-cn.xiaomimimo.com/v1"
         case .aiHubMix: return "https://aihubmix.com/v1"
+        case .atlasCloud: return "https://api.atlascloud.ai/v1"
         case .senseAudio: return "https://api.senseaudio.cn"
         case .lmStudio: return "http://127.0.0.1:1234"
         case .liteLLM: return "http://127.0.0.1:4000"
@@ -278,21 +284,21 @@ enum ProviderKind: String, Codable, CaseIterable, Identifiable {
 
     var needsAPIKey: Bool {
         switch self {
-        case .openai, .openRouter, .deepSeek, .miniMax, .miMo, .aiHubMix, .senseAudio: return true
+        case .openai, .openRouter, .deepSeek, .miniMax, .miMo, .aiHubMix, .atlasCloud, .senseAudio: return true
         case .codexCLI, .antigravityCLI, .ollama, .lmStudio, .liteLLM, .vLLM, .openAICompatible, .echo: return false
         }
     }
 
     var commonlyUsesAPIKey: Bool {
         switch self {
-        case .openai, .openRouter, .deepSeek, .miniMax, .miMo, .aiHubMix, .senseAudio, .liteLLM, .openAICompatible: return true
+        case .openai, .openRouter, .deepSeek, .miniMax, .miMo, .aiHubMix, .atlasCloud, .senseAudio, .liteLLM, .openAICompatible: return true
         case .codexCLI, .antigravityCLI, .ollama, .lmStudio, .vLLM, .echo: return false
         }
     }
 
     var isMainRuntimeSource: Bool {
         switch self {
-        case .codexCLI, .antigravityCLI, .ollama: return true
+        case .codexCLI, .antigravityCLI, .ollama, .atlasCloud: return true
         default: return false
         }
     }
@@ -328,6 +334,8 @@ enum ProviderKind: String, Codable, CaseIterable, Identifiable {
             return "mimo-v2.5-pro"
         case .aiHubMix:
             return "gpt-5.5, gpt-4o-mini, claude-sonnet-4-5, gemini-2.0-flash, deepseek-chat"
+        case .atlasCloud:
+            return "deepseek-ai/deepseek-v4-pro, anthropic/claude-sonnet-4.6, qwen/qwen3-coder-next, openai/gpt-5.5"
         case .senseAudio:
             return "senseaudio-s2, senseaudio-s2-flash, deepseek-v4-flash"
         case .lmStudio, .liteLLM, .vLLM, .openAICompatible:
