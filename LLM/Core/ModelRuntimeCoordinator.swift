@@ -111,6 +111,7 @@ public final class ModelRuntimeCoordinator {
 
         // Transition: idle → loading
         transition(to: .loading(modelID: modelID, phase: .loadingWeights))
+        PCLog.modelLoadStarted(modelID: modelID, backend: backend)
         log.info("load(\(modelID, privacy: .public), backend=\(backend, privacy: .public)) started")
 
         do {
@@ -223,6 +224,35 @@ public final class ModelRuntimeCoordinator {
         currentTransaction = txn
         transition(to: .generating(modelID: modelID, txnID: txn.id))
         log.info("beginGeneration txn=\(txn.id.uuidString.prefix(8), privacy: .public)")
+        return txn
+    }
+
+    /// Recover a non-terminal transaction only when the backend has already stopped.
+    ///
+    /// This handles the no-answer failure mode where an owner path returned before
+    /// `finishTurn()`, leaving the coordinator in `.generating` even though no
+    /// inference stream is active. It deliberately refuses to recover while the
+    /// backend is still generating, because resetting KV before stream termination
+    /// is unsafe for LiteRT.
+    public func recoverStuckGenerationIfBackendIdle(
+        minimumAge: TimeInterval,
+        reason: String
+    ) async -> GenerationTransaction? {
+        guard let txn = currentTransaction,
+              !txn.isTerminal,
+              txn.elapsed >= minimumAge,
+              !inference.isGenerating else {
+            return nil
+        }
+
+        txn.markTerminated(reason: .error(reason))
+        if txn.didBeginStreaming {
+            await inference.resetKVSession()
+        }
+        if case .generating(let modelID, _) = sessionState {
+            transition(to: .ready(modelID: modelID, backend: lastKnownBackend))
+        }
+        log.warning("recovered stuck transaction \(txn.id.uuidString.prefix(8), privacy: .public), reason=\(reason, privacy: .public)")
         return txn
     }
 

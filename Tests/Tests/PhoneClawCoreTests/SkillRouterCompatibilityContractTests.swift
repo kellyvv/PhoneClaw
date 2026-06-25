@@ -13,6 +13,16 @@ final class SkillRouterCompatibilityContractTests: XCTestCase {
         try String(contentsOf: repoRoot.appendingPathComponent(relativePath), encoding: .utf8)
     }
 
+    private func coordinatorRecoverySource() throws -> String {
+        let coordinator = try source("LLM/Core/ModelRuntimeCoordinator.swift")
+        guard let start = coordinator.range(of: "public func recoverStuckGenerationIfBackendIdle("),
+              let end = coordinator.range(of: "\n    /// 当前 transaction", range: start.upperBound..<coordinator.endIndex) else {
+            XCTFail("recoverStuckGenerationIfBackendIdle source boundary not found")
+            return ""
+        }
+        return String(coordinator[start.lowerBound..<end.lowerBound])
+    }
+
     private func fileExists(_ relativePath: String) -> Bool {
         FileManager.default.fileExists(atPath: repoRoot.appendingPathComponent(relativePath).path)
     }
@@ -75,6 +85,80 @@ final class SkillRouterCompatibilityContractTests: XCTestCase {
         XCTAssertTrue(processInput.contains("guardedRouteBlocksModelIntent"))
         XCTAssertTrue(processInput.contains("!guardedRouteBlocksModelIntent"))
         XCTAssertTrue(processInput.contains("guardedRouteDecision?.action == .answerDirectly"))
+    }
+
+    func testRemoteGatewaySecretsStayOutOfUserDefaultsAndPairingChecksOrigin() throws {
+        let binding = try source("LLM/Backends/Remote/LANBinding.swift")
+        let gateway = try source("LLM/Backends/Remote/MacGateway.swift")
+
+        XCTAssertTrue(binding.contains("RemoteBindingCredentialStore.saveBindingSecret"))
+        XCTAssertTrue(binding.contains("RemoteBindingCredentialStore.loadBindingSecret"))
+        XCTAssertTrue(binding.contains("copy.secret = \"\""))
+        XCTAssertTrue(binding.contains("RemoteBindingCredentialStore.deleteBindingSecret"))
+
+        XCTAssertTrue(gateway.contains("import Security"))
+        XCTAssertTrue(gateway.contains("GatewayCredentialStore.savePairedDeviceToken"))
+        XCTAssertTrue(gateway.contains("GatewayCredentialStore.loadPairedDeviceToken"))
+        XCTAssertTrue(gateway.contains("GatewayCredentialStore.randomToken()"))
+        XCTAssertTrue(gateway.contains("Failed to persist pairing token"))
+        XCTAssertTrue(gateway.contains("case id, name, pairedAt, lastSeenAt"))
+        XCTAssertFalse(gateway.contains("case id, name, pairedAt, lastSeenAt, token"))
+
+        XCTAssertTrue(gateway.contains("isAllowedPairOrigin(req)"))
+        XCTAssertTrue(gateway.contains("Pairing origin denied"))
+        XCTAssertTrue(gateway.contains("host == \"localhost\" || host == \"127.0.0.1\" || host == \"::1\""))
+    }
+
+    func testStuckGenerationRecoveryOnlyRunsWhenBackendIsIdle() throws {
+        let recovery = try coordinatorRecoverySource()
+
+        XCTAssertTrue(recovery.contains("!txn.isTerminal"))
+        XCTAssertTrue(recovery.contains("txn.elapsed >= minimumAge"))
+        XCTAssertTrue(recovery.contains("!inference.isGenerating"))
+        XCTAssertTrue(recovery.contains("return nil"))
+    }
+
+    func testStuckGenerationRecoveryTerminatesTxnAndPreservesKVOrdering() throws {
+        let recovery = try coordinatorRecoverySource()
+
+        XCTAssertTrue(recovery.contains("txn.markTerminated(reason: .error(reason))"))
+        XCTAssertTrue(recovery.contains("if txn.didBeginStreaming {"))
+        XCTAssertTrue(recovery.contains("await inference.resetKVSession()"))
+        XCTAssertTrue(recovery.contains("if case .generating(let modelID, _) = sessionState {"))
+        XCTAssertTrue(recovery.contains("transition(to: .ready(modelID: modelID, backend: lastKnownBackend))"))
+
+        let terminateRange = try XCTUnwrap(recovery.range(of: "txn.markTerminated(reason: .error(reason))"))
+        let resetRange = try XCTUnwrap(recovery.range(of: "await inference.resetKVSession()"))
+        let readyRange = try XCTUnwrap(recovery.range(of: "transition(to: .ready(modelID: modelID, backend: lastKnownBackend))"))
+        XCTAssertLessThan(terminateRange.lowerBound, resetRange.lowerBound)
+        XCTAssertLessThan(resetRange.lowerBound, readyRange.lowerBound)
+    }
+
+    func testBackgroundDownloadsCanRehydrateColdCompletedTasks() throws {
+        let downloader = try source("LLM/Installation/Download/ResumableAssetDownloader.swift")
+
+        XCTAssertTrue(downloader.contains("BackgroundDownloadTaskContext"))
+        XCTAssertTrue(downloader.contains("task.taskDescription = context.taskDescription"))
+        XCTAssertTrue(downloader.contains("storeColdDownloadedFile(from: location, for: downloadTask)"))
+        XCTAssertTrue(downloader.contains("handleColdTaskCompletion(task: task, error: error)"))
+        XCTAssertTrue(downloader.contains("preserving rehydratable background task"))
+        XCTAssertTrue(downloader.contains("partialBytes == context.rangeOffset"))
+        XCTAssertTrue(downloader.contains("Missing HTTP status for cold range rehydration"))
+        XCTAssertTrue(downloader.contains("statusCode != 206"))
+        XCTAssertFalse(downloader.contains("guard let transfer else { return }"))
+    }
+
+    func testStreamingSessionSaveHasBoundedDebounceAndCleansCursor() throws {
+        let store = try source("Agent/Engine/ChatSessionStore.swift")
+        let engine = try source("Agent/AgentEngine.swift")
+        let lifecycle = try source("Agent/Engine/EngineLifecycle.swift")
+
+        XCTAssertTrue(store.contains("maxPendingSaveInterval: TimeInterval = 3.0"))
+        XCTAssertTrue(store.contains("maxPendingSaveInterval - elapsed"))
+        XCTAssertTrue(store.contains("self.pendingSaveStartedAt = nil"))
+        XCTAssertTrue(engine.contains("messagesForPersistence()"))
+        XCTAssertTrue(engine.contains("message.content.hasSuffix(\"▍\")"))
+        XCTAssertTrue(lifecycle.contains("flushPendingSave(messages: messagesForPersistence())"))
     }
 
     func testIOS27FoundationRouterIsAutoEnabledAndFallbackOnly() throws {

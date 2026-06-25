@@ -40,14 +40,20 @@ extension AgentEngine {
         } else {
             normalizedText = trimmed
         }
-        guard !isProcessing else { return }
         guard !normalizedText.isEmpty || !promptAttachments.isEmpty || audioInput != nil else { return }
-        isProcessing = true
-        lastTurnRawModelOutputs.removeAll()
-        lastTurnPromptDiagnostics.removeAll()
-        lastTurnStreamingPrompt = nil
-        guard beginGenerationTracking() else {
-            isProcessing = false
+        let turnID = UUID()
+        let turnSessionID = sessionStore.currentSessionID
+        let isFirstMessage = messages.isEmpty
+        if isProcessing {
+            recordTurnRejected(
+                turnID: turnID,
+                sessionID: turnSessionID,
+                reason: "is_processing",
+                isFirstMessage: isFirstMessage
+            )
+            if !inference.isGenerating {
+                appendGenerationBusyMessage()
+            }
             return
         }
 
@@ -58,6 +64,21 @@ extension AgentEngine {
             audios: audioClips
         )
         messages.append(currentUserMessage)
+
+        isProcessing = true
+        lastTurnRawModelOutputs.removeAll()
+        lastTurnPromptDiagnostics.removeAll()
+        lastTurnStreamingPrompt = nil
+        guard let turnContext = await beginGenerationTracking(
+            turnID: turnID,
+            sessionID: turnSessionID,
+            userMessageID: currentUserMessage.id,
+            isFirstMessage: isFirstMessage
+        ) else {
+            appendGenerationRejectedMessage()
+            isProcessing = false
+            return
+        }
 
         var requiresMultimodal = !promptAttachments.isEmpty || audioInput != nil
         var imageFollowUpBridgeSummary: String?
@@ -148,7 +169,8 @@ extension AgentEngine {
                             await answerFromPriorContextArtifact(
                                 userQuestion: normalizedText,
                                 artifact: previousArtifact,
-                                decision: decision
+                                decision: decision,
+                                turnContext: turnContext
                             )
                             return
                         case .cancelOrReject, .chitchat:
@@ -236,7 +258,6 @@ extension AgentEngine {
         let policy = catalog.runtimePolicy(for: catalog.selectedModel.id)
         let headroomMB = Double(MemoryStats.headroomMB)
         let historyDepth = requiresMultimodal ? 0 : policy.safeHistoryDepth(headroomMB: headroomMB)
-        let plannerHistoryDepth = shouldUsePlanner ? 0 : historyDepth
         let promptImages = promptImages(historyDepth: historyDepth, currentImages: promptAttachments)
 
         // Tag 这条 assistant placeholder 的 skillName, 让 sticky routing 在
@@ -278,7 +299,7 @@ extension AgentEngine {
             await prepareSessionGroupTransitionIfNeeded(for: multimodalPlan)
             var multimodalBuffer = ""
 
-            markStreamingStarted()
+            markStreamingStarted(context: turnContext)
             inference.generateMultimodal(
                 images: promptImages,
                 audios: audioInput.map { [$0] } ?? [],
@@ -287,6 +308,10 @@ extension AgentEngine {
             ) { [weak self] token in
                 guard let self = self,
                       self.messages.indices.contains(msgIndex) else { return }
+                guard self.isCurrentTurnOwner(turnContext) else {
+                    self.inference.cancel()
+                    return
+                }
                 multimodalBuffer += token
                 let cleaned = self.cleanOutputStreaming(multimodalBuffer)
                 self.enqueueStreamingMessageContentUpdate(
@@ -295,8 +320,12 @@ extension AgentEngine {
                 )
             } onComplete: { [weak self] result in
                 guard let self = self else { return }
+                guard self.isCurrentTurnOwner(turnContext) else {
+                    self.finishTurn(context: turnContext)
+                    return
+                }
                 guard self.messages.indices.contains(msgIndex) else {
-                    self.finishTurn()
+                    self.finishTurn(context: turnContext)
                     return
                 }
                 switch result {
@@ -315,12 +344,12 @@ extension AgentEngine {
                         assistantSummary: cleaned.isEmpty ? fullText : cleaned
                     )
                     self.recordCompletedObservation(plan: multimodalPlan)
-                    self.finishTurn()
+                    self.finishTurn(context: turnContext)
                 case .failure(let error):
                     if self.isUserCancellationError(error) {
                         log("[Agent] multimodal cancelled")
                         self.settleCancelledMessage(at: msgIndex)
-                        self.finishTurn(userCancelled: true)
+                        self.finishTurn(context: turnContext, userCancelled: true)
                         return
                     }
                     log("[Agent] multimodal failed: \(error.localizedDescription)")
@@ -332,7 +361,7 @@ extension AgentEngine {
                         tokenCapHit: self.classifyTokenCapHit(error),
                         memoryFloorHit: self.classifyMemoryFloorHit(error)
                     )
-                    self.finishTurn(error: error.localizedDescription)
+                    self.finishTurn(context: turnContext, error: error.localizedDescription)
                 }
             }
             return
@@ -475,7 +504,7 @@ extension AgentEngine {
                         advancePromptPipelineState: false,
                         preflightHardReject: true
                     )
-                    finishTurn()
+                    finishTurn(context: turnContext)
                     return
                 }
 
@@ -518,7 +547,6 @@ extension AgentEngine {
                 )
             }
         }
-        let agentPrompt = promptBundle.agentPrompt
         let lightPrompt = promptBundle.lightPrompt
         let plannerInputPrompt = promptBundle.plannerInputPrompt
         let streamingPrompt = promptBundle.streamingPrompt
@@ -552,7 +580,8 @@ extension AgentEngine {
             let plannerHandled = await executePlannedSkillChainIfPossible(
                 prompt: plannerInputPrompt,
                 userQuestion: normalizedText,
-                images: promptImages
+                images: promptImages,
+                turnContext: turnContext
             )
 
             if plannerHandled {
@@ -574,13 +603,17 @@ extension AgentEngine {
         var buffer = ""
         var bufferFlushed = false
 
-        markStreamingStarted()
+        markStreamingStarted(context: turnContext)
         inference.generate(
             prompt: streamingPrompt,
             runtimeToolScope: runtimeToolScope,
             onToken: { [weak self] token in
                 guard let self = self,
                       self.messages.indices.contains(msgIndex) else { return }
+                guard self.isCurrentTurnOwner(turnContext) else {
+                    self.inference.cancel()
+                    return
+                }
 
                 if detectedToolCall {
                     buffer += token
@@ -617,8 +650,12 @@ extension AgentEngine {
             },
             onComplete: { [weak self] result in
                 guard let self = self else { return }
+                guard self.isCurrentTurnOwner(turnContext) else {
+                    self.finishTurn(context: turnContext)
+                    return
+                }
                 guard self.messages.indices.contains(msgIndex) else {
-                    self.finishTurn()
+                    self.finishTurn(context: turnContext)
                     return
                 }
                 switch result {
@@ -630,12 +667,15 @@ extension AgentEngine {
                         self.recordCompletedObservation(plan: textPromptPlan)
                         // Tool chain continues the turn — txn stays .streaming,
                         // finishTurn() will be called when the chain completes.
-                        Task {
+                        self.activeTurnTask = Task { [weak self] in
+                            guard let self else { return }
                             await self.executeToolChain(
                                 prompt: streamingPrompt,
                                 fullText: fullText,
                                 userQuestion: normalizedText,
-                                images: promptImages
+                                images: promptImages,
+                                sessionID: turnContext.sessionID,
+                                turnContext: turnContext
                             )
                         }
                         return
@@ -653,7 +693,8 @@ extension AgentEngine {
                             log("[Agent] preloaded skill fallback triggered after missing tool_call")
                             self.setStreamingMessageContent(at: msgIndex, content: "")
                             self.recordCompletedObservation(plan: textPromptPlan)
-                            Task {
+                            self.activeTurnTask = Task { [weak self] in
+                                guard let self else { return }
                                 await self.executePreloadedSkillToolFallback(
                                     extractionPromptBase: lightPrompt,
                                     toolChainPrompt: streamingPrompt,
@@ -662,7 +703,8 @@ extension AgentEngine {
                                     preloadedSkills: preloadedSkills,
                                     images: promptImages,
                                     msgIndex: msgIndex,
-                                    fallbackText: cleaned
+                                    fallbackText: cleaned,
+                                    turnContext: turnContext
                                 )
                             }
                             return
@@ -673,7 +715,7 @@ extension AgentEngine {
                     if forceImageFollowUpTextPrompt,
                        let imageFollowUpBridgeSummary,
                        !cleaned.isEmpty {
-                        Task { [weak self] in
+                        self.activeTurnTask = Task { [weak self] in
                             guard let self else { return }
                             let repaired = await self.streamImageFollowUpStableReply(
                                 cleanedDraft: cleaned,
@@ -687,7 +729,7 @@ extension AgentEngine {
                                     content: repaired.isEmpty ? PromptLocale.current.emptyReplyPlaceholder : repaired
                                 )
                             }
-                            self.finishTurn()
+                            self.finishTurn(context: turnContext)
                         }
                         return
                     }
@@ -695,12 +737,12 @@ extension AgentEngine {
                         at: msgIndex,
                         content: cleaned.isEmpty ? PromptLocale.current.emptyReplyPlaceholder : cleaned
                     )
-                    self.finishTurn()
+                    self.finishTurn(context: turnContext)
                 case .failure(let error):
                     if self.isUserCancellationError(error) {
                         log("[Agent] generation cancelled")
                         self.settleCancelledMessage(at: msgIndex)
-                        self.finishTurn(userCancelled: true)
+                        self.finishTurn(context: turnContext, userCancelled: true)
                         return
                     }
                     if self.messages.indices.contains(msgIndex) {
@@ -711,7 +753,7 @@ extension AgentEngine {
                         tokenCapHit: self.classifyTokenCapHit(error),
                         memoryFloorHit: self.classifyMemoryFloorHit(error)
                     )
-                    self.finishTurn(error: error.localizedDescription)
+                    self.finishTurn(context: turnContext, error: error.localizedDescription)
                 }
             }
         )
@@ -730,13 +772,27 @@ extension AgentEngine {
 
     // MARK: - Skill 结果后的后续推理（支持多轮工具链）
 
-    func streamLLM(prompt: String, images: [CIImage]) async -> String? {
+    func streamLLM(
+        prompt: String,
+        images: [CIImage],
+        turnContext: GenerationTurnContext? = nil
+    ) async -> String? {
         logPromptDiagnostics(label: "streamLLM.headless", prompt: prompt)
         return await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
             inference.generate(
                 prompt: prompt,
-                onToken: { _ in },
+                onToken: { [weak self] _ in
+                    guard let self, let turnContext else { return }
+                    guard self.isCurrentTurnOwner(turnContext) else {
+                        self.inference.cancel()
+                        return
+                    }
+                },
                 onComplete: { result in
+                    if let turnContext, !self.isCurrentTurnOwner(turnContext) {
+                        continuation.resume(returning: nil)
+                        return
+                    }
                     switch result {
                     case .success(let text):
                         self.lastTurnRawModelOutputs.append(text)
@@ -751,7 +807,12 @@ extension AgentEngine {
         }
     }
 
-    func streamLLM(prompt: String, msgIndex: Int, images: [CIImage]) async -> String? {
+    func streamLLM(
+        prompt: String,
+        msgIndex: Int,
+        images: [CIImage],
+        turnContext: GenerationTurnContext? = nil
+    ) async -> String? {
         logPromptDiagnostics(label: "streamLLM.ui", prompt: prompt)
         var buffer = ""
         return await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
@@ -762,6 +823,10 @@ extension AgentEngine {
                 onToken: { [weak self] token in
                     guard let self = self,
                           self.messages.indices.contains(msgIndex) else { return }
+                    if let turnContext, !self.isCurrentTurnOwner(turnContext) {
+                        self.inference.cancel()
+                        return
+                    }
                     buffer += token
 
                 if toolCallDetected { return }
@@ -790,6 +855,10 @@ extension AgentEngine {
                     continuation.resume(returning: nil)
                     return
                 }
+                if let turnContext, !self.isCurrentTurnOwner(turnContext) {
+                    continuation.resume(returning: nil)
+                    return
+                }
                 switch result {
                 case .success(let text):
                     self.flushPendingStreamingMessageContentUpdates()
@@ -802,7 +871,7 @@ extension AgentEngine {
                         if self.messages.indices.contains(msgIndex) {
                             self.settleCancelledMessage(at: msgIndex)
                         }
-                        self.finishTurn(userCancelled: true)
+                        self.finishTurn(context: turnContext, userCancelled: true)
                         continuation.resume(returning: nil)
                         return
                     }
@@ -821,16 +890,69 @@ extension AgentEngine {
 
     /// Begin generation transaction tracking at the start of a user turn.
     /// Creates a coordinator transaction if the runtime is ready.
-    /// Gracefully no-ops if coordinator is not in ready state (migration path).
+    /// Rejects with a visible message and structured event instead of silently
+    /// dropping the user message when the runtime is loading or a prior
+    /// transaction is stuck.
     @discardableResult
-    func beginGenerationTracking() -> Bool {
-        coordinator.beginGenerationIfPossible() != nil
+    func beginGenerationTracking(
+        turnID: UUID,
+        sessionID: UUID,
+        userMessageID: UUID,
+        isFirstMessage: Bool
+    ) async -> GenerationTurnContext? {
+        if let staleTransaction = coordinator.currentTransaction,
+           !staleTransaction.isTerminal,
+           staleTransaction.elapsed >= 45 {
+            let ageMs = Int(staleTransaction.elapsed * 1000)
+            let recovered = await coordinator.recoverStuckGenerationIfBackendIdle(
+                minimumAge: 45,
+                reason: "backend_idle_timeout"
+            )
+            PCLog.transactionStuck(
+                transactionID: staleTransaction.id,
+                sessionID: sessionID,
+                ageMs: ageMs,
+                runtimeState: String(describing: coordinator.sessionState),
+                backendGenerating: inference.isGenerating,
+                action: recovered == nil ? "observed" : "recovered_backend_idle"
+            )
+        }
+
+        guard let txn = coordinator.beginGenerationIfPossible() else {
+            let reason = generationRejectionReason()
+            recordTurnRejected(
+                turnID: turnID,
+                sessionID: sessionID,
+                reason: reason,
+                isFirstMessage: isFirstMessage
+            )
+            return nil
+        }
+
+        let context = GenerationTurnContext(
+            turnID: turnID,
+            sessionID: sessionID,
+            transactionID: txn.id,
+            userMessageID: userMessageID,
+            createdAt: Date()
+        )
+        activeTurnContext = context
+        activeTurnTask = nil
+        PCLog.event(
+            "turn_started",
+            detail: "turn_id=\(turnID.uuidString) session_id=\(sessionID.uuidString) txn_id=\(txn.id.uuidString) model=\(txn.modelID)"
+        )
+        return context
         // Don't call txn.begin() yet — that happens when inference actually starts streaming.
     }
 
     /// Signal that the inference stream has started for the current transaction.
     /// Call immediately before `inference.generate()` or `inference.generateMultimodal()`.
-    func markStreamingStarted() {
+    func markStreamingStarted(context: GenerationTurnContext) {
+        guard isCurrentTurnTransactionOwner(context) else {
+            PCLog.warn("turn_stream_start_ignored", detail: ownerDetail(context))
+            return
+        }
         coordinator.currentTransaction?.begin()
     }
 
@@ -844,13 +966,27 @@ extension AgentEngine {
     ///   terminated with an error reason. If nil, the turn succeeded normally.
     ///   If the transaction is in `.cancelling` state (user pressed stop),
     ///   it's terminated as cancelled regardless of this parameter.
-    func finishTurn(error: String? = nil, userCancelled: Bool = false) {
+    func finishTurn(
+        context: GenerationTurnContext? = nil,
+        error: String? = nil,
+        userCancelled: Bool = false
+    ) {
+        if let context, !isCurrentTurnTransactionOwner(context) {
+            PCLog.warn("finish_turn_ignored_non_owner", detail: ownerDetail(context))
+            return
+        }
+
         let txn = coordinator.currentTransaction
         if let txn, !txn.isTerminal {
-            if userCancelled || txn.state == .cancelling {
-                // Cancel flow in progress — mark terminated so coordinator's
-                // async cancel can proceed with KV reset.
+            let wasCancelling = txn.state == .cancelling
+            if userCancelled || wasCancelling {
                 txn.markTerminated(reason: .userCancelled)
+                if wasCancelling {
+                    // Split cancel flow: cancelCurrentGeneration() still owns KV reset
+                    // and the final ready transition.
+                } else {
+                    coordinator.completeGeneration()
+                }
             } else if let error {
                 txn.markTerminated(reason: .error(error))
                 coordinator.completeGeneration()
@@ -866,6 +1002,101 @@ extension AgentEngine {
             }
         }
         isProcessing = false
+        if context == nil || activeTurnContext?.transactionID == context?.transactionID {
+            activeTurnTask = nil
+            activeTurnContext = nil
+        }
+    }
+
+    func abandonTurnIfOwner(_ context: GenerationTurnContext?, reason: String) {
+        guard let context else { return }
+        guard isCurrentTurnTransactionOwner(context) else {
+            PCLog.warn("turn_abandon_ignored_non_owner", detail: ownerDetail(context))
+            return
+        }
+        PCLog.event("turn_abandoned", detail: "\(ownerDetail(context)) reason=\(reason)")
+        finishTurn(context: context, error: reason)
+    }
+
+    func isCurrentTurnOwner(_ context: GenerationTurnContext) -> Bool {
+        activeTurnContext?.transactionID == context.transactionID
+            && sessionStore.currentSessionID == context.sessionID
+            && coordinator.currentTransaction?.id == context.transactionID
+    }
+
+    func isCurrentTurnTransactionOwner(_ context: GenerationTurnContext) -> Bool {
+        coordinator.currentTransaction?.id == context.transactionID
+            && (activeTurnContext == nil || activeTurnContext?.transactionID == context.transactionID)
+    }
+
+    func ownerDetail(_ context: GenerationTurnContext) -> String {
+        "turn_id=\(context.turnID.uuidString) session_id=\(context.sessionID.uuidString) txn_id=\(context.transactionID.uuidString) current_session=\(sessionStore.currentSessionID.uuidString) current_txn=\(coordinator.currentTransaction?.id.uuidString ?? "none")"
+    }
+
+    func generationRejectionReason() -> String {
+        if let currentTransaction = coordinator.currentTransaction,
+           !currentTransaction.isTerminal {
+            return "active_transaction"
+        }
+        if !coordinator.sessionState.canGenerate {
+            return "not_ready"
+        }
+        return "unknown"
+    }
+
+    func recordTurnRejected(
+        turnID: UUID,
+        sessionID: UUID,
+        reason: String,
+        isFirstMessage: Bool
+    ) {
+        let txn = coordinator.currentTransaction
+        PCLog.turnRejected(
+            turnID: turnID,
+            sessionID: sessionID,
+            reason: reason,
+            runtimeState: String(describing: coordinator.sessionState),
+            transactionID: txn?.id,
+            transactionAgeMs: txn.map { Int($0.elapsed * 1000) },
+            modelID: coordinator.sessionState.activeModelID,
+            backend: coordinator.sessionState.activeBackend,
+            isFirstMessage: isFirstMessage
+        )
+    }
+
+    func appendGenerationRejectedMessage() {
+        let message: String
+        if let txn = coordinator.currentTransaction, !txn.isTerminal {
+            message = tr(
+                "上一轮还在收尾，请稍后重试。",
+                "The previous turn is still finishing. Please try again shortly.",
+                "前の応答がまだ終了処理中です。少し待ってからもう一度お試しください。"
+            )
+            PCLog.warn(
+                "turn_rejected_active_transaction",
+                detail: "txn_id=\(txn.id.uuidString) age_ms=\(Int(txn.elapsed * 1000))"
+            )
+        } else {
+            message = tr(
+                "模型还在启动，请稍后重试。",
+                "The model is still starting. Please try again shortly.",
+                "モデルを起動中です。少し待ってからもう一度お試しください。"
+            )
+        }
+        messages.append(ChatMessage(role: .system, content: message))
+    }
+
+    func appendGenerationBusyMessage() {
+        let message = tr(
+            "上一轮还在收尾，请稍后重试。",
+            "The previous turn is still finishing. Please try again shortly.",
+            "前の応答がまだ終了処理中です。少し待ってからもう一度お試しください。"
+        )
+        if messages.last?.role == .system,
+           messages.last?.content == message {
+            return
+        }
+        messages.append(ChatMessage(role: .system, content: message))
     }
 
     // MARK: - Helpers

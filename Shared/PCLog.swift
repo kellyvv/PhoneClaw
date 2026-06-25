@@ -41,6 +41,10 @@ enum PCLog {
         logger.info("[Model] phase=load model=\(modelID) backend=\(backend) load_ms=\(Int(loadMs)) status=ok")
     }
 
+    static func modelLoadStarted(modelID: String, backend: String) {
+        logger.info("[Model] phase=load model=\(modelID) backend=\(backend) status=start")
+    }
+
     static func modelLoadFailed(modelID: String, reason: String) {
         logger.error("[Model] phase=load model=\(modelID) status=failed reason=\(reason)")
     }
@@ -90,6 +94,33 @@ enum PCLog {
     static func event(_ tag: String, detail: String = "") {
         let suffix = detail.isEmpty ? "" : " \(detail)"
         logger.info("[Event] \(tag)\(suffix)")
+    }
+
+    static func turnRejected(
+        turnID: UUID,
+        sessionID: UUID,
+        reason: String,
+        runtimeState: String,
+        transactionID: UUID?,
+        transactionAgeMs: Int?,
+        modelID: String?,
+        backend: String?,
+        isFirstMessage: Bool
+    ) {
+        let txn = transactionID?.uuidString ?? "none"
+        let age = transactionAgeMs.map(String.init) ?? "none"
+        logger.warning("[Event] turn_rejected_not_ready turn_id=\(turnID.uuidString) session_id=\(sessionID.uuidString) reason=\(reason) runtime_state=\(runtimeState) txn_id=\(txn) txn_age_ms=\(age) model=\(modelID ?? "none") backend=\(backend ?? "none") first_message=\(isFirstMessage)")
+    }
+
+    static func transactionStuck(
+        transactionID: UUID,
+        sessionID: UUID,
+        ageMs: Int,
+        runtimeState: String,
+        backendGenerating: Bool,
+        action: String
+    ) {
+        logger.warning("[Event] transaction_stuck txn_id=\(transactionID.uuidString) session_id=\(sessionID.uuidString) age_ms=\(ageMs) runtime_state=\(runtimeState) backend_generating=\(backendGenerating) action=\(action)")
     }
 
     // MARK: - Suppress LiteRT Runtime Noise

@@ -706,7 +706,8 @@ extension AgentEngine {
         preloadedSkills: [PromptBuilder.PreloadedSkill],
         images: [CIImage],
         msgIndex: Int,
-        fallbackText: String
+        fallbackText: String,
+        turnContext: GenerationTurnContext? = nil
     ) async {
         let scopedToolNames =
             inferredPriorToolScopeForCorrection(
@@ -724,7 +725,11 @@ extension AgentEngine {
             if messages.indices.contains(msgIndex) {
                 messages[msgIndex].update(content: finalReply)
             }
-            finishTurn()
+            finishTurn(context: turnContext)
+            return
+        }
+        guard !Task.isCancelled else {
+            abandonTurnIfOwner(turnContext, reason: "preloaded_fallback_task_cancelled")
             return
         }
 
@@ -738,7 +743,9 @@ extension AgentEngine {
                 prompt: toolChainPrompt,
                 fullText: syntheticToolCall,
                 userQuestion: userQuestion,
-                images: images
+                images: images,
+                sessionID: turnContext?.sessionID,
+                turnContext: turnContext
             )
             return
         }
@@ -753,7 +760,9 @@ extension AgentEngine {
                 prompt: toolChainPrompt,
                 fullText: syntheticToolCall,
                 userQuestion: userQuestion,
-                images: images
+                images: images,
+                sessionID: turnContext?.sessionID,
+                turnContext: turnContext
             )
             return
         }
@@ -767,8 +776,13 @@ extension AgentEngine {
             images: images,
             allowedToolNames: scopedToolNames
         )
+        guard !Task.isCancelled else {
+            abandonTurnIfOwner(turnContext, reason: "preloaded_fallback_task_cancelled")
+            return
+        }
         guard sessionStore.currentSessionID == fallbackSessionID else {
             log("[Agent] preloaded skill fallback abandoned after session change")
+            abandonTurnIfOwner(turnContext, reason: "preloaded_fallback_session_changed")
             return
         }
 
@@ -781,14 +795,15 @@ extension AgentEngine {
                 fullText: syntheticToolCall,
                 userQuestion: userQuestion,
                 images: images,
-                sessionID: fallbackSessionID
+                sessionID: fallbackSessionID,
+                turnContext: turnContext
             )
 
         case .needsClarification(let clarification):
             if messages.indices.contains(msgIndex) {
                 messages[msgIndex].update(content: clarification)
             }
-            finishTurn()
+            finishTurn(context: turnContext)
 
         case .failed:
             log("[Agent] preloaded skill fallback extraction failed")
@@ -796,7 +811,7 @@ extension AgentEngine {
             if messages.indices.contains(msgIndex) {
                 messages[msgIndex].update(content: finalReply)
             }
-            finishTurn()
+            finishTurn(context: turnContext)
         }
     }
 
@@ -2510,7 +2525,8 @@ extension AgentEngine {
         images: [CIImage],
         round: Int = 1,
         maxRounds: Int = 10,
-        sessionID: UUID? = nil
+        sessionID: UUID? = nil,
+        turnContext: GenerationTurnContext? = nil
     ) async {
         let toolChainSessionID = sessionID ?? sessionStore.currentSessionID
 
@@ -2519,8 +2535,14 @@ extension AgentEngine {
         }
 
         func continueIfCurrentToolChainSession() -> Bool {
+            guard !Task.isCancelled else {
+                log("[Agent] tool chain abandoned after task cancellation")
+                abandonTurnIfOwner(turnContext, reason: "tool_chain_task_cancelled")
+                return false
+            }
             guard isCurrentToolChainSession() else {
                 log("[Agent] tool chain abandoned after session change")
+                abandonTurnIfOwner(turnContext, reason: "tool_chain_session_changed")
                 return false
             }
             return true
@@ -2528,7 +2550,7 @@ extension AgentEngine {
 
         func finishTurnIfCurrentToolChainSession() {
             guard continueIfCurrentToolChainSession() else { return }
-            finishTurn()
+            finishTurn(context: turnContext)
         }
 
         @discardableResult
@@ -2609,7 +2631,7 @@ extension AgentEngine {
                 messages.append(ChatMessage(role: .assistant, content: "▍"))
                 let followUpIndex = messages.count - 1
 
-                guard let nextText = await streamLLM(prompt: followUpPrompt, msgIndex: followUpIndex, images: images) else {
+                guard let nextText = await streamLLM(prompt: followUpPrompt, msgIndex: followUpIndex, images: images, turnContext: turnContext) else {
                     finishTurnIfCurrentToolChainSession()
                     return
                 }
@@ -2624,7 +2646,8 @@ extension AgentEngine {
                         images: images,
                         round: round + 1,
                         maxRounds: maxRounds,
-                        sessionID: toolChainSessionID
+                        sessionID: toolChainSessionID,
+                        turnContext: turnContext
                     )
                 } else {
                     guard updateMessageContentIfCurrent(
@@ -2689,7 +2712,7 @@ extension AgentEngine {
             messages.append(ChatMessage(role: .assistant, content: "▍"))
             let followUpIndex = messages.count - 1
 
-            guard let nextText = await streamLLM(prompt: followUpPrompt, msgIndex: followUpIndex, images: images) else {
+            guard let nextText = await streamLLM(prompt: followUpPrompt, msgIndex: followUpIndex, images: images, turnContext: turnContext) else {
                 finishTurnIfCurrentToolChainSession()
                 return
             }
@@ -2701,7 +2724,8 @@ extension AgentEngine {
                 await executeToolChain(
                     prompt: followUpPrompt, fullText: nextText,
                     userQuestion: userQuestion, images: images, round: round + 1, maxRounds: maxRounds,
-                    sessionID: toolChainSessionID
+                    sessionID: toolChainSessionID,
+                    turnContext: turnContext
                 )
             } else {
                 let cleaned = cleanOutput(nextText)
@@ -2773,7 +2797,8 @@ extension AgentEngine {
                     images: images,
                     round: round + 1,
                     maxRounds: maxRounds,
-                    sessionID: toolChainSessionID
+                    sessionID: toolChainSessionID,
+                    turnContext: turnContext
                 )
                 return
             }
@@ -2797,7 +2822,8 @@ extension AgentEngine {
                     images: images,
                     round: round + 1,
                     maxRounds: maxRounds,
-                    sessionID: toolChainSessionID
+                    sessionID: toolChainSessionID,
+                    turnContext: turnContext
                 )
                 return
 
@@ -2838,7 +2864,7 @@ extension AgentEngine {
             messages.append(ChatMessage(role: .assistant, content: "▍"))
             let followUpIndex = messages.count - 1
 
-            guard let nextText = await streamLLM(prompt: followUpPrompt, msgIndex: followUpIndex, images: images) else {
+            guard let nextText = await streamLLM(prompt: followUpPrompt, msgIndex: followUpIndex, images: images, turnContext: turnContext) else {
                 finishTurnIfCurrentToolChainSession()
                 return
             }
@@ -2850,7 +2876,8 @@ extension AgentEngine {
                 await executeToolChain(
                     prompt: followUpPrompt, fullText: nextText,
                     userQuestion: userQuestion, images: images, round: round + 1, maxRounds: maxRounds,
-                    sessionID: toolChainSessionID
+                    sessionID: toolChainSessionID,
+                    turnContext: turnContext
                 )
             } else {
                 let cleaned = cleanOutput(nextText)
@@ -2867,7 +2894,7 @@ extension AgentEngine {
                         forceResponse: true
                     )
 
-                    guard let retryText = await streamLLM(prompt: retryPrompt, msgIndex: followUpIndex, images: images) else {
+                    guard let retryText = await streamLLM(prompt: retryPrompt, msgIndex: followUpIndex, images: images, turnContext: turnContext) else {
                         finishTurnIfCurrentToolChainSession()
                         return
                     }
@@ -2883,7 +2910,8 @@ extension AgentEngine {
                             images: images,
                             round: round + 1,
                             maxRounds: maxRounds,
-                            sessionID: toolChainSessionID
+                            sessionID: toolChainSessionID,
+                            turnContext: turnContext
                         )
                     } else {
                         let retryCleaned = cleanOutput(retryText)
@@ -3179,8 +3207,8 @@ extension AgentEngine {
             guard continueIfCurrentToolChainSession() else { return }
             let groundedWebFollowUp = usesGroundedSourcesContract(followUpToolName)
             let nextTextResult = groundedWebFollowUp
-                ? await streamLLM(prompt: selectedFollowUpPrompt, images: images)
-                : await streamLLM(prompt: selectedFollowUpPrompt, msgIndex: followUpIndex, images: images)
+                ? await streamLLM(prompt: selectedFollowUpPrompt, images: images, turnContext: turnContext)
+                : await streamLLM(prompt: selectedFollowUpPrompt, msgIndex: followUpIndex, images: images, turnContext: turnContext)
             guard let nextText = nextTextResult else {
                 guard updateMessageStateIfCurrent(
                     at: followUpIndex,
@@ -3202,7 +3230,8 @@ extension AgentEngine {
                 await executeToolChain(
                     prompt: selectedFollowUpPrompt, fullText: nextText,
                     userQuestion: userQuestion, images: images, round: round + 1, maxRounds: maxRounds,
-                    sessionID: toolChainSessionID
+                    sessionID: toolChainSessionID,
+                    turnContext: turnContext
                 )
             } else {
                 let cleaned = cleanOutput(nextText)

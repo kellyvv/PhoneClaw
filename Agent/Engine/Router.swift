@@ -679,7 +679,8 @@ extension AgentEngine {
     func answerFromPriorToolObservation(
         userQuestion: String,
         observation: RecentToolObservation,
-        decision: DialogueActDecision
+        decision: DialogueActDecision,
+        turnContext: GenerationTurnContext? = nil
     ) async {
         let artifact = RecentContextArtifact(
             id: UUID(),
@@ -695,14 +696,16 @@ extension AgentEngine {
         await answerFromPriorContextArtifact(
             userQuestion: userQuestion,
             artifact: artifact,
-            decision: decision
+            decision: decision,
+            turnContext: turnContext
         )
     }
 
     func answerFromPriorContextArtifact(
         userQuestion: String,
         artifact: RecentContextArtifact,
-        decision: DialogueActDecision
+        decision: DialogueActDecision,
+        turnContext: GenerationTurnContext? = nil
     ) async {
         let prompt = PromptBuilder.buildPreviousContextArtifactReplyPrompt(
             userQuestion: userQuestion,
@@ -730,18 +733,28 @@ extension AgentEngine {
         ))
         let msgIndex = messages.count - 1
 
-        markStreamingStarted()
+        if let turnContext {
+            markStreamingStarted(context: turnContext)
+        } else {
+            coordinator.currentTransaction?.begin()
+        }
         let contextSessionID = sessionStore.currentSessionID
-        guard let rawReply = await streamLLM(prompt: prompt, msgIndex: msgIndex, images: []) else {
-            guard sessionStore.currentSessionID == contextSessionID else { return }
+        guard let rawReply = await streamLLM(prompt: prompt, msgIndex: msgIndex, images: [], turnContext: turnContext) else {
+            guard sessionStore.currentSessionID == contextSessionID else {
+                abandonTurnIfOwner(turnContext, reason: "prior_context_session_changed")
+                return
+            }
             if messages.indices.contains(msgIndex) {
                 messages[msgIndex].update(content: fallbackReplyForPriorContextArtifact(artifact))
             }
             recordCompletedObservation(plan: plan)
-            finishTurn()
+            finishTurn(context: turnContext)
             return
         }
-        guard sessionStore.currentSessionID == contextSessionID else { return }
+        guard sessionStore.currentSessionID == contextSessionID else {
+            abandonTurnIfOwner(turnContext, reason: "prior_context_session_changed")
+            return
+        }
 
         let cleaned = PromptBuilder.sanitizedAssistantHistoryContent(cleanOutput(rawReply))
         let finalReply: String
@@ -757,7 +770,7 @@ extension AgentEngine {
             messages[msgIndex].update(content: finalReply)
         }
         recordCompletedObservation(plan: plan)
-        finishTurn()
+        finishTurn(context: turnContext)
     }
 
     private func fallbackReplyForPriorToolObservation(_ observation: RecentToolObservation) -> String {

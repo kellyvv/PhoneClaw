@@ -1,5 +1,6 @@
 import Foundation
 import Network
+import Security
 
 // MARK: - LAN Binding (连接链路 · 第二层)
 //
@@ -11,8 +12,8 @@ import Network
 //   - 传输无关:现在在同一局域网 → 发现层 resolve 直连;未来不在同网 → 云 relay
 //     复用同一条 binding (secret 做鉴权)。所以 binding 里不绑死任何 transport。
 //
-// secret:配对握手时跟 Mac 换得。握手要 Mac 网关的 /pair 端点 (待 Mac 端做出来),
-// 现阶段先占位, 把"持久化 + 按 macID 自动重连"这条核心能力跑通。
+// secret:配对握手时跟 Mac 换得。持久化时只进 Keychain,UserDefaults 只保留
+// macID/name/endpoint 这些非秘密元数据。
 
 struct MacBinding: Codable, Equatable, Sendable {
     let macID: String
@@ -22,7 +23,7 @@ struct MacBinding: Codable, Equatable, Sendable {
     var endpoint: String? = nil   // 配对时 resolve 到的直连根 http://ip:port;之后不靠发现层也能连
 }
 
-/// 绑定持久化。P1: UserDefaults JSON;secret 将来挪 Keychain。
+/// 绑定持久化。UserDefaults JSON 只保存非秘密元数据;secret/token 存 Keychain。
 final class BindingStore {
     static let defaultsKey = "PhoneClaw.remote.bindings"
     private let defaults: UserDefaults
@@ -31,19 +32,120 @@ final class BindingStore {
     func all() -> [MacBinding] {
         guard let data = defaults.data(forKey: Self.defaultsKey),
               let list = try? JSONDecoder().decode([MacBinding].self, from: data) else { return [] }
-        return list
+
+        var needsScrub = false
+        let hydrated = list.map { stored -> MacBinding in
+            var binding = stored
+            if let secret = RemoteBindingCredentialStore.loadBindingSecret(macID: binding.macID), !secret.isEmpty {
+                binding.secret = secret
+            } else {
+                let legacySecret = binding.secret.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !legacySecret.isEmpty && legacySecret != "(pending-handshake)" {
+                    RemoteBindingCredentialStore.saveBindingSecret(legacySecret, macID: binding.macID)
+                    binding.secret = legacySecret
+                    needsScrub = true
+                }
+            }
+            if !stored.secret.isEmpty {
+                needsScrub = true
+            }
+            return binding
+        }
+        if needsScrub {
+            persist(hydrated)
+        }
+        return hydrated
     }
+
     func binding(macID: String) -> MacBinding? { all().first { $0.macID == macID } }
+
     func save(_ binding: MacBinding) {
+        let secret = binding.secret.trimmingCharacters(in: .whitespacesAndNewlines)
+        if secret.isEmpty || secret == "(pending-handshake)" {
+            RemoteBindingCredentialStore.deleteBindingSecret(macID: binding.macID)
+        } else {
+            RemoteBindingCredentialStore.saveBindingSecret(secret, macID: binding.macID)
+        }
         var list = all().filter { $0.macID != binding.macID }
         list.append(binding)
         persist(list)
     }
-    func remove(macID: String) { persist(all().filter { $0.macID != macID }) }
+
+    func remove(macID: String) {
+        let remaining = all().filter { $0.macID != macID }
+        RemoteBindingCredentialStore.deleteBindingSecret(macID: macID)
+        persist(remaining)
+    }
+
     private func persist(_ list: [MacBinding]) {
-        if let data = try? JSONEncoder().encode(list) {
+        let scrubbed = list.map { binding -> MacBinding in
+            var copy = binding
+            copy.secret = ""
+            return copy
+        }
+        if let data = try? JSONEncoder().encode(scrubbed) {
             defaults.set(data, forKey: Self.defaultsKey)
         }
+    }
+}
+
+private enum RemoteBindingCredentialStore {
+    private static let service = "ai.phoneclaw.remote.bindings"
+
+    static func loadBindingSecret(macID: String) -> String? {
+        load(account: macID)
+    }
+
+    @discardableResult
+    static func saveBindingSecret(_ secret: String, macID: String) -> Bool {
+        save(secret, account: macID)
+    }
+
+    @discardableResult
+    static func deleteBindingSecret(macID: String) -> Bool {
+        delete(account: macID)
+    }
+
+    private static func load(account: String) -> String? {
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(baseQuery(account: account, returningData: true) as CFDictionary, &result)
+        guard status == errSecSuccess, let data = result as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    @discardableResult
+    private static func save(_ value: String, account: String) -> Bool {
+        let clean = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return delete(account: account) }
+        let data = Data(clean.utf8)
+        let query = baseQuery(account: account, returningData: false)
+        let updateStatus = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+        if updateStatus == errSecSuccess { return true }
+        guard updateStatus == errSecItemNotFound else { return false }
+
+        var addQuery = query
+        addQuery[kSecValueData as String] = data
+        addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        return SecItemAdd(addQuery as CFDictionary, nil) == errSecSuccess
+    }
+
+    @discardableResult
+    private static func delete(account: String) -> Bool {
+        let status = SecItemDelete(baseQuery(account: account, returningData: false) as CFDictionary)
+        return status == errSecSuccess || status == errSecItemNotFound
+    }
+
+    private static func baseQuery(account: String, returningData: Bool) -> [String: Any] {
+        var query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account
+        ]
+        if returningData {
+            query[kSecReturnData as String] = true
+            query[kSecMatchLimit as String] = kSecMatchLimitOne
+        }
+        return query
     }
 }
 
@@ -101,14 +203,18 @@ final class LANConnectionManager {
         guard parts.count == 3, parts[0] == "remote" else { return nil }
         guard let binding = bindings.binding(macID: parts[1]),
               let base = await resolveEndpoint(for: binding) else { return nil }
-        return (base, binding.secret, parts[2])
+        let token = binding.secret.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !token.isEmpty else { return nil }
+        return (base, token, parts[2])
     }
 
     /// 拉一台已绑定 Mac 的 /v1/models, 转成远程 ModelDescriptor (给 catalog 列进选择器)。
     func remoteModels(for binding: MacBinding) async -> [ModelDescriptor] {
         guard let base = await resolveEndpoint(for: binding) else { return [] }
+        let token = binding.secret.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !token.isEmpty else { return [] }
         var req = URLRequest(url: base.appendingPathComponent("models"))
-        req.setValue("Bearer \(binding.secret)", forHTTPHeaderField: "Authorization")
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         req.timeoutInterval = 8
         guard let (data, resp) = try? await URLSession.shared.data(for: req),
               (resp as? HTTPURLResponse)?.statusCode == 200,

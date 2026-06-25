@@ -416,6 +416,9 @@ extension AgentEngine {
     func cancelActiveGeneration() {
         guard isProcessing || isModelGenerating || inference.isGenerating || coordinator.currentTransaction != nil else { return }
 
+        activeTurnTask?.cancel()
+        activeTurnTask = nil
+
         // 1. Mark transaction as cancelling BEFORE inference.cancel(),
         //    so onComplete → finishTurn() sees .cancelling (not .streaming).
         coordinator.currentTransaction?.cancel()
@@ -437,13 +440,16 @@ extension AgentEngine {
         //    await txn.termination → resetKVSession() → transition to .ready.
         Task { [weak self] in
             await self?.coordinator.cancelCurrentGeneration()
+            await MainActor.run {
+                self?.activeTurnContext = nil
+            }
         }
 
         log("[Agent] Generation cancelled")
     }
 
     func startNewSession() {
-        sessionStore.flushPendingSave(messages: messages)
+        sessionStore.flushPendingSave(messages: messagesForPersistence())
         if isProcessing || inference.isGenerating {
             cancelActiveGeneration()
         }
@@ -463,7 +469,7 @@ extension AgentEngine {
 
     func loadSession(id: UUID) {
         guard id != sessionStore.currentSessionID || messages.isEmpty else { return }
-        sessionStore.flushPendingSave(messages: messages)
+        sessionStore.flushPendingSave(messages: messagesForPersistence())
         if isProcessing || inference.isGenerating {
             cancelActiveGeneration()
         }
@@ -483,7 +489,10 @@ extension AgentEngine {
     func deleteSession(id: UUID) {
         let deletingCurrentSession = id == sessionStore.currentSessionID
         if deletingCurrentSession {
-            sessionStore.flushPendingSave(messages: messages)
+            sessionStore.flushPendingSave(messages: messagesForPersistence())
+            if isProcessing || inference.isGenerating || coordinator.currentTransaction != nil {
+                cancelActiveGeneration()
+            }
         }
         if let switchResult = sessionStore.deleteSession(id: id) {
             // Deleted the current session — need to switch
@@ -494,7 +503,7 @@ extension AgentEngine {
     }
 
     func flushPendingSessionSave() {
-        sessionStore.flushPendingSave(messages: messages)
+        sessionStore.flushPendingSave(messages: messagesForPersistence())
     }
 
     func setAllSkills(enabled: Bool) {

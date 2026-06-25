@@ -109,6 +109,15 @@ actor ResumableAssetDownloader {
         try fileManager.createDirectory(at: finalURL.deletingLastPathComponent(), withIntermediateDirectories: true)
 
         var currentManifest = manifest
+        if let recovered = try await finalizeRecoveredPartialIfComplete(
+            file: file,
+            asset: asset,
+            partialURL: partialURL,
+            finalURL: finalURL,
+            manifest: currentManifest
+        ) {
+            return recovered
+        }
         var lastError: Error?
         var previousSource: DownloadFile.Source?
         var sources = orderedSources(file.sources)
@@ -286,9 +295,21 @@ actor ResumableAssetDownloader {
             downloadedBytes: usingResumeData ? resumeDataProgressBase : offset,
             expectedBytes: knownExpectedBytes
         )
+        let manifestURL = try await manifestStore.manifestURL(for: asset.id)
         let handle = backgroundSession.start(
             request: request,
-            resumeData: resumeData
+            resumeData: resumeData,
+            context: BackgroundDownloadTaskContext(
+                assetID: asset.id,
+                relativePath: file.relativePath,
+                sourceLabel: source.label,
+                sourceURL: source.url,
+                partialFilePath: partialURL.path,
+                resumeDataFilePath: resumeDataURL.path,
+                manifestFilePath: manifestURL.path,
+                rangeOffset: offset,
+                usesResumeData: usingResumeData
+            )
         ) { [observer, manifestStore] bytesWritten, totalBytesExpected in
             let expectedBytes: Int64? = {
                 if totalBytesExpected > 0 {
@@ -600,6 +621,42 @@ actor ResumableAssetDownloader {
         // actual: head.etag/lastModified, field: "metadata"), 但这等于"ETag 一变
         // 就让用户卡死", 体感很糟。如果将来确实需要给强校验场景区分 "可接受换源" vs
         // "必须人工介入", 应该走更细的策略类而不是直接 throw。
+    }
+
+    private func finalizeRecoveredPartialIfComplete(
+        file: DownloadFile,
+        asset: DownloadAsset,
+        partialURL: URL,
+        finalURL: URL,
+        manifest: DownloadManifest
+    ) async throws -> (manifest: DownloadManifest, bytesWritten: Int64)? {
+        let partialBytes = fileSize(partialURL)
+        guard partialBytes > 0 else { return nil }
+
+        let entry = manifest.files.first(where: { $0.relativePath == file.relativePath })
+        let expectedBytes = entry?.metadata?.contentLength ?? entry?.expectedBytes ?? file.expectedSize
+        guard let expectedBytes, expectedBytes > 0,
+              finalSizeMismatch(partialBytes, expectedBytes: expectedBytes) == nil else {
+            return nil
+        }
+
+        try? fileManager.removeItem(at: finalURL)
+        try fileManager.moveItem(at: partialURL, to: finalURL)
+        let updated = updatedManifest(
+            manifest,
+            asset: asset,
+            replacing: DownloadManifestFile(
+                relativePath: file.relativePath,
+                state: .complete,
+                downloadedBytes: partialBytes,
+                expectedBytes: expectedBytes,
+                selectedSourceLabel: entry?.selectedSourceLabel,
+                metadata: entry?.metadata
+            )
+        )
+        try await manifestStore.writeManifest(updated, for: asset.id)
+        PCLog.debug("[Download] finalized rehydrated partial asset=\(asset.id) file=\(file.relativePath)")
+        return (updated, partialBytes)
     }
 
     private func fetchHeadMetadata(for source: DownloadFile.Source) async throws -> DownloadFileMetadata {
@@ -942,11 +999,80 @@ enum BackgroundDownloadError: Error {
     }
 }
 
+private struct BackgroundDownloadTaskContext: Codable, Sendable {
+    private static let prefix = "phoneclaw-bg-download:"
+
+    let schemaVersion: Int
+    let assetID: String
+    let relativePath: String
+    let sourceLabel: String
+    let sourceURL: URL
+    let partialFilePath: String
+    let resumeDataFilePath: String
+    let manifestFilePath: String?
+    let rangeOffset: Int64
+    let usesResumeData: Bool
+
+    init(
+        schemaVersion: Int = 1,
+        assetID: String,
+        relativePath: String,
+        sourceLabel: String,
+        sourceURL: URL,
+        partialFilePath: String,
+        resumeDataFilePath: String,
+        manifestFilePath: String?,
+        rangeOffset: Int64 = 0,
+        usesResumeData: Bool = false
+    ) {
+        self.schemaVersion = schemaVersion
+        self.assetID = assetID
+        self.relativePath = relativePath
+        self.sourceLabel = sourceLabel
+        self.sourceURL = sourceURL
+        self.partialFilePath = partialFilePath
+        self.resumeDataFilePath = resumeDataFilePath
+        self.manifestFilePath = manifestFilePath
+        self.rangeOffset = rangeOffset
+        self.usesResumeData = usesResumeData
+    }
+
+    var taskDescription: String? {
+        guard let data = try? JSONEncoder().encode(self) else { return nil }
+        return Self.prefix + data.base64EncodedString()
+    }
+
+    static func decode(from taskDescription: String?) -> BackgroundDownloadTaskContext? {
+        guard let taskDescription,
+              taskDescription.hasPrefix(prefix) else { return nil }
+        let encoded = String(taskDescription.dropFirst(prefix.count))
+        guard let data = Data(base64Encoded: encoded),
+              let context = try? JSONDecoder().decode(Self.self, from: data),
+              context.schemaVersion == 1 else {
+            return nil
+        }
+        return context
+    }
+
+    var partialFileURL: URL {
+        URL(fileURLWithPath: partialFilePath)
+    }
+
+    var resumeDataFileURL: URL {
+        URL(fileURLWithPath: resumeDataFilePath)
+    }
+
+    var manifestFileURL: URL? {
+        manifestFilePath.map { URL(fileURLWithPath: $0) }
+    }
+}
+
 final class BackgroundDownloadSession: NSObject, URLSessionDownloadDelegate, URLSessionTaskDelegate {
     static let shared = BackgroundDownloadSession()
 
     private let stateQueue = DispatchQueue(label: "com.phoneclaw.background-downloads.state")
     private var transfers: [Int: BackgroundTransfer] = [:]
+    private var manifestRootPaths: Set<String> = []
     private var backgroundCompletionHandlers: [String: () -> Void] = [:]
 
     private lazy var session: URLSession = {
@@ -971,12 +1097,25 @@ final class BackgroundDownloadSession: NSObject, URLSessionDownloadDelegate, URL
         super.init()
     }
 
+    func registerManifestRoot(_ rootDirectory: URL) {
+        let standardizedPath = rootDirectory.standardizedFileURL.path
+        stateQueue.async {
+            self.manifestRootPaths.insert(standardizedPath)
+        }
+        _ = session
+    }
+
     func cancelOrphanedTasks() {
         session.getAllTasks { [weak self] tasks in
             guard let self else { return }
             self.stateQueue.async {
                 let activeTaskIDs = Set(self.transfers.keys)
+                let manifestRootPaths = self.manifestRootPaths
                 for task in tasks where !activeTaskIDs.contains(task.taskIdentifier) {
+                    if self.rehydrationContext(for: task, manifestRootPaths: manifestRootPaths) != nil {
+                        PCLog.debug("[Download] preserving rehydratable background task \(task.taskIdentifier)")
+                        continue
+                    }
                     PCLog.debug("[Download] cancelling orphaned background task \(task.taskIdentifier)")
                     task.cancel()
                 }
@@ -984,9 +1123,10 @@ final class BackgroundDownloadSession: NSObject, URLSessionDownloadDelegate, URL
         }
     }
 
-    func start(
+    fileprivate func start(
         request: URLRequest,
         resumeData: Data?,
+        context: BackgroundDownloadTaskContext,
         progress: @escaping @Sendable (_ bytesWritten: Int64, _ totalBytesExpected: Int64) -> Void
     ) -> BackgroundDownloadTaskHandle {
         let task: URLSessionDownloadTask
@@ -995,7 +1135,7 @@ final class BackgroundDownloadSession: NSObject, URLSessionDownloadDelegate, URL
         } else {
             task = session.downloadTask(with: request)
         }
-        task.taskDescription = request.url?.absoluteString
+        task.taskDescription = context.taskDescription ?? request.url?.absoluteString
 
         let box = BackgroundDownloadResultBox()
         let transfer = BackgroundTransfer(task: task, resultBox: box, progress: progress)
@@ -1017,6 +1157,7 @@ final class BackgroundDownloadSession: NSObject, URLSessionDownloadDelegate, URL
         stateQueue.async {
             self.backgroundCompletionHandlers[identifier] = completionHandler
         }
+        _ = session
     }
 
     fileprivate func cancel(taskIdentifier: Int) {
@@ -1049,7 +1190,16 @@ final class BackgroundDownloadSession: NSObject, URLSessionDownloadDelegate, URL
         let transfer = stateQueue.sync {
             transfers[downloadTask.taskIdentifier]
         }
-        guard let transfer else { return }
+        guard let transfer else {
+            guard storeColdDownloadedFile(from: location, for: downloadTask) else {
+                PCLog.warn(
+                    "background_download_unclaimed_file",
+                    detail: "task_id=\(downloadTask.taskIdentifier)"
+                )
+                return
+            }
+            return
+        }
 
         do {
             let destination = try makeTemporaryDownloadURL()
@@ -1075,7 +1225,10 @@ final class BackgroundDownloadSession: NSObject, URLSessionDownloadDelegate, URL
         let transfer = stateQueue.sync {
             transfers.removeValue(forKey: task.taskIdentifier)
         }
-        guard let transfer else { return }
+        guard let transfer else {
+            handleColdTaskCompletion(task: task, error: error)
+            return
+        }
 
         if let error {
             let nsError = error as NSError
@@ -1120,6 +1273,242 @@ final class BackgroundDownloadSession: NSObject, URLSessionDownloadDelegate, URL
         values.isExcludedFromBackup = true
         try? mutableDirectory.setResourceValues(values)
         return directory.appendingPathComponent(UUID().uuidString, isDirectory: false)
+    }
+
+    private func handleColdTaskCompletion(task: URLSessionTask, error: Error?) {
+        guard let error else {
+            PCLog.debug("[Download] rehydrated background task completed task_id=\(task.taskIdentifier)")
+            return
+        }
+
+        let nsError = error as NSError
+        guard let resumeData = nsError.userInfo[NSURLSessionDownloadTaskResumeData] as? Data,
+              !resumeData.isEmpty,
+              let context = rehydrationContext(for: task) else {
+            PCLog.warn(
+                "background_download_unclaimed_error",
+                detail: "task_id=\(task.taskIdentifier) error=\(error.localizedDescription)"
+            )
+            return
+        }
+
+        do {
+            try FileManager.default.createDirectory(
+                at: context.resumeDataFileURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try resumeData.write(to: context.resumeDataFileURL, options: [.atomic])
+            PCLog.debug("[Download] preserved cold resumeData task_id=\(task.taskIdentifier) asset=\(context.assetID) file=\(context.relativePath)")
+        } catch {
+            PCLog.warn(
+                "background_download_resumeData_preserve_failed",
+                detail: "task_id=\(task.taskIdentifier) error=\(error.localizedDescription)"
+            )
+        }
+    }
+
+    private func storeColdDownloadedFile(from location: URL, for task: URLSessionTask) -> Bool {
+        guard let context = rehydrationContext(for: task) else { return false }
+
+        do {
+            try FileManager.default.createDirectory(
+                at: context.partialFileURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            if context.rangeOffset > 0, !context.usesResumeData {
+                guard let statusCode = (task.response as? HTTPURLResponse)?.statusCode else {
+                    throw DownloadFailure.invalidResponse("Missing HTTP status for cold range rehydration")
+                }
+                if statusCode == 200 {
+                    try? FileManager.default.removeItem(at: context.partialFileURL)
+                    do {
+                        try FileManager.default.moveItem(at: location, to: context.partialFileURL)
+                    } catch {
+                        try FileManager.default.copyItem(at: location, to: context.partialFileURL)
+                    }
+                    try? FileManager.default.removeItem(at: location)
+                } else {
+                    if statusCode != 206 {
+                        throw DownloadFailure.httpStatus(statusCode)
+                    }
+                    guard FileManager.default.fileExists(atPath: context.partialFileURL.path) else {
+                        throw DownloadFailure.fileSystem("Missing partial file for cold range rehydration")
+                    }
+                    let partialBytes = fileSize(context.partialFileURL)
+                    guard partialBytes == context.rangeOffset else {
+                        throw DownloadFailure.fileSystem("Cold range rehydration offset mismatch: partial=\(partialBytes) range=\(context.rangeOffset)")
+                    }
+                    try appendColdDownloadedFile(location, to: context.partialFileURL)
+                    try? FileManager.default.removeItem(at: location)
+                }
+            } else {
+                try? FileManager.default.removeItem(at: context.partialFileURL)
+                do {
+                    try FileManager.default.moveItem(at: location, to: context.partialFileURL)
+                } catch {
+                    try FileManager.default.copyItem(at: location, to: context.partialFileURL)
+                }
+                try? FileManager.default.removeItem(at: location)
+            }
+            try updateManifestForColdDownload(context: context, task: task)
+            PCLog.debug("[Download] rehydrated background file task_id=\(task.taskIdentifier) asset=\(context.assetID) file=\(context.relativePath)")
+            return true
+        } catch {
+            PCLog.warn(
+                "background_download_rehydrate_failed",
+                detail: "task_id=\(task.taskIdentifier) error=\(error.localizedDescription)"
+            )
+            return false
+        }
+    }
+
+    private func rehydrationContext(for task: URLSessionTask) -> BackgroundDownloadTaskContext? {
+        let roots = stateQueue.sync { manifestRootPaths }
+        return rehydrationContext(for: task, manifestRootPaths: roots)
+    }
+
+    private func rehydrationContext(
+        for task: URLSessionTask,
+        manifestRootPaths: Set<String>
+    ) -> BackgroundDownloadTaskContext? {
+        if let context = BackgroundDownloadTaskContext.decode(from: task.taskDescription) {
+            return context
+        }
+        guard let sourceURL = taskSourceURL(task) else { return nil }
+        return inferContext(
+            for: sourceURL,
+            manifestRootPaths: manifestRootPaths,
+            rangeOffset: taskRangeOffset(task)
+        )
+    }
+
+    private func taskSourceURL(_ task: URLSessionTask) -> URL? {
+        if let url = task.originalRequest?.url ?? task.currentRequest?.url {
+            return url
+        }
+        guard let description = task.taskDescription else { return nil }
+        return URL(string: description)
+    }
+
+    private func taskRangeOffset(_ task: URLSessionTask) -> Int64 {
+        let request = task.originalRequest ?? task.currentRequest
+        guard let range = request?.value(forHTTPHeaderField: "Range"),
+              range.hasPrefix("bytes="),
+              let dash = range.firstIndex(of: "-") else {
+            return 0
+        }
+        let start = range.index(range.startIndex, offsetBy: "bytes=".count)
+        return Int64(range[start..<dash]) ?? 0
+    }
+
+    private func inferContext(
+        for sourceURL: URL,
+        manifestRootPaths: Set<String>,
+        rangeOffset: Int64
+    ) -> BackgroundDownloadTaskContext? {
+        let fileManager = FileManager.default
+        for rootPath in manifestRootPaths {
+            let root = URL(fileURLWithPath: rootPath, isDirectory: true)
+            let downloadsRoot = root.appendingPathComponent(DownloadManifestStore.workspaceDirectoryName, isDirectory: true)
+            guard let assetDirectories = try? fileManager.contentsOfDirectory(
+                at: downloadsRoot,
+                includingPropertiesForKeys: [.isDirectoryKey],
+                options: [.skipsHiddenFiles]
+            ) else {
+                continue
+            }
+
+            for assetDirectory in assetDirectories {
+                guard (try? assetDirectory.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else {
+                    continue
+                }
+                let manifestURL = assetDirectory.appendingPathComponent(DownloadManifestStore.manifestFileName)
+                guard let data = try? Data(contentsOf: manifestURL),
+                      let manifest = try? JSONDecoder.downloadManifestDecoder.decode(DownloadManifest.self, from: data) else {
+                    continue
+                }
+
+                for file in manifest.files where file.state != .complete {
+                    guard file.metadata?.sourceURL == sourceURL else { continue }
+                    let partialURL = assetDirectory
+                        .appendingPathComponent(file.relativePath, isDirectory: false)
+                        .appendingPathExtension("part")
+                    let resumeDataURL = assetDirectory
+                        .appendingPathComponent(file.relativePath, isDirectory: false)
+                        .appendingPathExtension("resumeData")
+                    return BackgroundDownloadTaskContext(
+                        assetID: manifest.assetID,
+                        relativePath: file.relativePath,
+                        sourceLabel: file.selectedSourceLabel ?? sourceURL.host ?? "unknown",
+                        sourceURL: sourceURL,
+                        partialFilePath: partialURL.path,
+                        resumeDataFilePath: resumeDataURL.path,
+                        manifestFilePath: manifestURL.path,
+                        rangeOffset: rangeOffset,
+                        usesResumeData: false
+                    )
+                }
+            }
+        }
+        return nil
+    }
+
+    private func updateManifestForColdDownload(
+        context: BackgroundDownloadTaskContext,
+        task: URLSessionTask
+    ) throws {
+        guard let manifestURL = context.manifestFileURL,
+              FileManager.default.fileExists(atPath: manifestURL.path) else {
+            return
+        }
+        let data = try Data(contentsOf: manifestURL)
+        let manifest = try JSONDecoder.downloadManifestDecoder.decode(DownloadManifest.self, from: data)
+        let downloadedBytes = fileSize(context.partialFileURL)
+        let files = manifest.files.map { file -> DownloadManifestFile in
+            guard file.relativePath == context.relativePath else { return file }
+            let metadata = file.metadata ?? DownloadFileMetadata(
+                sourceURL: context.sourceURL,
+                sourceHost: context.sourceURL.host,
+                contentLength: file.expectedBytes,
+                updatedAt: Date()
+            )
+            return DownloadManifestFile(
+                relativePath: file.relativePath,
+                state: .paused,
+                downloadedBytes: max(downloadedBytes, file.downloadedBytes),
+                expectedBytes: file.expectedBytes ?? metadata.contentLength,
+                selectedSourceLabel: file.selectedSourceLabel ?? context.sourceLabel,
+                metadata: metadata
+            )
+        }
+        let updated = DownloadManifest(
+            schemaVersion: manifest.schemaVersion,
+            assetID: manifest.assetID,
+            createdAt: manifest.createdAt,
+            updatedAt: Date(),
+            files: files
+        )
+        let encoded = try JSONEncoder.downloadManifestEncoder.encode(updated)
+        try encoded.write(to: manifestURL, options: [.atomic])
+    }
+
+    private func appendColdDownloadedFile(_ sourceURL: URL, to destinationURL: URL) throws {
+        let input = try FileHandle(forReadingFrom: sourceURL)
+        defer { try? input.close() }
+        let output = try FileHandle(forWritingTo: destinationURL)
+        defer { try? output.close() }
+        try output.seekToEnd()
+
+        while true {
+            let data = try input.read(upToCount: 1024 * 1024) ?? Data()
+            if data.isEmpty { break }
+            try output.write(contentsOf: data)
+        }
+    }
+
+    private func fileSize(_ url: URL) -> Int64 {
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path) else { return 0 }
+        return (attrs[.size] as? Int64) ?? 0
     }
 }
 

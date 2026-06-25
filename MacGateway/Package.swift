@@ -21,6 +21,12 @@ let package = Package(
                 .copy("Resources/AppIcon.icns")
             ],
             swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
+        .testTarget(
+            name: "PhoneClawGatewayTests",
+            dependencies: ["PhoneClawGateway"],
+            path: "Tests/PhoneClawGatewayTests",
+            swiftSettings: [.swiftLanguageMode(.v5)]
         )
     ]
 )

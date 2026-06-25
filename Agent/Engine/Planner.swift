@@ -272,7 +272,8 @@ extension AgentEngine {
     func executePlannedSkillChainIfPossible(
         prompt: String,
         userQuestion: String,
-        images: [CIImage]
+        images: [CIImage],
+        turnContext: GenerationTurnContext? = nil
     ) async -> Bool {
         let matchedSkills = matchedSkillIds(for: userQuestion)
         log("[Agent] \(plannerRevision) matchedSkills=\(matchedSkills.joined(separator: ","))")
@@ -280,8 +281,14 @@ extension AgentEngine {
         let planningSessionID = sessionStore.currentSessionID
 
         func continueIfCurrentPlanningSession() -> Bool {
+            guard !Task.isCancelled else {
+                log("[Agent] planner abandoned after task cancellation")
+                abandonTurnIfOwner(turnContext, reason: "planner_task_cancelled")
+                return false
+            }
             guard sessionStore.currentSessionID == planningSessionID else {
                 log("[Agent] planner abandoned after session change")
+                abandonTurnIfOwner(turnContext, reason: "planner_session_changed")
                 return false
             }
             return true
@@ -289,7 +296,7 @@ extension AgentEngine {
 
         func finishTurnIfCurrentPlanningSession() {
             guard continueIfCurrentPlanningSession() else { return }
-            finishTurn()
+            finishTurn(context: turnContext)
         }
 
         @discardableResult
@@ -365,7 +372,7 @@ extension AgentEngine {
         // 这个检查始终 false, 不会误伤 (英文 clarification 都会被正常当作真 clar).
         let placeholderClarification = "请说明具体需要什么帮助"
 
-        let rawSelection = await streamLLM(prompt: selectionPrompt, images: images)
+        let rawSelection = await streamLLM(prompt: selectionPrompt, images: images, turnContext: turnContext)
         guard continueIfCurrentPlanningSession() else { return true }
         let cleanedSelection = rawSelection.map { cleanOutput($0) } ?? ""
 
@@ -457,7 +464,7 @@ extension AgentEngine {
             )
             log("[Agent] planner prompt chars=\(planningPrompt.count), candidateSkills=\(remainingSkillIds.count), pass=\(planningPass)")
 
-            guard let rawPlan = await streamLLM(prompt: planningPrompt, images: images) else {
+            guard let rawPlan = await streamLLM(prompt: planningPrompt, images: images, turnContext: turnContext) else {
                 let message = completedSteps.isEmpty
                     ? tr("⚠️ 无法生成执行计划，请重试。",
                          "⚠️ Could not generate an execution plan. Please retry.")
@@ -483,7 +490,7 @@ extension AgentEngine {
             if let clarification = validatedPlan.needsClarification,
                !clarification.isEmpty {
                 messages.append(ChatMessage(role: .assistant, content: clarification))
-                finishTurn()
+                finishTurn(context: turnContext)
                 return true
             }
 
@@ -572,7 +579,7 @@ extension AgentEngine {
                     )
                     guard continueIfCurrentPlanningSession() else { return true }
 
-                    guard let rawOutput = await streamLLM(prompt: contentPrompt, images: images) else {
+                    guard let rawOutput = await streamLLM(prompt: contentPrompt, images: images, turnContext: turnContext) else {
                         guard updatePlannerMessageStateIfCurrent(
                             at: cardIndex,
                             role: .system,
@@ -633,7 +640,7 @@ extension AgentEngine {
                         currentImageCount: images.count
                     )
 
-                    guard let rawArguments = await streamLLM(prompt: argumentsPrompt, images: images) else {
+                    guard let rawArguments = await streamLLM(prompt: argumentsPrompt, images: images, turnContext: turnContext) else {
                         finishPlanning(with: tr(
                             "⚠️ 无法提取步骤参数，请重试。",
                             "⚠️ Could not extract step parameters. Please retry."
@@ -766,7 +773,7 @@ extension AgentEngine {
             guard continueIfCurrentPlanningSession() else { return true }
         }
 
-        guard let nextText = await streamLLM(prompt: followUpPrompt, msgIndex: followUpIndex, images: images) else {
+        guard let nextText = await streamLLM(prompt: followUpPrompt, msgIndex: followUpIndex, images: images, turnContext: turnContext) else {
             guard continueIfCurrentPlanningSession() else { return true }
             markSkillsDone(Array(loadedDisplayNames.values))
             finishTurnIfCurrentPlanningSession()
@@ -782,7 +789,8 @@ extension AgentEngine {
                 fullText: nextText,
                 userQuestion: userQuestion,
                 images: images,
-                sessionID: planningSessionID
+                sessionID: planningSessionID,
+                turnContext: turnContext
             )
             return true
         }

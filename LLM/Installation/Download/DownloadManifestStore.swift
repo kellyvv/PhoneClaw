@@ -10,6 +10,7 @@ actor DownloadManifestStore {
     init(rootDirectory: URL, fileManager: FileManager = .default) {
         self.rootDirectory = rootDirectory
         self.fileManager = fileManager
+        BackgroundDownloadSession.shared.registerManifestRoot(rootDirectory)
     }
 
     func workspaceRootDirectory() throws -> URL {

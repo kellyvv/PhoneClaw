@@ -1,5 +1,6 @@
 import Foundation
 import Network
+import Security
 
 // MARK: - Mac Gateway (② 连接链路服务端 · CLI 可跑版)
 //
@@ -58,11 +59,107 @@ struct GatewayHTTPRequest {
 
 /// 已配对的手机设备 (给 UI 列表)。
 struct PairedDevice: Identifiable, Sendable, Hashable, Codable {
-    let id: String        // = token
+    let id: String        // stable device id; token lives in Keychain
     let name: String
     let pairedAt: Date
     var lastSeenAt: Date? = nil
-    var token: String { id }
+    var token: String = ""
+
+    init(id: String, name: String, pairedAt: Date, lastSeenAt: Date? = nil, token: String = "") {
+        self.id = id
+        self.name = name
+        self.pairedAt = pairedAt
+        self.lastSeenAt = lastSeenAt
+        self.token = token
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, pairedAt, lastSeenAt
+    }
+}
+
+enum GatewayCredentialStore {
+    private static let pairedDeviceService = "ai.phoneclaw.gateway.pairedDevices"
+
+    static func loadPairedDeviceToken(macID: String, deviceID: String) -> String? {
+        load(service: pairedDeviceService, account: "\(macID)::\(deviceID)")
+    }
+
+    @discardableResult
+    static func savePairedDeviceToken(_ token: String, macID: String, deviceID: String) -> Bool {
+        save(token, service: pairedDeviceService, account: "\(macID)::\(deviceID)")
+    }
+
+    @discardableResult
+    static func deletePairedDeviceToken(macID: String, deviceID: String) -> Bool {
+        delete(service: pairedDeviceService, account: "\(macID)::\(deviceID)")
+    }
+
+    static func randomToken(byteCount: Int = 32) -> String {
+        var bytes = [UInt8](repeating: 0, count: byteCount)
+        let status = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        if status == errSecSuccess {
+            return Data(bytes).base64EncodedString()
+        }
+        return UUID().uuidString + "." + UUID().uuidString
+    }
+
+    private static func load(service: String, account: String) -> String? {
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(baseQuery(service: service, account: account, returningData: true) as CFDictionary, &result)
+        guard status == errSecSuccess, let data = result as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    @discardableResult
+    private static func save(_ value: String, service: String, account: String) -> Bool {
+        let clean = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return delete(service: service, account: account) }
+        let data = Data(clean.utf8)
+        let query = baseQuery(service: service, account: account, returningData: false)
+        let updateStatus = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+        if updateStatus == errSecSuccess { return true }
+        guard updateStatus == errSecItemNotFound else { return false }
+
+        var addQuery = query
+        addQuery[kSecValueData as String] = data
+        addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        return SecItemAdd(addQuery as CFDictionary, nil) == errSecSuccess
+    }
+
+    @discardableResult
+    private static func delete(service: String, account: String) -> Bool {
+        let status = SecItemDelete(baseQuery(service: service, account: account, returningData: false) as CFDictionary)
+        return status == errSecSuccess || status == errSecItemNotFound
+    }
+
+    private static func baseQuery(service: String, account: String, returningData: Bool) -> [String: Any] {
+        var query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account
+        ]
+        if returningData {
+            query[kSecReturnData as String] = true
+            query[kSecMatchLimit as String] = kSecMatchLimitOne
+        }
+        return query
+    }
+}
+
+enum PairOriginPolicy {
+    static func allows(origin: String?, referer: String?) -> Bool {
+        isAllowedLoopbackOrigin(origin) && isAllowedLoopbackOrigin(referer)
+    }
+
+    static func isAllowedLoopbackOrigin(_ value: String?) -> Bool {
+        guard let value, !value.isEmpty else { return true }
+        guard let url = URL(string: value),
+              let host = url.host?.lowercased() else {
+            return false
+        }
+        return host == "localhost" || host == "127.0.0.1" || host == "::1"
+    }
 }
 
 // MARK: - 网关
@@ -158,11 +255,18 @@ final class MacGateway {
     private func proxy(_ req: GatewayHTTPRequest, to conn: NWConnection) async {
         // 配对端点: 经审批 (onPairRequest; nil 则自动允许) → 记录设备 + 签发 token。
         if req.method == "POST", req.path == "/pair" {
+            guard isAllowedPairOrigin(req) else {
+                sendStatus(conn, 403, "Pairing origin denied")
+                return
+            }
             let deviceName = GatewayBody.deviceName(req.body) ?? "未知设备"
             let approved = await (onPairRequest?(deviceName) ?? true)
             guard approved else { sendStatus(conn, 403, "Pairing denied"); return }
-            let token = UUID().uuidString
-            recordPairedDevice(name: deviceName, token: token)
+            let token = GatewayCredentialStore.randomToken()
+            guard recordPairedDevice(name: deviceName, token: token) else {
+                sendStatus(conn, 500, "Failed to persist pairing token")
+                return
+            }
             onPairedChanged?()
             sendJSON(conn, 200, "{\"token\":\"\(token)\"}")
             return
@@ -303,6 +407,13 @@ final class MacGateway {
         return markDeviceSeenIfAuthorized(token: token)
     }
 
+    private func isAllowedPairOrigin(_ req: GatewayHTTPRequest) -> Bool {
+        PairOriginPolicy.allows(
+            origin: req.headers["origin"],
+            referer: req.headers["referer"]
+        )
+    }
+
     private func markDeviceSeenIfAuthorized(token: String) -> Bool {
         let now = Date()
         var changed = false
@@ -330,19 +441,34 @@ final class MacGateway {
     /// 撤销一台设备的配对 (其 token 立即失效)。
     func revoke(token: String) {
         lock.lock()
+        let revoked = paired.filter { $0.token == token }
         paired.removeAll { $0.token == token }
+        for device in revoked {
+            GatewayCredentialStore.deletePairedDeviceToken(macID: macID, deviceID: device.id)
+        }
         persistPairedLocked()
         lock.unlock()
         onPairedChanged?()
     }
 
-    private func recordPairedDevice(name: String, token: String) {
+    @discardableResult
+    private func recordPairedDevice(name: String, token: String) -> Bool {
         let now = Date()
+        let deviceID = "device-\(UUID().uuidString)"
+        let device = PairedDevice(id: deviceID, name: name, pairedAt: now, lastSeenAt: now, token: token)
+        guard GatewayCredentialStore.savePairedDeviceToken(token, macID: macID, deviceID: deviceID) else {
+            return false
+        }
         lock.lock()
+        let replaced = paired.filter { $0.name == name }
         paired.removeAll { $0.name == name }
-        paired.append(PairedDevice(id: token, name: name, pairedAt: now, lastSeenAt: now))
+        for oldDevice in replaced {
+            GatewayCredentialStore.deletePairedDeviceToken(macID: macID, deviceID: oldDevice.id)
+        }
+        paired.append(device)
         persistPairedLocked()
         lock.unlock()
+        return true
     }
 
     private func persistPairedLocked() {
@@ -358,7 +484,27 @@ final class MacGateway {
               let list = try? JSONDecoder().decode([PairedDevice].self, from: data) else {
             return []
         }
-        return list
+        var migrated = false
+        let hydrated: [PairedDevice] = list.compactMap { device in
+            if let token = GatewayCredentialStore.loadPairedDeviceToken(macID: macID, deviceID: device.id),
+               !token.isEmpty {
+                return PairedDevice(id: device.id, name: device.name, pairedAt: device.pairedAt, lastSeenAt: device.lastSeenAt, token: token)
+            }
+
+            // Legacy rows used `id == token` and wrote that token to UserDefaults.
+            // Move it to Keychain and replace the persisted id with a non-secret id.
+            guard !device.id.hasPrefix("device-") else { return nil }
+            let token = device.id.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !token.isEmpty else { return nil }
+            let migratedID = "device-\(UUID().uuidString)"
+            GatewayCredentialStore.savePairedDeviceToken(token, macID: macID, deviceID: migratedID)
+            migrated = true
+            return PairedDevice(id: migratedID, name: device.name, pairedAt: device.pairedAt, lastSeenAt: device.lastSeenAt, token: token)
+        }
+        if migrated || hydrated.count != list.count {
+            savePaired(hydrated, macID: macID)
+        }
+        return hydrated
     }
 
     private static func savePaired(_ list: [PairedDevice], macID: String) {

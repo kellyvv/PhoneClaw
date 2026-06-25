@@ -37,6 +37,14 @@ struct AgentActivityEvent: Sendable, Equatable {
     let toolName: String?
 }
 
+struct GenerationTurnContext: Sendable, Equatable {
+    let turnID: UUID
+    let sessionID: UUID
+    let transactionID: UUID
+    let userMessageID: UUID
+    let createdAt: Date
+}
+
 // MARK: - Agent Engine
 //
 // 核心类: 持有所有运行时依赖 (inference / catalog / coordinator / sessionStore),
@@ -75,7 +83,7 @@ class AgentEngine {
             messagesRevision &+= 1
             if isSessionPersistenceEnabled {
                 sessionStore.scheduleSave { [weak self] in
-                    self?.messages ?? []
+                    self?.messagesForPersistence() ?? []
                 }
             }
         }
@@ -88,6 +96,8 @@ class AgentEngine {
     @ObservationIgnored private var pendingStreamingContentByMessageID: [UUID: String] = [:]
     @ObservationIgnored private var streamingUIFlushTask: Task<Void, Never>?
     @ObservationIgnored private var isSessionPersistenceEnabled = true
+    @ObservationIgnored var activeTurnContext: GenerationTurnContext?
+    @ObservationIgnored var activeTurnTask: Task<Void, Never>?
     @ObservationIgnored var isLiveLandTurnActive = false
     @ObservationIgnored var activityEventSink: ((AgentActivityEvent) async -> Void)?
     @ObservationIgnored var toolCallTraceSink: ((RuntimeToolCall) async -> Void)?
@@ -171,6 +181,18 @@ class AgentEngine {
             guard let index = messages.firstIndex(where: { $0.id == messageID }),
                   messages[index].role == .assistant else { continue }
             messages[index].update(content: content)
+        }
+    }
+
+    func messagesForPersistence() -> [ChatMessage] {
+        messages.map { message in
+            guard message.role == .assistant,
+                  message.content.hasSuffix("▍") else {
+                return message
+            }
+            var cleaned = message
+            cleaned.update(content: String(cleaned.content.dropLast()))
+            return cleaned
         }
     }
 

@@ -42,6 +42,7 @@ final class LiteRTModelStore: ModelInstaller {
         // 必须在 refreshInstallStates() 之前跑, 否则 installer 会把残留目录
         // 当成"已安装"算进状态里。详见 cleanupObsoleteCoreMLV46 doc。
         cleanupObsoleteCoreMLV46()
+        BackgroundDownloadSession.shared.registerManifestRoot(modelsDirectory)
         BackgroundDownloadSession.shared.cancelOrphanedTasks()
 
         refreshInstallStates()

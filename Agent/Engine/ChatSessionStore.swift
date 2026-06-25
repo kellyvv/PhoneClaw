@@ -45,8 +45,11 @@ final class ChatSessionStore {
     // MARK: - Private
 
     private var sessionSaveTask: Task<Void, Never>?
+    private var pendingSaveStartedAt: Date?
     private let sessionsDirectoryName = "Sessions"
     private let sessionsIndexFileName = "sessions_index.json"
+    private let saveDebounceInterval: TimeInterval = 0.35
+    private let maxPendingSaveInterval: TimeInterval = 3.0
     static let currentSessionDefaultsKey = "PhoneClaw.currentSessionID"
 
     // MARK: - Init
@@ -63,12 +66,18 @@ final class ChatSessionStore {
     /// provider 在 debounce 真正触发时才读取 messages, 避免流式 token
     /// 每次到来都复制整段历史数组。
     func scheduleSave(messagesProvider: @escaping @MainActor () -> [ChatMessage]) {
+        let now = Date()
+        let pendingStartedAt = pendingSaveStartedAt ?? now
+        pendingSaveStartedAt = pendingStartedAt
+        let elapsed = now.timeIntervalSince(pendingStartedAt)
+        let delay = max(0, min(saveDebounceInterval, maxPendingSaveInterval - elapsed))
         sessionSaveTask?.cancel()
         let currentID = currentSessionID
         sessionSaveTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(350))
+            try? await Task.sleep(for: .milliseconds(Int(delay * 1000)))
             guard !Task.isCancelled, let self, self.currentSessionID == currentID else { return }
             self.saveSession(id: currentID, messages: messagesProvider())
+            self.pendingSaveStartedAt = nil
         }
     }
 
@@ -83,6 +92,7 @@ final class ChatSessionStore {
     func flushPendingSave(messages: [ChatMessage]) {
         sessionSaveTask?.cancel()
         sessionSaveTask = nil
+        pendingSaveStartedAt = nil
         saveSession(id: currentSessionID, messages: messages)
     }
 
@@ -90,6 +100,7 @@ final class ChatSessionStore {
     func cancelPendingSave() {
         sessionSaveTask?.cancel()
         sessionSaveTask = nil
+        pendingSaveStartedAt = nil
     }
 
     // MARK: - Save
