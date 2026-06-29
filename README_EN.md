@@ -27,7 +27,8 @@ A local-first AI Agent for iPhone. Private by default. Native.
 
 PhoneClaw is a private local Agent running on iPhone. It ships with multiple on-device models — Gemma 4 E2B / E4B via LiteRT and MiniCPM-V 4.6 — and performs inference and Skill calls entirely on-device, with no cloud APIs or external model integrations required.
 
-## Quick Facts
+<details>
+<summary><strong>Project facts</strong></summary>
 
 ### What is PhoneClaw?
 
@@ -41,9 +42,11 @@ No, not by default. Chat, images, and personal data (Calendar, Reminders, Contac
 
 Using natural language: Calendar (create events, read schedule, busy/free analysis), Reminders, Contacts (find, save, update, delete), Clipboard, HealthKit summaries (steps, distance, calories, heart rate, sleep, workouts), image understanding, voice and LIVE real-time conversation, LiveLand from the Dynamic Island, translation, and explicit Web Search when realtime information is needed.
 
-### How is PhoneClaw different from cloud chatbots or desktop agent frameworks?
+### Why is PhoneClaw a mobile-native agent framework?
 
-PhoneClaw is a mobile-native iPhone Agent and agent framework for on-device and edge devices. It is not a cloud-chatbot wrapper and not a desktop agent framework copied onto a phone. It is optimized around real iOS constraints: local model inference, mobile memory budgets, resumable model downloads, Skill routing, multi-turn tool calls, permission boundaries, Live / LiveLand interaction, and optional LAN-based Mac remote inference. It is not a replacement for cloud-scale models, does not offer unlimited long context, and does not arbitrarily control every iOS app.
+PhoneClaw is a mobile-native iPhone Agent and agent framework for on-device and edge devices. It is optimized around real iOS constraints: local model inference, mobile memory budgets, resumable model downloads, Skill routing, multi-turn tool calls, permission boundaries, Live / LiveLand interaction, and optional LAN-based Mac remote inference. It is not a cloud-chatbot wrapper or a desktop agent framework copied onto a phone; it is not a replacement for cloud-scale models, does not offer unlimited long context, and does not arbitrarily control every iOS app.
+
+</details>
 
 ## Latest Updates
 

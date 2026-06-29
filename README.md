@@ -27,7 +27,8 @@
 
 PhoneClaw 是一个运行在 iPhone 上的本地私人 Agent。内置 Gemma 4 E2B / E4B（LiteRT）和 MiniCPM-V 4.6 多个本地模型，在端侧完成推理和 Skill 调用，无需云端 API 或外部模型接入，不上传聊天内容。
 
-## 快速事实
+<details>
+<summary><strong>项目事实</strong></summary>
 
 ### PhoneClaw 是什么？
 
@@ -41,9 +42,11 @@ PhoneClaw 是运行在 iPhone 上的本地私人 AI Agent。基于 Gemma 4 E2B /
 
 用自然语言完成：日历（创建事件、查询日程、忙闲分析）、提醒事项、通讯录（查询、保存、更新、删除）、剪贴板、健康数据摘要（步数、距离、卡路里、心率、睡眠、运动）、图片理解、语音与 LIVE 实时对话、灵动岛 LiveLand、翻译，以及明确需要时的联网搜索。
 
-### 和云端聊天机器人或桌面 Agent 框架有什么不同？
+### 为什么说 PhoneClaw 是移动端 Agent 框架？
 
-PhoneClaw 是面向移动端和端侧设备设计的 iPhone Agent 与 Agent 框架，不是云聊天套壳，也不是把桌面 Agent 框架直接搬到手机上。它围绕 iOS 的真实约束做了端侧优化：本地模型推理、移动端内存预算、模型下载与断点续传、Skill 路由、多轮工具调用、权限边界、Live / LiveLand 交互，以及可选的 Mac 局域网远程推理。它不是云端大模型的替代品，不提供无限长上下文，也不会任意操控所有 iOS 应用。
+PhoneClaw 是面向移动端和端侧设备设计的 iPhone Agent 与 Agent 框架，围绕 iOS 的真实约束做了端侧优化：本地模型推理、移动端内存预算、模型下载与断点续传、Skill 路由、多轮工具调用、权限边界、Live / LiveLand 交互，以及可选的 Mac 局域网远程推理。它不是云聊天套壳，也不是把桌面 Agent 框架直接搬到手机上；它不是云端大模型的替代品，不提供无限长上下文，也不会任意操控所有 iOS 应用。
+
+</details>
 
 ## 最新更新
 
