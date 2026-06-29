@@ -28,7 +28,7 @@
 PhoneClaw 是一个运行在 iPhone 上的本地私人 Agent。内置 Gemma 4 E2B / E4B（LiteRT）和 MiniCPM-V 4.6 多个本地模型，在端侧完成推理和 Skill 调用，无需云端 API 或外部模型接入，不上传聊天内容。
 
 <details>
-<summary><strong>项目事实</strong></summary>
+<summary><strong>定位与边界</strong></summary>
 
 ### PhoneClaw 是什么？
 

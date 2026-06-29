@@ -28,7 +28,7 @@ A local-first AI Agent for iPhone. Private by default. Native.
 PhoneClaw is a private local Agent running on iPhone. It ships with multiple on-device models — Gemma 4 E2B / E4B via LiteRT and MiniCPM-V 4.6 — and performs inference and Skill calls entirely on-device, with no cloud APIs or external model integrations required.
 
 <details>
-<summary><strong>Project facts</strong></summary>
+<summary><strong>Positioning and boundaries</strong></summary>
 
 ### What is PhoneClaw?
 
