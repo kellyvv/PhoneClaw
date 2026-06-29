@@ -41,9 +41,9 @@ No, not by default. Chat, images, and personal data (Calendar, Reminders, Contac
 
 Using natural language: Calendar (create events, read schedule, busy/free analysis), Reminders, Contacts (find, save, update, delete), Clipboard, HealthKit summaries (steps, distance, calories, heart rate, sleep, workouts), image understanding, voice and LIVE real-time conversation, LiveLand from the Dynamic Island, translation, and explicit Web Search when realtime information is needed.
 
-### How is PhoneClaw different from cloud chatbots?
+### How is PhoneClaw different from cloud chatbots or desktop agent frameworks?
 
-It is local-first, not a cloud-chatbot wrapper: no cloud LLM API, no per-call token billing, clear privacy boundaries, and native iOS Skills with scoped permissions. It is not a replacement for cloud-scale models, does not offer unlimited long context, and does not arbitrarily control every iOS app.
+PhoneClaw is a mobile-native iPhone Agent and agent framework for on-device and edge devices. It is not a cloud-chatbot wrapper and not a desktop agent framework copied onto a phone. It is optimized around real iOS constraints: local model inference, mobile memory budgets, resumable model downloads, Skill routing, multi-turn tool calls, permission boundaries, Live / LiveLand interaction, and optional LAN-based Mac remote inference. It is not a replacement for cloud-scale models, does not offer unlimited long context, and does not arbitrarily control every iOS app.
 
 ## Latest Updates
 
