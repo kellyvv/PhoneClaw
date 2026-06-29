@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PhoneClaw Privacy &amp; Data Flow - what stays on iPhone</title>
+<meta name="description" content="PhoneClaw privacy and data flow: chat, images, and personal data stay on iPhone by default. Data leaves only for explicit Web Search, opening a URL, or paired Mac remote inference.">
+<link rel="canonical" href="https://kellyvv.github.io/PhoneClaw/privacy/">
+
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="PhoneClaw">
+<meta property="og:title" content="PhoneClaw Privacy &amp; Data Flow">
+<meta property="og:description" content="What stays on iPhone, what can leave, when, and where it goes. No PhoneClaw cloud server is in the default path.">
+<meta property="og:url" content="https://kellyvv.github.io/PhoneClaw/privacy/">
+<meta property="og:image" content="https://kellyvv.github.io/PhoneClaw/assets/banner.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="PhoneClaw Privacy &amp; Data Flow">
+<meta name="twitter:description" content="What stays on iPhone, what can leave, when, and where it goes.">
+<meta name="twitter:image" content="https://kellyvv.github.io/PhoneClaw/assets/banner.jpg">
+
+<link rel="icon" href="../assets/app-icon.png">
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<nav class="site-nav">
+  <div class="wrap">
+    <a class="brand" href="../"><img src="../assets/app-icon.png" alt="">PhoneClaw</a>
+    <div class="nav-links">
+      <a href="../#framework">Framework</a>
+      <a href="../privacy/">Privacy</a>
+      <a href="../mac-remote/">Mac Remote</a>
+      <a href="https://github.com/kellyvv/PhoneClaw">GitHub</a>
+      <a class="nav-cta" href="https://testflight.apple.com/join/YuUSwq78">TestFlight</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="hero-content">
+      <p class="eyebrow">Privacy and data flow</p>
+      <h1>Know exactly where the data goes.</h1>
+      <p class="lede">PhoneClaw is local-first. Chat, images, and personal data stay on the iPhone by default. The only exits are explicit user actions.</p>
+      <div class="hero-actions">
+        <a class="button primary" href="#data-table">View data table</a>
+        <a class="button" href="../">Back to home</a>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section class="band light">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <p class="section-kicker">Short version</p>
+          <h2>No PhoneClaw cloud server sits behind the default experience.</h2>
+        </div>
+        <p class="section-copy">Inference and native iOS Skill calls run on-device by default. Data leaves the phone only when you ask PhoneClaw to use the public web or when you explicitly pair a Mac for remote inference.</p>
+      </div>
+      <div class="flow">
+        <article class="data-row">
+          <h3>Default path</h3>
+          <p>Local model, local Skills, local summaries, local permission checks.</p>
+        </article>
+        <article class="data-row warn">
+          <h3>Public web path</h3>
+          <p>Only for Web Search or opening a URL you ask PhoneClaw to read.</p>
+        </article>
+        <article class="data-row remote">
+          <h3>Mac path</h3>
+          <p>Only after pairing your Mac and selecting a Mac-side model.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section id="data-table" class="band white">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <p class="section-kicker">Data table</p>
+          <h2>What stays on iPhone.</h2>
+        </div>
+        <p class="section-copy">Permission-scoped iOS data is read only after you grant access. If you never grant a Skill permission, PhoneClaw cannot read that source.</p>
+      </div>
+      <table class="privacy-table">
+        <thead>
+          <tr><th>Data</th><th>Processing path</th><th>Default behavior</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td data-label="Data">Chat messages</td>
+            <td data-label="Processing path">On-device model context and local conversation state.</td>
+            <td data-label="Default behavior"><span class="status">Stays on iPhone</span></td>
+          </tr>
+          <tr>
+            <td data-label="Data">Images and camera input</td>
+            <td data-label="Processing path">On-device multimodal model and LIVE mode pipeline.</td>
+            <td data-label="Default behavior"><span class="status">Stays on iPhone</span></td>
+          </tr>
+          <tr>
+            <td data-label="Data">Calendar, Reminders, Contacts</td>
+            <td data-label="Processing path">Native iOS APIs after explicit permission.</td>
+            <td data-label="Default behavior"><span class="status">Stays on iPhone</span></td>
+          </tr>
+          <tr>
+            <td data-label="Data">Clipboard</td>
+            <td data-label="Processing path">Local task step, useful for multi-step workflows.</td>
+            <td data-label="Default behavior"><span class="status">Stays on iPhone</span></td>
+          </tr>
+          <tr>
+            <td data-label="Data">HealthKit summaries</td>
+            <td data-label="Processing path">Steps, distance, calories, heart rate, sleep, workouts, and related summaries after permission.</td>
+            <td data-label="Default behavior"><span class="status">Stays on iPhone</span></td>
+          </tr>
+          <tr>
+            <td data-label="Data">Web Search query</td>
+            <td data-label="Processing path">Sent to a search provider only when you explicitly ask for realtime public information.</td>
+            <td data-label="Default behavior"><span class="status warn">Explicit action only</span></td>
+          </tr>
+          <tr>
+            <td data-label="Data">Specific public URL</td>
+            <td data-label="Processing path">Fetched from the target website only when you ask PhoneClaw to read that page.</td>
+            <td data-label="Default behavior"><span class="status warn">Explicit action only</span></td>
+          </tr>
+          <tr>
+            <td data-label="Data">Mac remote inference request</td>
+            <td data-label="Processing path">Sent to your paired Mac on the same LAN. With Ollama it stays on that Mac; other providers follow their own policy.</td>
+            <td data-label="Default behavior"><span class="status warn">Opt-in only</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="band dark">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <p class="section-kicker">Boundaries</p>
+          <h2>What PhoneClaw does not claim.</h2>
+        </div>
+        <p class="section-copy">Clear limits make the privacy model stronger. PhoneClaw is not pretending mobile devices have desktop resources or cloud-scale context.</p>
+      </div>
+      <div class="stack">
+        <article class="panel">
+          <span class="panel-label">No upload</span>
+          <h3>No PhoneClaw server upload</h3>
+          <p>Chat, images, and personal data are not uploaded to PhoneClaw servers.</p>
+        </article>
+        <article class="panel">
+          <span class="panel-label">No wrapper</span>
+          <h3>No default cloud LLM API</h3>
+          <p>The default path is not a hidden cloud chatbot API and has no per-call token billing.</p>
+        </article>
+        <article class="panel">
+          <span class="panel-label">No background</span>
+          <h3>No silent collection</h3>
+          <p>Network exits happen only when you trigger a feature that needs them.</p>
+        </article>
+        <article class="panel">
+          <span class="panel-label">No fantasy control</span>
+          <h3>iOS limits still apply</h3>
+          <p>PhoneClaw works through iOS permissions and native APIs, not arbitrary control of every app.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="band light">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <p class="section-kicker">中文</p>
+          <h2>数据流向一句话版本。</h2>
+        </div>
+        <p class="section-copy">PhoneClaw 默认在 iPhone 本地完成推理和 iOS 原生 Skill 调用。聊天、图片和个人数据不会上传到 PhoneClaw 服务器。只有你主动触发联网搜索、打开网页，或配对 Mac 远程推理时，数据才会离开 iPhone。</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="wrap">
+    <div class="footer-row">
+      <a href="../">Home</a>
+      <a href="../mac-remote/">Mac Remote</a>
+      <a href="https://github.com/kellyvv/PhoneClaw">GitHub</a>
+      <a href="https://testflight.apple.com/join/YuUSwq78">TestFlight</a>
+    </div>
+    <p>Local-first, private by default, and explicit about every network path.</p>
+  </div>
+</footer>
+
+</body>
+</html>

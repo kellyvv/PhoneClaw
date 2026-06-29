@@ -1,0 +1,20 @@
+# PhoneClaw — https://kellyvv.github.io/PhoneClaw/
+User-agent: *
+Allow: /
+
+# AI answer engines / search crawlers (explicitly welcomed for search visibility)
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+# Model-training crawlers are a separate, values-based decision from search visibility.
+# To opt OUT of training use while staying visible in AI search, uncomment:
+# User-agent: GPTBot
+# Disallow: /
+
+Sitemap: https://kellyvv.github.io/PhoneClaw/sitemap.xml

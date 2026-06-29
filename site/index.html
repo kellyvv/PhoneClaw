@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PhoneClaw for iPhone - mobile-native local AI agent framework</title>
+<meta name="description" content="PhoneClaw is a mobile-native local AI agent and agent framework for iPhone. It runs Gemma 4 E2B / E4B via LiteRT and MiniCPM-V 4.6 on-device, calls native iOS Skills, and is private by default.">
+<link rel="canonical" href="https://kellyvv.github.io/PhoneClaw/">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="PhoneClaw">
+<meta property="og:title" content="PhoneClaw for iPhone - mobile-native local AI agent framework">
+<meta property="og:description" content="A local-first iPhone Agent and agent framework for on-device inference, native iOS Skills, Live / LiveLand interaction, and optional Mac remote inference.">
+<meta property="og:url" content="https://kellyvv.github.io/PhoneClaw/">
+<meta property="og:image" content="https://kellyvv.github.io/PhoneClaw/assets/banner.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="PhoneClaw for iPhone - mobile-native local AI agent">
+<meta name="twitter:description" content="A local-first iPhone Agent and agent framework for on-device inference, native iOS Skills, and optional Mac remote inference.">
+<meta name="twitter:image" content="https://kellyvv.github.io/PhoneClaw/assets/banner.jpg">
+
+<link rel="icon" href="assets/app-icon.png">
+<link rel="stylesheet" href="assets/style.css">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "PhoneClaw",
+  "alternateName": "PhoneClaw for iPhone",
+  "applicationCategory": "ProductivityApplication",
+  "operatingSystem": "iOS 17+",
+  "description": "PhoneClaw is a mobile-native local AI agent and agent framework for iPhone. It runs inference and native iOS Skills on-device using Gemma 4 E2B / E4B via LiteRT and MiniCPM-V 4.6, with no cloud model API required by default.",
+  "url": "https://kellyvv.github.io/PhoneClaw/",
+  "downloadUrl": "https://testflight.apple.com/join/YuUSwq78",
+  "softwareHelp": "https://github.com/kellyvv/PhoneClaw",
+  "image": "https://kellyvv.github.io/PhoneClaw/assets/banner.jpg",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "author": { "@type": "Organization", "name": "PhoneClaw", "url": "https://github.com/kellyvv/PhoneClaw" },
+  "sameAs": [ "https://github.com/kellyvv/PhoneClaw" ]
+}
+</script>
+</head>
+<body>
+
+<nav class="site-nav">
+  <div class="wrap">
+    <a class="brand" href="./"><img src="assets/app-icon.png" alt="">PhoneClaw</a>
+    <div class="nav-links">
+      <a href="#framework">Framework</a>
+      <a href="privacy/">Privacy</a>
+      <a href="mac-remote/">Mac Remote</a>
+      <a href="https://github.com/kellyvv/PhoneClaw">GitHub</a>
+      <a class="nav-cta" href="https://testflight.apple.com/join/YuUSwq78">TestFlight</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="hero-content">
+      <p class="eyebrow">Mobile-native local AI agent framework</p>
+      <h1>PhoneClaw for iPhone</h1>
+      <p class="lede">An iPhone Agent built for real mobile constraints: on-device models, native iOS Skills, scoped permissions, Live interaction, and optional Mac inference when the phone should stay light.</p>
+      <div class="hero-actions">
+        <a class="button primary" href="https://testflight.apple.com/join/YuUSwq78">Join TestFlight</a>
+        <a class="button" href="https://github.com/kellyvv/PhoneClaw">View source</a>
+      </div>
+      <p class="disamb">This is PhoneClaw for iPhone, an iOS on-device agent project. It is unrelated to the Android app of the same name.</p>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section class="band light">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <p class="section-kicker">Product</p>
+          <h2>Not a chat wrapper. A phone-first agent surface.</h2>
+        </div>
+        <p class="section-copy">PhoneClaw treats the iPhone as the runtime, not just the screen. The model, Skill router, permission checks, downloads, memory budget, and interaction modes are all designed around mobile and edge devices.</p>
+      </div>
+
+      <div class="product-grid">
+        <div class="showcase">
+          <div class="showcase-content">
+            <h3>Local-first by default</h3>
+            <p>Gemma 4 E2B / E4B via LiteRT and MiniCPM-V 4.6 run on-device for private everyday tasks.</p>
+          </div>
+        </div>
+        <div class="capability-grid">
+          <article class="tile">
+            <img src="assets/app-icon.png" alt="">
+            <h3>Native iOS Skills</h3>
+            <p>Calendar, Reminders, Contacts, Clipboard, HealthKit, translation, images, and explicit Web Search.</p>
+          </article>
+          <article class="tile">
+            <img src="assets/liveland-launcher.png" alt="">
+            <h3>Live and LiveLand</h3>
+            <p>Voice, camera-aware LIVE mode, and Dynamic Island status for mobile tasks in motion.</p>
+          </article>
+          <article class="tile">
+            <img src="assets/brand-mark.png" alt="">
+            <h3>Mobile runtime work</h3>
+            <p>Memory budgeting, model switching, resumable downloads, cache cleanup, and history trimming.</p>
+          </article>
+          <article class="tile">
+            <img src="assets/app-icon.png" alt="">
+            <h3>Mac as an edge node</h3>
+            <p>Pair a Mac over LAN to use Ollama or CLI models while the iPhone keeps the agent experience.</p>
+          </article>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="framework" class="band dark">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <p class="section-kicker">Framework</p>
+          <h2>The agent stack is shaped by iOS limits.</h2>
+        </div>
+        <p class="section-copy">Desktop agent frameworks assume long-running processes, generous memory, broad file access, and easy background execution. PhoneClaw starts from the opposite constraints.</p>
+      </div>
+      <div class="stack">
+        <article class="panel">
+          <span class="panel-label">01 Input</span>
+          <h3>Mobile commands</h3>
+          <p>Text, voice, images, LIVE camera, widgets, Shortcuts, Control Center, and LiveLand entry points.</p>
+        </article>
+        <article class="panel">
+          <span class="panel-label">02 Routing</span>
+          <h3>Skill-aware planning</h3>
+          <p>File-driven Skills, scoped tool lists, argument extraction, clarification, and safer multi-turn task handling.</p>
+        </article>
+        <article class="panel">
+          <span class="panel-label">03 Execution</span>
+          <h3>Native iOS tools</h3>
+          <p>Calendar, Reminders, Contacts, Clipboard, HealthKit, Web Search, and device-local summaries behind permission gates.</p>
+        </article>
+        <article class="panel">
+          <span class="panel-label">04 Inference</span>
+          <h3>On-device or LAN</h3>
+          <p>LiteRT local models by default, with optional Mac Gateway for heavier models on a trusted local machine.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="band white">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <p class="section-kicker">Boundaries</p>
+          <h2>The privacy claim is concrete.</h2>
+        </div>
+        <p class="section-copy">PhoneClaw does not upload chat, images, or personal data to PhoneClaw servers. The exceptions are explicit user actions: Web Search, opening a URL, or Mac remote inference.</p>
+      </div>
+      <div class="flow">
+        <article class="data-row">
+          <h3>Stays on iPhone</h3>
+          <p>Default inference, native Skill calls, Calendar, Reminders, Contacts, Clipboard, HealthKit summaries, images, and chat.</p>
+        </article>
+        <article class="data-row warn">
+          <h3>Leaves only when asked</h3>
+          <p>Realtime Web Search and opening a public URL send the request to the search provider or target website.</p>
+        </article>
+        <article class="data-row remote">
+          <h3>Optional Mac inference</h3>
+          <p>When paired, the request goes to your Mac on the LAN. Ollama stays there; CLI providers follow their own policies.</p>
+        </article>
+      </div>
+      <p class="lang-note"><a href="privacy/">Read the full Privacy &amp; Data Flow page</a></p>
+    </div>
+  </section>
+
+  <section class="band dark">
+    <div class="wrap mac-layout">
+      <div class="device-cluster" aria-hidden="true">
+        <div class="phone-shape"><img src="assets/app-icon.png" alt=""></div>
+        <div class="signal">LAN</div>
+        <div class="mac-shape"><code>ollama<br>codex cli<br>antigravity cli</code></div>
+      </div>
+      <div>
+        <p class="section-kicker">Mac Gateway</p>
+        <h2>Keep the phone native. Move heavy inference to your Mac.</h2>
+        <p class="section-copy">PhoneClaw Gateway turns a Mac on the same Wi-Fi into an optional local inference source. The iPhone still owns the chat UI, Skills, permission model, and task flow.</p>
+        <div class="hero-actions">
+          <a class="button primary" href="mac-remote/">See Mac Remote</a>
+          <a class="button" href="https://github.com/kellyvv/PhoneClaw/releases/download/mac-gateway-v0.1.1/PhoneClawGateway-macOS-v0.1.1.zip">Download Gateway</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band light">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <p class="section-kicker">中文</p>
+          <h2>PhoneClaw 是面向移动端的 Agent 框架。</h2>
+        </div>
+        <p class="section-copy">它不是云聊天套壳，也不是把桌面 Agent 框架直接搬到手机上。PhoneClaw 围绕 iOS 的端侧推理、权限边界、移动内存预算、模型下载、Live 交互和局域网 Mac 推理做了专门设计。</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="wrap">
+    <div class="footer-row">
+      <a href="privacy/">Privacy &amp; Data Flow</a>
+      <a href="mac-remote/">Mac Remote</a>
+      <a href="https://github.com/kellyvv/PhoneClaw">GitHub</a>
+      <a href="https://testflight.apple.com/join/YuUSwq78">TestFlight</a>
+    </div>
+    <p>Apache-2.0. Local-first, private by default. Built for iPhone and edge devices.</p>
+  </div>
+</footer>
+
+</body>
+</html>
