@@ -2,7 +2,7 @@
 
 ![banner](assets/banner.jpg)
 
-A local AI Agent for iPhone. Offline. Private. Native.
+A local-first AI Agent for iPhone. Private by default. Native.
 
 ![Swift](https://img.shields.io/badge/Swift-5.10-orange?style=flat-square)
 ![iOS](https://img.shields.io/badge/iOS-17%2B-blue?style=flat-square)
@@ -25,7 +25,25 @@ A local AI Agent for iPhone. Offline. Private. Native.
 </div>
 
 
-PhoneClaw is a private local Agent running on iPhone. It ships with multiple on-device models, including Gemma 4 and MiniCPM-V, and performs inference and Skill calls entirely on-device, with no cloud APIs or external model integrations required.
+PhoneClaw is a private local Agent running on iPhone. It ships with multiple on-device models — Gemma 4 E2B / E4B via LiteRT and MiniCPM-V 4.6 — and performs inference and Skill calls entirely on-device, with no cloud APIs or external model integrations required.
+
+## Quick Facts
+
+### What is PhoneClaw?
+
+PhoneClaw is a private, local AI agent for iPhone. It runs inference and native iOS Skills entirely on-device using Gemma 4 E2B / E4B via LiteRT and MiniCPM-V 4.6, with no cloud model API required. (It is unrelated to the Android app of the same name.)
+
+### Does PhoneClaw upload my data?
+
+No, not by default. Chat, images, and personal data (Calendar, Reminders, Contacts, Clipboard, HealthKit) are processed on-device and are not uploaded to PhoneClaw servers. Data leaves the iPhone only when you explicitly use Web Search, open a URL, or pair a Mac for remote inference. With a paired Mac the request goes to that Mac — with Ollama it stays on the Mac; with a CLI or other upstream provider, that provider's data policy applies.
+
+### What can PhoneClaw do on iPhone?
+
+Using natural language: Calendar (create events, read schedule, busy/free analysis), Reminders, Contacts (find, save, update, delete), Clipboard, HealthKit summaries (steps, distance, calories, heart rate, sleep, workouts), image understanding, voice and LIVE real-time conversation, LiveLand from the Dynamic Island, translation, and explicit Web Search when realtime information is needed.
+
+### How is PhoneClaw different from cloud chatbots?
+
+It is local-first, not a cloud-chatbot wrapper: no cloud LLM API, no per-call token billing, clear privacy boundaries, and native iOS Skills with scoped permissions. It is not a replacement for cloud-scale models, does not offer unlimited long context, and does not arbitrarily control every iOS app.
 
 ## Latest Updates
 

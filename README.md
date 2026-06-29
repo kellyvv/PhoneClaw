@@ -2,7 +2,7 @@
 
 ![banner](assets/banner.jpg)
 
-本地运行的私人 iPhone AI Agent，不联网，不上传，完全离线。
+本地优先的私人 iPhone AI Agent，默认不上传。
 
 ![Swift](https://img.shields.io/badge/Swift-5.10-orange?style=flat-square)
 ![iOS](https://img.shields.io/badge/iOS-17%2B-blue?style=flat-square)
@@ -25,7 +25,25 @@
 </div>
 
 
-PhoneClaw 是一个运行在 iPhone 上的本地私人 Agent。内置 Gemma 4 和 MiniCPM-V 多个本地模型，在端侧完成推理和 Skill 调用，无需云端 API 或外部模型接入，不上传聊天内容。
+PhoneClaw 是一个运行在 iPhone 上的本地私人 Agent。内置 Gemma 4 E2B / E4B（LiteRT）和 MiniCPM-V 4.6 多个本地模型，在端侧完成推理和 Skill 调用，无需云端 API 或外部模型接入，不上传聊天内容。
+
+## 快速事实
+
+### PhoneClaw 是什么？
+
+PhoneClaw 是运行在 iPhone 上的本地私人 AI Agent。基于 Gemma 4 E2B / E4B（LiteRT）和 MiniCPM-V 4.6，在端侧完成推理和 iOS 原生 Skill 调用，无需云端模型 API。（与同名的 Android 应用无关。）
+
+### 会上传数据吗？
+
+默认不上传。聊天、图片和个人数据（日历、提醒事项、通讯录、剪贴板、健康数据）都在设备端处理，不会上传到 PhoneClaw 服务器。只有你明确使用联网搜索、打开网页，或配对 Mac 远程推理时，数据才会离开 iPhone。配对 Mac 时请求会发到你那台 Mac——选 Ollama 留在本机；选 CLI 或其它上游 provider，则以对应 provider 的数据策略为准。
+
+### 能做什么？
+
+用自然语言完成：日历（创建事件、查询日程、忙闲分析）、提醒事项、通讯录（查询、保存、更新、删除）、剪贴板、健康数据摘要（步数、距离、卡路里、心率、睡眠、运动）、图片理解、语音与 LIVE 实时对话、灵动岛 LiveLand、翻译，以及明确需要时的联网搜索。
+
+### 和云端聊天机器人有什么不同？
+
+本地优先，不是云聊天的套壳：无云端 LLM API、无按次 Token 计费、隐私边界清晰、iOS 原生 Skill 带权限范围。它不是云端大模型的替代品，不提供无限长上下文，也不会任意操控所有 iOS 应用。
 
 ## 最新更新
 
