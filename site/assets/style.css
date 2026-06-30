@@ -75,7 +75,7 @@ a { color: inherit; }
 .nav-links {
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 14px;
 }
 
 .nav-links a {
@@ -356,6 +356,17 @@ h2 {
 
 .data-row.warn { border-left-color: var(--gold); }
 .data-row.remote { border-left-color: var(--blue); }
+
+.faq-list {
+  display: grid;
+  gap: 14px;
+}
+
+.faq-list .data-row h2 {
+  font-size: 24px;
+  line-height: 1.12;
+  margin-bottom: 10px;
+}
 
 .mac-layout {
   display: grid;

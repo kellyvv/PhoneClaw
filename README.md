@@ -8,7 +8,7 @@
 ![iOS](https://img.shields.io/badge/iOS-17%2B-blue?style=flat-square)
 ![License](https://img.shields.io/badge/License-Apache%202.0-green?style=flat-square)
 
-[TestFlight](https://testflight.apple.com/join/YuUSwq78) · [English](README_EN.md) · [报告问题](https://github.com/kellyvv/phoneclaw/issues) · [功能建议](https://github.com/kellyvv/phoneclaw/issues)
+[官网](https://kellyvv.github.io/PhoneClaw/zh/) · [TestFlight](https://testflight.apple.com/join/YuUSwq78) · [English](README_EN.md) · [报告问题](https://github.com/kellyvv/phoneclaw/issues) · [功能建议](https://github.com/kellyvv/phoneclaw/issues)
 
 </div>
 

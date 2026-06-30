@@ -8,7 +8,7 @@ A local-first AI Agent for iPhone. Private by default. Native.
 ![iOS](https://img.shields.io/badge/iOS-17%2B-blue?style=flat-square)
 ![License](https://img.shields.io/badge/License-Apache%202.0-green?style=flat-square)
 
-[TestFlight](https://testflight.apple.com/join/YuUSwq78) · [中文](README.md) · [Report an Issue](https://github.com/kellyvv/phoneclaw/issues) · [Request a Feature](https://github.com/kellyvv/phoneclaw/issues)
+[Website](https://kellyvv.github.io/PhoneClaw/) · [TestFlight](https://testflight.apple.com/join/YuUSwq78) · [中文](README.md) · [Report an Issue](https://github.com/kellyvv/phoneclaw/issues) · [Request a Feature](https://github.com/kellyvv/phoneclaw/issues)
 
 </div>
 

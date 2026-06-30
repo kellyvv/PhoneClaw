@@ -6,7 +6,13 @@ Allow: /
 User-agent: OAI-SearchBot
 Allow: /
 
+User-agent: ChatGPT-User
+Allow: /
+
 User-agent: PerplexityBot
+Allow: /
+
+User-agent: Perplexity-User
 Allow: /
 
 # Model-training and AI-product crawlers are a separate, values-based decision from

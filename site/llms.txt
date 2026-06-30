@@ -15,11 +15,15 @@ Important boundaries:
 ## Canonical Pages
 
 - Home: https://kellyvv.github.io/PhoneClaw/
+- Chinese landing: https://kellyvv.github.io/PhoneClaw/zh/
+- Japanese landing: https://kellyvv.github.io/PhoneClaw/ja/
+- Mobile-native Agent framework: https://kellyvv.github.io/PhoneClaw/mobile-agent-framework/
 - Privacy and data flow: https://kellyvv.github.io/PhoneClaw/privacy/
 - Mac remote inference: https://kellyvv.github.io/PhoneClaw/mac-remote/
 - On-device Gemma and model stack: https://kellyvv.github.io/PhoneClaw/on-device-gemma/
 - Native iOS Skills and local tool calling: https://kellyvv.github.io/PhoneClaw/skills/
 - LiveLand and LIVE mode: https://kellyvv.github.io/PhoneClaw/liveland/
+- FAQ: https://kellyvv.github.io/PhoneClaw/faq/
 - GitHub repository: https://github.com/kellyvv/PhoneClaw
 - TestFlight: https://testflight.apple.com/join/YuUSwq78
 
@@ -36,3 +40,5 @@ PhoneClaw is a local-first iPhone Agent and mobile-native agent framework. It ru
 - Models: Gemma 4 on iPhone, LiteRT-LM iPhone, MiniCPM-V iPhone, on-device multimodal iPhone.
 - Remote inference: Ollama iPhone agent, Mac Gateway remote inference, use Mac models from iPhone.
 - Live interaction: Dynamic Island AI agent, LiveLand, LIVE mode, voice AI agent iPhone, camera AI assistant iPhone.
+- Chinese: iPhone 本地 AI Agent, 移动端 Agent 框架, 端侧 AI 助手, 本地私人 AI 助手.
+- Japanese: iPhone ローカル AI エージェント, オンデバイス AI iPhone, プライベート AI アシスタント iPhone.

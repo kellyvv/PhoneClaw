@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PhoneClaw for iPhone - 移动端本地 AI Agent 框架</title>
+<meta name="description" content="PhoneClaw 是面向 iPhone 的移动端本地 AI Agent 和 Agent 框架，默认端侧运行 Gemma 4 E2B / E4B、MiniCPM-V 4.6 和 iOS 原生 Skills，可选 Mac Gateway 远程推理。">
+<meta name="robots" content="index,follow,max-image-preview:large">
+<link rel="canonical" href="https://kellyvv.github.io/PhoneClaw/zh/">
+<link rel="alternate" hreflang="en" href="https://kellyvv.github.io/PhoneClaw/">
+<link rel="alternate" hreflang="zh-Hans" href="https://kellyvv.github.io/PhoneClaw/zh/">
+<link rel="alternate" hreflang="ja" href="https://kellyvv.github.io/PhoneClaw/ja/">
+<link rel="alternate" hreflang="x-default" href="https://kellyvv.github.io/PhoneClaw/">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="PhoneClaw">
+<meta property="og:title" content="PhoneClaw for iPhone - 移动端本地 AI Agent 框架">
+<meta property="og:description" content="iPhone 本地优先 AI Agent：端侧模型、iOS 原生 Skills、清晰隐私边界、LiveLand 交互和可选 Mac 远程推理。">
+<meta property="og:url" content="https://kellyvv.github.io/PhoneClaw/zh/">
+<meta property="og:image" content="https://kellyvv.github.io/PhoneClaw/assets/banner.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="PhoneClaw for iPhone - 移动端本地 AI Agent">
+<meta name="twitter:description" content="端侧模型、iOS Skills、隐私边界、LiveLand 和 Mac Gateway。">
+<meta name="twitter:image" content="https://kellyvv.github.io/PhoneClaw/assets/banner.jpg">
+
+<link rel="icon" href="../assets/app-icon.png">
+<link rel="stylesheet" href="../assets/style.css">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebPage",
+      "@id": "https://kellyvv.github.io/PhoneClaw/zh/#webpage",
+      "url": "https://kellyvv.github.io/PhoneClaw/zh/",
+      "name": "PhoneClaw for iPhone - 移动端本地 AI Agent 框架",
+      "inLanguage": "zh-Hans",
+      "description": "PhoneClaw 是面向 iPhone 的移动端本地 AI Agent 和 Agent 框架。",
+      "about": {
+        "@type": "SoftwareApplication",
+        "@id": "https://kellyvv.github.io/PhoneClaw/#software",
+        "name": "PhoneClaw"
+      }
+    }
+  ]
+}
+</script>
+</head>
+<body>
+
+<nav class="site-nav">
+  <div class="wrap">
+    <a class="brand" href="../"><img src="../assets/app-icon.png" alt="">PhoneClaw</a>
+    <div class="nav-links">
+      <a href="../mobile-agent-framework/">Framework</a>
+      <a href="../on-device-gemma/">Models</a>
+      <a href="../skills/">Skills</a>
+      <a href="../privacy/">Privacy</a>
+      <a href="../ja/">JA</a>
+      <a class="nav-cta" href="https://testflight.apple.com/join/YuUSwq78">TestFlight</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="hero-content">
+      <p class="eyebrow">iPhone 本地 AI Agent</p>
+      <h1>PhoneClaw for iPhone</h1>
+      <p class="lede">PhoneClaw 是面向 iPhone 的移动端本地 AI Agent 和 Agent 框架：端侧模型、iOS 原生 Skills、权限边界、Live / LiveLand 交互，以及可选的局域网 Mac 远程推理。</p>
+      <div class="hero-actions">
+        <a class="button primary" href="https://testflight.apple.com/join/YuUSwq78">加入 TestFlight</a>
+        <a class="button" href="https://github.com/kellyvv/PhoneClaw">查看源码</a>
+      </div>
+      <p class="disamb">这是 PhoneClaw for iPhone，一个 iOS 端侧 Agent 项目，与同名 Android 应用无关。</p>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section class="band light">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <p class="section-kicker">定位</p>
+          <h2>不是云聊天套壳，也不是桌面 Agent 框架的手机版。</h2>
+        </div>
+        <p class="section-copy">PhoneClaw 把 iPhone 当成 Agent 运行时，而不是远程屏幕。模型加载、Skill 路由、权限确认、内存预算、模型下载、Live 入口和任务状态都围绕移动端约束设计。</p>
+      </div>
+      <div class="flow">
+        <article class="data-row">
+          <h3>端侧模型</h3>
+          <p>Gemma 4 E2B / E4B 通过 LiteRT-LM 在 iPhone 本地运行，MiniCPM-V 4.6 用于图片和 LIVE 相机场景。</p>
+        </article>
+        <article class="data-row warn">
+          <h3>原生 iOS Skills</h3>
+          <p>Calendar、Reminders、Contacts、Clipboard、HealthKit、翻译、图片和显式 Web Search 都在权限边界内执行。</p>
+        </article>
+        <article class="data-row remote">
+          <h3>Mac Gateway</h3>
+          <p>需要更重推理时，可以把同一局域网内的 Mac 作为可选推理节点，iPhone 仍保留 Agent 体验和权限边界。</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="band white">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <p class="section-kicker">隐私</p>
+          <h2>默认不上传，边界写清楚。</h2>
+        </div>
+        <p class="section-copy">聊天、图片和个人数据默认留在 iPhone。只有你主动要求联网搜索、打开网页，或选择配对 Mac 远程推理时，相关数据才会离开手机。PhoneClaw 默认路径没有云端 LLM API，也没有按次 Token 计费。</p>
+      </div>
+      <div class="hero-actions">
+        <a class="button dark" href="../privacy/">查看 Privacy &amp; Data Flow</a>
+        <a class="button light" href="../faq/">查看 FAQ</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="wrap">
+    <div class="footer-row">
+      <a href="../">English</a>
+      <a href="../ja/">日本語</a>
+      <a href="../mobile-agent-framework/">Framework</a>
+      <a href="../on-device-gemma/">Models</a>
+      <a href="../skills/">Skills</a>
+      <a href="../privacy/">Privacy</a>
+      <a href="https://github.com/kellyvv/PhoneClaw">GitHub</a>
+    </div>
+    <p>面向 iPhone 和端侧设备的本地优先 AI Agent 框架。</p>
+  </div>
+</footer>
+
+</body>
+</html>

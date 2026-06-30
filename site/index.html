@@ -7,6 +7,10 @@
 <meta name="description" content="PhoneClaw is a mobile-native local AI agent and agent framework for iPhone. It runs Gemma 4 E2B / E4B via LiteRT and MiniCPM-V 4.6 on-device, calls native iOS Skills, and supports optional Mac Gateway remote inference.">
 <meta name="robots" content="index,follow,max-image-preview:large">
 <link rel="canonical" href="https://kellyvv.github.io/PhoneClaw/">
+<link rel="alternate" hreflang="en" href="https://kellyvv.github.io/PhoneClaw/">
+<link rel="alternate" hreflang="zh-Hans" href="https://kellyvv.github.io/PhoneClaw/zh/">
+<link rel="alternate" hreflang="ja" href="https://kellyvv.github.io/PhoneClaw/ja/">
+<link rel="alternate" hreflang="x-default" href="https://kellyvv.github.io/PhoneClaw/">
 
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="PhoneClaw">
@@ -42,6 +46,7 @@
       "name": "PhoneClaw",
       "url": "https://kellyvv.github.io/PhoneClaw/",
       "inLanguage": "en",
+      "availableLanguage": ["en", "zh-Hans", "ja"],
       "publisher": {
         "@id": "https://kellyvv.github.io/PhoneClaw/#organization"
       },
@@ -115,12 +120,13 @@
   <div class="wrap">
     <a class="brand" href="./"><img src="assets/app-icon.png" alt="">PhoneClaw</a>
     <div class="nav-links">
+      <a href="mobile-agent-framework/">Framework</a>
       <a href="on-device-gemma/">Models</a>
       <a href="skills/">Skills</a>
       <a href="liveland/">LiveLand</a>
-      <a href="#framework">Framework</a>
       <a href="privacy/">Privacy</a>
-      <a href="mac-remote/">Mac Remote</a>
+      <a href="faq/">FAQ</a>
+      <a href="zh/">ZH</a>
       <a class="nav-cta" href="https://testflight.apple.com/join/YuUSwq78">TestFlight</a>
     </div>
   </div>
@@ -276,16 +282,24 @@
       </div>
       <div class="flow">
         <article class="data-row">
+          <h3><a href="mobile-agent-framework/">Mobile-native Agent framework</a></h3>
+          <p>Why PhoneClaw is designed from iOS permissions, memory, mobile entry points, and edge inference rather than copied from desktop Agent stacks.</p>
+        </article>
+        <article class="data-row warn">
           <h3><a href="on-device-gemma/">Gemma 4 on iPhone</a></h3>
           <p>LiteRT-LM, MiniCPM-V 4.6, mobile memory limits, and how model choice shapes local agent workflows.</p>
         </article>
-        <article class="data-row warn">
+        <article class="data-row remote">
           <h3><a href="skills/">Native iOS Skills</a></h3>
           <p>File-driven Skills, tool allowlists, permission boundaries, and local tool calling on iPhone.</p>
         </article>
-        <article class="data-row remote">
+        <article class="data-row">
           <h3><a href="liveland/">LiveLand and LIVE mode</a></h3>
           <p>Dynamic Island, widgets, voice, camera, and mobile task status for an iPhone-native agent.</p>
+        </article>
+        <article class="data-row warn">
+          <h3><a href="faq/">PhoneClaw FAQ</a></h3>
+          <p>Direct answer-engine facts for entity disambiguation, privacy, cloud chatbot differences, models, Skills, and Mac Gateway.</p>
         </article>
       </div>
     </div>
@@ -295,10 +309,24 @@
     <div class="wrap">
       <div class="section-head">
         <div>
-          <p class="section-kicker">中文</p>
-          <h2>PhoneClaw 是面向移动端的 Agent 框架。</h2>
+          <p class="section-kicker">Languages</p>
+          <h2>Localized entry pages for Chinese and Japanese search.</h2>
         </div>
-        <p class="section-copy">它不是云聊天套壳，也不是把桌面 Agent 框架直接搬到手机上。PhoneClaw 围绕 iOS 的端侧推理、权限边界、移动内存预算、模型下载、Live 交互和局域网 Mac 推理做了专门设计。</p>
+        <p class="section-copy">PhoneClaw already has zh/en/ja product localization. The website now exposes canonical Chinese and Japanese landing pages with hreflang, so search engines do not have to infer language intent from README text alone.</p>
+      </div>
+      <div class="flow">
+        <article class="data-row">
+          <h3><a href="zh/">中文入口</a></h3>
+          <p>面向“iPhone 本地 AI Agent”“移动端 Agent 框架”“端侧 AI 助手”等中文查询。</p>
+        </article>
+        <article class="data-row warn">
+          <h3><a href="ja/">日本語ページ</a></h3>
+          <p>Targets Japanese searches for local iPhone AI agents, on-device AI, and private mobile assistants.</p>
+        </article>
+        <article class="data-row remote">
+          <h3><a href="llms.txt">llms.txt</a></h3>
+          <p>A compact machine-readable summary for answer engines and AI crawlers that inspect project context files.</p>
+        </article>
       </div>
     </div>
   </section>
@@ -310,8 +338,12 @@
       <a href="on-device-gemma/">Models</a>
       <a href="skills/">Skills</a>
       <a href="liveland/">LiveLand</a>
+      <a href="mobile-agent-framework/">Framework</a>
       <a href="privacy/">Privacy &amp; Data Flow</a>
       <a href="mac-remote/">Mac Remote</a>
+      <a href="faq/">FAQ</a>
+      <a href="zh/">中文</a>
+      <a href="ja/">日本語</a>
       <a href="https://github.com/kellyvv/PhoneClaw">GitHub</a>
       <a href="https://testflight.apple.com/join/YuUSwq78">TestFlight</a>
     </div>

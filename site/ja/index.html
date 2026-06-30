@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PhoneClaw for iPhone - モバイルネイティブなローカル AI Agent フレームワーク</title>
+<meta name="description" content="PhoneClaw は iPhone 向けのローカル AI Agent とモバイルネイティブ Agent フレームワークです。Gemma 4、MiniCPM-V、iOS Skills、LiveLand、任意の Mac Gateway 推論に対応します。">
+<meta name="robots" content="index,follow,max-image-preview:large">
+<link rel="canonical" href="https://kellyvv.github.io/PhoneClaw/ja/">
+<link rel="alternate" hreflang="en" href="https://kellyvv.github.io/PhoneClaw/">
+<link rel="alternate" hreflang="zh-Hans" href="https://kellyvv.github.io/PhoneClaw/zh/">
+<link rel="alternate" hreflang="ja" href="https://kellyvv.github.io/PhoneClaw/ja/">
+<link rel="alternate" hreflang="x-default" href="https://kellyvv.github.io/PhoneClaw/">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="PhoneClaw">
+<meta property="og:title" content="PhoneClaw for iPhone - ローカル AI Agent フレームワーク">
+<meta property="og:description" content="iPhone 上で動くローカル優先の AI Agent。オンデバイスモデル、iOS Skills、明確なプライバシー境界、LiveLand、任意の Mac Gateway。">
+<meta property="og:url" content="https://kellyvv.github.io/PhoneClaw/ja/">
+<meta property="og:image" content="https://kellyvv.github.io/PhoneClaw/assets/banner.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="PhoneClaw for iPhone - ローカル AI Agent">
+<meta name="twitter:description" content="オンデバイスモデル、iOS Skills、LiveLand、Mac Gateway。">
+<meta name="twitter:image" content="https://kellyvv.github.io/PhoneClaw/assets/banner.jpg">
+
+<link rel="icon" href="../assets/app-icon.png">
+<link rel="stylesheet" href="../assets/style.css">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebPage",
+      "@id": "https://kellyvv.github.io/PhoneClaw/ja/#webpage",
+      "url": "https://kellyvv.github.io/PhoneClaw/ja/",
+      "name": "PhoneClaw for iPhone - モバイルネイティブなローカル AI Agent フレームワーク",
+      "inLanguage": "ja",
+      "description": "PhoneClaw は iPhone 向けのローカル AI Agent とモバイルネイティブ Agent フレームワークです。",
+      "about": {
+        "@type": "SoftwareApplication",
+        "@id": "https://kellyvv.github.io/PhoneClaw/#software",
+        "name": "PhoneClaw"
+      }
+    }
+  ]
+}
+</script>
+</head>
+<body>
+
+<nav class="site-nav">
+  <div class="wrap">
+    <a class="brand" href="../"><img src="../assets/app-icon.png" alt="">PhoneClaw</a>
+    <div class="nav-links">
+      <a href="../mobile-agent-framework/">Framework</a>
+      <a href="../on-device-gemma/">Models</a>
+      <a href="../skills/">Skills</a>
+      <a href="../privacy/">Privacy</a>
+      <a href="../zh/">ZH</a>
+      <a class="nav-cta" href="https://testflight.apple.com/join/YuUSwq78">TestFlight</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="hero-content">
+      <p class="eyebrow">iPhone ローカル AI Agent</p>
+      <h1>PhoneClaw for iPhone</h1>
+      <p class="lede">PhoneClaw は iPhone 向けのモバイルネイティブなローカル AI Agent と Agent フレームワークです。オンデバイスモデル、ネイティブ iOS Skills、権限境界、Live / LiveLand、任意の LAN ベース Mac 推論を組み合わせます。</p>
+      <div class="hero-actions">
+        <a class="button primary" href="https://testflight.apple.com/join/YuUSwq78">TestFlight に参加</a>
+        <a class="button" href="https://github.com/kellyvv/PhoneClaw">GitHub を見る</a>
+      </div>
+      <p class="disamb">これは iPhone 向け PhoneClaw であり、同名の Android アプリとは関係ありません。</p>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section class="band light">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <p class="section-kicker">Positioning</p>
+          <h2>クラウドチャットのラッパーではなく、電話から設計された Agent です。</h2>
+        </div>
+        <p class="section-copy">PhoneClaw は iPhone を単なる画面ではなくランタイムとして扱います。モデル読み込み、Skill ルーティング、権限確認、メモリ予算、ダウンロード、Live 入口、タスク状態はモバイル制約を前提に設計されています。</p>
+      </div>
+      <div class="flow">
+        <article class="data-row">
+          <h3>オンデバイスモデル</h3>
+          <p>Gemma 4 E2B / E4B を LiteRT-LM 経由で iPhone 上で実行し、MiniCPM-V 4.6 を画像理解と LIVE カメラ向けに使います。</p>
+        </article>
+        <article class="data-row warn">
+          <h3>ネイティブ iOS Skills</h3>
+          <p>Calendar、Reminders、Contacts、Clipboard、HealthKit、翻訳、画像、明示的な Web Search を権限境界内で扱います。</p>
+        </article>
+        <article class="data-row remote">
+          <h3>Mac Gateway</h3>
+          <p>より重い推論が必要なときは、同じ LAN 上の Mac を任意の推論ノードとして使えます。iPhone は Agent 体験と権限境界を維持します。</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="band white">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <p class="section-kicker">Privacy</p>
+          <h2>デフォルトではアップロードしません。</h2>
+        </div>
+        <p class="section-copy">チャット、画像、個人データはデフォルトで iPhone 上に残ります。Web Search、URL の読み取り、またはペアリングした Mac へのリモート推論を明示的に使う場合だけ、関連データが iPhone の外へ出ます。</p>
+      </div>
+      <div class="hero-actions">
+        <a class="button dark" href="../privacy/">Privacy &amp; Data Flow</a>
+        <a class="button light" href="../faq/">FAQ</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="wrap">
+    <div class="footer-row">
+      <a href="../">English</a>
+      <a href="../zh/">中文</a>
+      <a href="../mobile-agent-framework/">Framework</a>
+      <a href="../on-device-gemma/">Models</a>
+      <a href="../skills/">Skills</a>
+      <a href="../privacy/">Privacy</a>
+      <a href="https://github.com/kellyvv/PhoneClaw">GitHub</a>
+    </div>
+    <p>iPhone とエッジデバイス向けのローカル優先 AI Agent フレームワーク。</p>
+  </div>
+</footer>
+
+</body>
+</html>

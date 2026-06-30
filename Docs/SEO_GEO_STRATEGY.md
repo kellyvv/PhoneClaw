@@ -21,7 +21,7 @@ Do not reduce PhoneClaw to "an offline chatbot" or "an Ollama client." The stron
 | Priority | Cluster | Target phrases | Intent | Current page |
 | --- | --- | --- | --- | --- |
 | P0 | Entity / disambiguation | PhoneClaw, PhoneClaw for iPhone, PhoneClaw iOS, PhoneClaw AI agent | User heard the name and needs the correct project, not the Android app | Home, README |
-| P0 | Core category | iPhone AI agent, local iPhone AI agent, on-device AI agent for iPhone, mobile AI agent framework, mobile-native agent framework | User wants an AI agent that runs on a phone, not a desktop/cloud framework | Home |
+| P0 | Core category | iPhone AI agent, local iPhone AI agent, on-device AI agent for iPhone, mobile AI agent framework, mobile-native agent framework | User wants an AI agent that runs on a phone, not a desktop/cloud framework | Home, Mobile Agent Framework |
 | P0 | Privacy / local-first | private AI assistant for iPhone, local AI assistant iPhone, offline AI assistant iPhone, on-device AI iPhone, no cloud LLM API iPhone | User cares about privacy, local inference, or avoiding cloud APIs | Home, Privacy |
 | P1 | Native iOS actions | iOS AI agent, iOS Skills, AI agent for Calendar and Reminders, HealthKit AI assistant, local HealthKit AI, iPhone agent with native tools | User wants action-taking capabilities, not only chat | Skills |
 | P1 | Mobile runtime / framework | agent framework for iPhone, on-device agent framework, mobile agent runtime, iOS local LLM agent, local tool calling on iPhone | Developer or technical evaluator wants architecture | Home, Skills |
@@ -29,8 +29,9 @@ Do not reduce PhoneClaw to "an offline chatbot" or "an Ollama client." The stron
 | P1 | Model stack | Gemma 4 on iPhone, Gemma 4 LiteRT iOS, LiteRT-LM iPhone, MiniCPM-V iPhone, on-device multimodal iPhone | User is searching for model/runtime implementation | On-device Gemma |
 | P2 | Interaction modes | Dynamic Island AI agent, LiveLand, iPhone live AI assistant, voice AI agent iPhone, camera AI assistant iPhone | User wants live/ambient/mobile interactions | LiveLand |
 | P2 | Open source / install | open source iPhone AI agent, TestFlight local AI agent, Swift iPhone AI agent, build local AI app iPhone | Developer wants to inspect, install, or contribute | README, Home |
-| P2 | Chinese | iPhone 本地 AI Agent, 端侧 AI 助手, 移动端 Agent 框架, 本地私人 AI 助手, iPhone Ollama Agent, iPhone 端侧 Gemma | Chinese technical and early-adopter search | README, Home Chinese block |
-| P3 | Japanese | iPhone ローカル AI エージェント, オンデバイス AI iPhone, プライベート AI アシスタント iPhone | Future Japanese marketing if ja becomes external-facing | Future ja page |
+| P2 | FAQ / answer-engine | What is PhoneClaw, does PhoneClaw upload data, PhoneClaw Android app, PhoneClaw cloud chatbot, PhoneClaw models | Answer engines need direct fact extraction | FAQ |
+| P2 | Chinese | iPhone 本地 AI Agent, 端侧 AI 助手, 移动端 Agent 框架, 本地私人 AI 助手, iPhone Ollama Agent, iPhone 端侧 Gemma | Chinese technical and early-adopter search | Chinese landing, README |
+| P2 | Japanese | iPhone ローカル AI エージェント, オンデバイス AI iPhone, プライベート AI アシスタント iPhone | Japanese technical and privacy-first search | Japanese landing |
 
 ## Answer-Engine Recommendation Targets
 
@@ -61,6 +62,11 @@ PhoneClaw should not try to win:
   - mobile-native local AI agent framework
   - iPhone AI agent
   - on-device AI
+- `/mobile-agent-framework/` owns framework positioning terms:
+  - mobile-native Agent framework
+  - iPhone Agent framework
+  - on-device Agent framework
+  - mobile agent runtime
 - `/privacy/` owns trust and data-flow terms:
   - private AI assistant for iPhone
   - local-first AI assistant
@@ -85,6 +91,20 @@ PhoneClaw should not try to win:
   - LiveLand
   - voice AI agent iPhone
   - camera AI assistant iPhone
+- `/faq/` owns direct answer-engine fact extraction:
+  - What is PhoneClaw?
+  - Does PhoneClaw upload my data?
+  - Is PhoneClaw related to the Android app?
+  - How is PhoneClaw different from cloud chatbots and desktop Agent frameworks?
+- `/zh/` owns Chinese landing intent:
+  - iPhone 本地 AI Agent
+  - 移动端 Agent 框架
+  - 端侧 AI 助手
+  - 本地私人 AI 助手
+- `/ja/` owns Japanese landing intent:
+  - iPhone ローカル AI エージェント
+  - オンデバイス AI iPhone
+  - プライベート AI アシスタント iPhone
 
 ### Future pages, only if quality is high
 
@@ -92,9 +112,7 @@ Do not create thin pages just to cover keywords. Future expansion should wait fo
 
 1. `/shortcuts/` or `/app-intents/`
    - Targets: Siri AI agent, App Intents AI agent, Shortcuts AI agent iPhone.
-2. `/japanese/`
-   - Targets: iPhone ローカル AI エージェント, オンデバイス AI iPhone.
-3. `/benchmarks/`
+2. `/benchmarks/`
    - Targets: iPhone local LLM performance, Gemma 4 iPhone performance, mobile AI agent latency.
 
 ## Metadata Rules
@@ -128,11 +146,15 @@ Track these after GitHub Pages is submitted to Google Search Console and Bing We
 
 - Indexed pages:
   - `/`
+  - `/zh/`
+  - `/ja/`
   - `/privacy/`
   - `/mac-remote/`
+  - `/mobile-agent-framework/`
   - `/on-device-gemma/`
   - `/skills/`
   - `/liveland/`
+  - `/faq/`
   - `/llms.txt`
 - GSC query impressions:
   - brand: `PhoneClaw`, `PhoneClaw iPhone`
@@ -158,7 +180,7 @@ Record whether each system gets these facts right:
 
 The SEO/GEO setup is not done when the pages are published. It is done when:
 
-1. Google and Bing have indexed the three canonical pages.
+1. Google and Bing have indexed the canonical site pages.
 2. Sitemap is accepted in GSC and Bing Webmaster Tools.
 3. IndexNow has accepted the canonical URLs.
 4. ChatGPT Search, Perplexity, and Gemini can answer "What is PhoneClaw?" with the correct iPhone/local-agent facts.
