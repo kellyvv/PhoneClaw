@@ -25,18 +25,18 @@ A local-first AI Agent for iPhone. Private by default. Native.
 </div>
 
 
-PhoneClaw is a private local Agent running on iPhone. It ships with multiple on-device models — Gemma 4 E2B / E4B via LiteRT and MiniCPM-V 4.6 — and performs inference and Skill calls entirely on-device, with no cloud APIs or external model integrations required.
+PhoneClaw is a private local Agent running on iPhone. It ships with multiple on-device models — Gemma 4 E2B / E4B via LiteRT and MiniCPM-V 4.6 — and supports fully offline on-device inference and native Skill execution, with Web Search, webpage reading, and Mac remote inference available as explicit user-triggered capabilities.
 
 <details>
 <summary><strong>Positioning and boundaries</strong></summary>
 
 ### What is PhoneClaw?
 
-PhoneClaw is a private, local AI agent for iPhone. It runs inference and native iOS Skills entirely on-device using Gemma 4 E2B / E4B via LiteRT and MiniCPM-V 4.6, with no cloud model API required. (It is unrelated to the Android app of the same name.)
+PhoneClaw for iPhone is a private, local AI agent for iOS. It runs inference and native iOS Skills on-device using Gemma 4 E2B / E4B via LiteRT and MiniCPM-V 4.6, with fully offline use as the default local mode.
 
-### Does PhoneClaw upload my data?
+### How does PhoneClaw handle my data?
 
-No, not by default. Chat, images, and personal data (Calendar, Reminders, Contacts, Clipboard, HealthKit) are processed on-device and are not uploaded to PhoneClaw servers. Data leaves the iPhone only when you explicitly use Web Search, open a URL, or pair a Mac for remote inference. With a paired Mac the request goes to that Mac — with Ollama it stays on the Mac; with a CLI or other upstream provider, that provider's data policy applies.
+Chat, images, and personal data (Calendar, Reminders, Contacts, Clipboard, HealthKit) stay on iPhone by default. Web Search, opening a URL, and paired Mac remote inference are explicit user-triggered capabilities. With a paired Mac the request goes to that Mac — with Ollama it stays on the Mac; with a CLI or other upstream provider, that provider's data policy applies.
 
 ### What can PhoneClaw do on iPhone?
 
@@ -44,7 +44,7 @@ Using natural language: Calendar (create events, read schedule, busy/free analys
 
 ### Why is PhoneClaw a mobile-native agent framework?
 
-PhoneClaw is a mobile-native iPhone Agent and agent framework for on-device and edge devices. It is optimized around real iOS constraints: local model inference, mobile memory budgets, resumable model downloads, Skill routing, multi-turn tool calls, permission boundaries, Live / LiveLand interaction, and optional LAN-based Mac remote inference. It is not a cloud-chatbot wrapper or a desktop agent framework copied onto a phone; it is not a replacement for cloud-scale models, does not offer unlimited long context, and does not arbitrarily control every iOS app.
+PhoneClaw is a mobile-native iPhone Agent and agent framework for on-device and edge devices. It is optimized around real iOS constraints: local model inference, mobile memory budgets, resumable model downloads, Skill routing, multi-turn tool calls, permission boundaries, Live / LiveLand interaction, and optional LAN-based Mac remote inference. Its core value is a phone-first agent runtime that combines local models, native iOS capabilities, and mobile interaction surfaces.
 
 </details>
 
@@ -58,7 +58,7 @@ PhoneClaw is a mobile-native iPhone Agent and agent framework for on-device and 
 - More natural phone tasks: ask for health data, create reminders, schedule calendar events, find contacts, translate text, and more without memorizing fixed commands
 - Fixed a LiveLand widget launch issue that could incorrectly show "download model first" or "model loading" even after the model was already installed
 - Safer actions: unclear times, titles, contacts, deletes, and bulk operations ask for clarification or confirmation before running
-- LiveLand still runs on local models by default, with no cloud inference required and no per-call token billing
+- LiveLand runs on local models by default, with a fully offline local path and local execution free of per-call token billing
 - TestFlight link: [https://testflight.apple.com/join/YuUSwq78](https://testflight.apple.com/join/YuUSwq78)
 
 **2026-06-08**
@@ -86,7 +86,7 @@ PhoneClaw is a mobile-native iPhone Agent and agent framework for on-device and 
 ### 2026-05-17
 
 - PhoneClaw is live on TestFlight — [Join TestFlight](https://testflight.apple.com/join/YuUSwq78)
-- A private local Agent running on iPhone, performing inference and Skill calls entirely on-device, with no cloud APIs or external model integrations required
+- A private local Agent running on iPhone, performing inference and Skill calls entirely on-device with a fully offline local path
 
 ### 2026-05-12
 
@@ -176,7 +176,7 @@ PhoneClaw is a mobile-native iPhone Agent and agent framework for on-device and 
 
 **Model Management and Resumable Downloads**: Gemma main models and LIVE voice models can be downloaded, canceled, resumed, and retried directly on iPhone, or bundled into the app at build time.
 
-**Offline by Default with Clear Privacy Boundaries**: Inference and local Skill calls run on-device by default. Requests only leave the iPhone when the user explicitly asks for Web Search, webpage reading, or paired Mac remote inference. Conversations, images, and personal data are not uploaded to PhoneClaw servers; Mac remote inference sends the current request to your paired Mac, and any further upstream access depends on the provider selected in the Mac client.
+**Fully Offline First with Clear Data Flow**: Inference and local Skill calls run on-device by default. Conversations, images, and personal data stay on iPhone. Web Search, webpage reading, and paired Mac remote inference are explicit user-triggered capabilities; Mac remote inference sends the current request to your paired Mac, and any further upstream access depends on the provider selected in the Mac client.
 
 **Mobile Memory Optimization**: Includes model switching, system prompt editing, cache cleanup, and history trimming tuned for iPhone on-device inference limits.
 
@@ -547,7 +547,7 @@ This moves PhoneClaw from "one big model doing everything" toward "multiple loca
 
 ### 4. Cross-app automation
 
-PhoneClaw will not assume desktop-style control over arbitrary apps. Instead it will use what iOS actually allows:
+PhoneClaw uses the cross-app capabilities that iOS actually provides:
 
 - [ ] App Intents / Shortcuts
 - [ ] URL Scheme / Deep Link

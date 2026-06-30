@@ -11,7 +11,7 @@
 <meta property="og:type" content="article">
 <meta property="og:site_name" content="PhoneClaw">
 <meta property="og:title" content="PhoneClaw Privacy &amp; Data Flow">
-<meta property="og:description" content="What stays on iPhone, what can leave, when, and where it goes. No PhoneClaw cloud server is in the default path.">
+<meta property="og:description" content="What stays on iPhone, what explicit network paths are available, and where data goes when those features are used.">
 <meta property="og:url" content="https://kellyvv.github.io/PhoneClaw/privacy/">
 <meta property="og:image" content="https://kellyvv.github.io/PhoneClaw/assets/banner.jpg">
 <meta name="twitter:card" content="summary_large_image">
@@ -30,7 +30,7 @@
       "@id": "https://kellyvv.github.io/PhoneClaw/privacy/#webpage",
       "url": "https://kellyvv.github.io/PhoneClaw/privacy/",
       "name": "PhoneClaw Privacy & Data Flow",
-      "description": "What stays on iPhone, what can leave, when, and where it goes. No PhoneClaw cloud server is in the default path.",
+      "description": "What stays on iPhone, what explicit network paths are available, and where data goes when those features are used.",
       "isPartOf": {
         "@type": "WebSite",
         "@id": "https://kellyvv.github.io/PhoneClaw/#website",
@@ -102,7 +102,7 @@
       <div class="section-head">
         <div>
           <p class="section-kicker">Short version</p>
-          <h2>No PhoneClaw cloud server sits behind the default experience.</h2>
+          <h2>The default experience runs on iPhone.</h2>
         </div>
         <p class="section-copy">Inference and native iOS Skill calls run on-device by default. Data leaves the phone only when you ask PhoneClaw to use the public web or when you explicitly pair a Mac for remote inference.</p>
       </div>
@@ -130,7 +130,7 @@
           <p class="section-kicker">Data table</p>
           <h2>What stays on iPhone.</h2>
         </div>
-        <p class="section-copy">Permission-scoped iOS data is read only after you grant access. If you never grant a Skill permission, PhoneClaw cannot read that source.</p>
+        <p class="section-copy">Permission-scoped iOS data is read after you grant access. Each Skill follows the permission scope provided by iOS.</p>
       </div>
       <table class="privacy-table">
         <thead>
@@ -187,30 +187,30 @@
       <div class="section-head">
         <div>
           <p class="section-kicker">Boundaries</p>
-          <h2>What PhoneClaw does not claim.</h2>
+          <h2>PhoneClaw's operating model.</h2>
         </div>
-        <p class="section-copy">Clear limits make the privacy model stronger. PhoneClaw is not pretending mobile devices have desktop resources or cloud-scale context.</p>
+        <p class="section-copy">PhoneClaw is designed for iPhone resources, iOS permissions, local models, scoped Skills, and explicit network actions.</p>
       </div>
       <div class="stack">
         <article class="panel">
-          <span class="panel-label">No upload</span>
-          <h3>No PhoneClaw server upload</h3>
-          <p>Chat, images, and personal data are not uploaded to PhoneClaw servers.</p>
+          <span class="panel-label">Local data</span>
+          <h3>Data stays on iPhone</h3>
+          <p>Chat, images, and personal data stay on the device by default.</p>
         </article>
         <article class="panel">
-          <span class="panel-label">No wrapper</span>
-          <h3>No default cloud LLM API</h3>
-          <p>The default path is not a hidden cloud chatbot API and has no per-call token billing.</p>
+          <span class="panel-label">Offline path</span>
+          <h3>Fully offline local mode</h3>
+          <p>The default local path uses on-device models and native iOS Skills.</p>
         </article>
         <article class="panel">
-          <span class="panel-label">No background</span>
-          <h3>No silent collection</h3>
-          <p>Network exits happen only when you trigger a feature that needs them.</p>
+          <span class="panel-label">Explicit network</span>
+          <h3>User-triggered network paths</h3>
+          <p>Web Search, URL reading, and Mac remote inference run when the user selects those capabilities.</p>
         </article>
         <article class="panel">
-          <span class="panel-label">No fantasy control</span>
-          <h3>iOS limits still apply</h3>
-          <p>PhoneClaw works through iOS permissions and native APIs, not arbitrary control of every app.</p>
+          <span class="panel-label">iOS native</span>
+          <h3>Permission-scoped actions</h3>
+          <p>PhoneClaw works through iOS permissions, native APIs, App Intents, Shortcuts, and focused Skills.</p>
         </article>
       </div>
     </div>
@@ -223,7 +223,7 @@
           <p class="section-kicker">中文</p>
           <h2>数据流向一句话版本。</h2>
         </div>
-        <p class="section-copy">PhoneClaw 默认在 iPhone 本地完成推理和 iOS 原生 Skill 调用。聊天、图片和个人数据不会上传到 PhoneClaw 服务器。只有你主动触发联网搜索、打开网页，或配对 Mac 远程推理时，数据才会离开 iPhone。</p>
+        <p class="section-copy">PhoneClaw 默认在 iPhone 本地完成推理和 iOS 原生 Skill 调用。聊天、图片和个人数据留在设备端。联网搜索、打开网页和配对 Mac 远程推理是用户显式触发的能力。</p>
       </div>
     </div>
   </section>

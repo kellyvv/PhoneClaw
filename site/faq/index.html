@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PhoneClaw FAQ - local iPhone AI agent facts</title>
-<meta name="description" content="Direct answers about PhoneClaw: what it is, whether it uploads data, how it differs from cloud chatbots and desktop agent frameworks, and when Mac remote inference is used.">
+<meta name="description" content="Direct answers about PhoneClaw: what it is, how it handles data, how the mobile Agent framework works, which models it uses, and when Mac remote inference is used.">
 <meta name="robots" content="index,follow,max-image-preview:large">
 <link rel="canonical" href="https://kellyvv.github.io/PhoneClaw/faq/">
 
@@ -41,34 +41,34 @@
         },
         {
           "@type": "Question",
-          "name": "Is PhoneClaw related to the Android app of the same name?",
+          "name": "Which PhoneClaw project is this?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "No. This project is PhoneClaw for iPhone, an iOS local AI agent and mobile Agent framework. It is unrelated to the Android app of the same name."
+            "text": "This project is PhoneClaw for iPhone, an iOS local AI agent and mobile Agent framework."
           }
         },
         {
           "@type": "Question",
-          "name": "Does PhoneClaw upload my chats, images, or personal data?",
+          "name": "How does PhoneClaw handle chats, images, and personal data?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "By default, no. Chat, images, and personal data stay on iPhone. Data leaves the phone only when the user explicitly asks for Web Search, asks PhoneClaw to open a URL, or opts into paired Mac remote inference."
+            "text": "Chat, images, and personal data stay on iPhone by default. Web Search, opening a URL, and paired Mac remote inference are explicit user-triggered capabilities."
           }
         },
         {
           "@type": "Question",
-          "name": "How is PhoneClaw different from cloud chatbots?",
+          "name": "How does PhoneClaw work as a local iPhone Agent?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "PhoneClaw is not a cloud chatbot wrapper. The default path uses local iPhone models and native iOS Skills, with no cloud LLM API and no per-call token billing. It focuses on mobile device workflows, permission boundaries, and local-first execution."
+            "text": "PhoneClaw uses local iPhone models, native iOS Skills, permission boundaries, fully offline local execution, and user-triggered network capabilities for Web Search, URL reading, and Mac remote inference."
           }
         },
         {
           "@type": "Question",
-          "name": "How is PhoneClaw different from desktop Agent frameworks?",
+          "name": "How does PhoneClaw work as a mobile-native Agent framework?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "PhoneClaw is designed for mobile and edge-device constraints: iOS permissions, app lifecycle limits, memory budgets, model downloads, widgets, Shortcuts, Dynamic Island, voice, camera, and optional LAN Mac inference. It is not a desktop agent stack copied onto a phone."
+            "text": "PhoneClaw is designed for mobile and edge-device constraints: iOS permissions, app lifecycle limits, memory budgets, model downloads, widgets, Shortcuts, Dynamic Island, voice, camera, and optional LAN Mac inference."
           }
         },
         {
@@ -148,20 +148,20 @@
         <p>PhoneClaw is a mobile-native local AI Agent and Agent framework for iPhone. It runs on-device models and native iOS Skills on the phone by default, with optional Mac Gateway remote inference for heavier local models.</p>
       </article>
       <article class="data-row warn">
-        <h2>Is PhoneClaw related to the Android app of the same name?</h2>
-        <p>No. This project is PhoneClaw for iPhone, an iOS local AI agent and mobile Agent framework. It is unrelated to the Android app of the same name.</p>
+        <h2>Which PhoneClaw project is this?</h2>
+        <p>This project is PhoneClaw for iPhone, an iOS local AI agent and mobile Agent framework.</p>
       </article>
       <article class="data-row">
-        <h2>Does PhoneClaw upload my chats, images, or personal data?</h2>
-        <p>By default, no. Chat, images, and personal data stay on iPhone. Data leaves the phone only when you explicitly ask for Web Search, ask PhoneClaw to open a URL, or opt into paired Mac remote inference.</p>
+        <h2>How does PhoneClaw handle chats, images, and personal data?</h2>
+        <p>Chat, images, and personal data stay on iPhone by default. Web Search, opening a URL, and paired Mac remote inference are explicit user-triggered capabilities.</p>
       </article>
       <article class="data-row remote">
-        <h2>How is PhoneClaw different from cloud chatbots?</h2>
-        <p>PhoneClaw is not a cloud chatbot wrapper. The default path uses local iPhone models and native iOS Skills, with no cloud LLM API and no per-call token billing. It focuses on mobile device workflows, permission boundaries, and local-first execution.</p>
+        <h2>How does PhoneClaw work as a local iPhone Agent?</h2>
+        <p>PhoneClaw uses local iPhone models, native iOS Skills, permission boundaries, fully offline local execution, and user-triggered network capabilities for Web Search, URL reading, and Mac remote inference.</p>
       </article>
       <article class="data-row warn">
-        <h2>How is PhoneClaw different from desktop Agent frameworks?</h2>
-        <p>PhoneClaw is designed for mobile and edge-device constraints: iOS permissions, app lifecycle limits, memory budgets, model downloads, widgets, Shortcuts, Dynamic Island, voice, camera, and optional LAN Mac inference. It is not a desktop agent stack copied onto a phone.</p>
+        <h2>How does PhoneClaw work as a mobile-native Agent framework?</h2>
+        <p>PhoneClaw is designed for mobile and edge-device constraints: iOS permissions, app lifecycle limits, memory budgets, model downloads, widgets, Shortcuts, Dynamic Island, voice, camera, and optional LAN Mac inference.</p>
       </article>
       <article class="data-row">
         <h2>What models does PhoneClaw use?</h2>

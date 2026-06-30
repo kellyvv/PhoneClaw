@@ -119,7 +119,7 @@
           <p class="section-kicker">Architecture</p>
           <h2>Only inference moves to the Mac.</h2>
         </div>
-        <p class="section-copy">This is the important distinction: PhoneClaw does not turn the Mac into the whole app. The iPhone remains the agent surface and permission boundary.</p>
+        <p class="section-copy">The iPhone remains the agent surface and permission boundary. The Mac contributes heavier inference as an optional local edge node.</p>
       </div>
       <div class="stack">
         <article class="panel">
@@ -139,8 +139,8 @@
         </article>
         <article class="panel">
           <span class="panel-label">Boundary</span>
-          <h3>No PhoneClaw relay</h3>
-          <p>The request goes to your paired Mac. It does not route through a PhoneClaw server.</p>
+          <h3>Direct LAN path</h3>
+          <p>The request goes directly to your paired Mac on the local network.</p>
         </article>
       </div>
     </div>
@@ -195,7 +195,7 @@
           <p class="section-kicker">Data path</p>
           <h2>Ollama stays on the Mac. CLI providers follow their own policy.</h2>
         </div>
-        <p class="section-copy">With Ollama, inference stays on your Mac. With Codex CLI, Antigravity CLI, or another upstream provider, data handling is governed by that provider from the Mac onward. PhoneClaw does not insert a cloud relay.</p>
+        <p class="section-copy">With Ollama, inference stays on your Mac. With Codex CLI, Antigravity CLI, or another upstream provider, data handling is governed by that provider from the Mac onward. PhoneClaw Gateway uses the local LAN path between iPhone and Mac.</p>
       </div>
       <div class="hero-actions">
         <a class="button dark" href="../privacy/">Read privacy details</a>
@@ -211,7 +211,7 @@
           <p class="section-kicker">中文</p>
           <h2>Mac 只负责更重的推理，手机仍是 Agent 本体。</h2>
         </div>
-        <p class="section-copy">PhoneClaw Gateway 让同一局域网内的 Mac 成为可选远程推理源。iPhone 仍然保留聊天界面、Skill 路由、权限边界和任务状态。请求不会经过 PhoneClaw 服务器；选 Ollama 留在你的 Mac，选 CLI 或其它上游 provider 则以对应策略为准。</p>
+        <p class="section-copy">PhoneClaw Gateway 让同一局域网内的 Mac 成为可选远程推理源。iPhone 仍然保留聊天界面、Skill 路由、权限边界和任务状态。请求通过本地局域网发送到配对 Mac；选 Ollama 留在你的 Mac，选 CLI 或其它上游 provider 则以对应策略为准。</p>
       </div>
     </div>
   </section>

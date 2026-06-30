@@ -16,9 +16,8 @@ User-agent: Perplexity-User
 Allow: /
 
 # Model-training and AI-product crawlers are a separate, values-based decision from
-# search visibility. Google Search uses Googlebot through the default rule above;
-# Google-Extended and GPTBot do not need to be allowed for normal search indexing.
-# To opt OUT of training/product use while staying visible in search, uncomment:
+# search visibility. Google Search uses Googlebot through the default rule above.
+# For training/product-use crawler preferences while keeping search visible, edit:
 # User-agent: Google-Extended
 # Disallow: /
 #

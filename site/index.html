@@ -79,7 +79,7 @@
       "applicationCategory": "ProductivityApplication",
       "applicationSubCategory": "Mobile AI agent framework",
       "operatingSystem": "iOS 17+",
-      "description": "PhoneClaw is a mobile-native local AI agent and agent framework for iPhone. It runs inference and native iOS Skills on-device using Gemma 4 E2B / E4B via LiteRT and MiniCPM-V 4.6, with no cloud model API required by default.",
+      "description": "PhoneClaw is a mobile-native local AI agent and agent framework for iPhone. It runs inference and native iOS Skills on-device using Gemma 4 E2B / E4B via LiteRT and MiniCPM-V 4.6, with a fully offline local mode.",
       "url": "https://kellyvv.github.io/PhoneClaw/",
       "downloadUrl": "https://testflight.apple.com/join/YuUSwq78",
       "softwareHelp": "https://github.com/kellyvv/PhoneClaw",
@@ -142,7 +142,7 @@
         <a class="button primary" href="https://testflight.apple.com/join/YuUSwq78">Join TestFlight</a>
         <a class="button" href="https://github.com/kellyvv/PhoneClaw">View source</a>
       </div>
-      <p class="disamb">This is PhoneClaw for iPhone, an iOS on-device agent project. It is unrelated to the Android app of the same name.</p>
+      <p class="disamb">This is PhoneClaw for iPhone, the iOS on-device agent project.</p>
     </div>
   </div>
 </header>
@@ -153,9 +153,9 @@
       <div class="section-head">
         <div>
           <p class="section-kicker">Product</p>
-          <h2>Not a chat wrapper. A phone-first agent surface.</h2>
+          <h2>A phone-first agent surface.</h2>
         </div>
-        <p class="section-copy">PhoneClaw treats the iPhone as the runtime, not just the screen. The model, Skill router, permission checks, downloads, memory budget, and interaction modes are all designed around mobile and edge devices.</p>
+        <p class="section-copy">PhoneClaw treats the iPhone as the runtime for local inference, native Skills, permission checks, model downloads, memory budgeting, and Live interaction modes.</p>
       </div>
 
       <div class="product-grid">
@@ -232,7 +232,7 @@
           <p class="section-kicker">Boundaries</p>
           <h2>The privacy claim is concrete.</h2>
         </div>
-        <p class="section-copy">PhoneClaw does not upload chat, images, or personal data to PhoneClaw servers. The exceptions are explicit user actions: Web Search, opening a URL, or Mac remote inference.</p>
+        <p class="section-copy">PhoneClaw keeps chat, images, and personal data on iPhone by default. Explicit user actions add network paths: Web Search, opening a URL, or Mac remote inference.</p>
       </div>
       <div class="flow">
         <article class="data-row">
@@ -299,7 +299,7 @@
         </article>
         <article class="data-row warn">
           <h3><a href="faq/">PhoneClaw FAQ</a></h3>
-          <p>Direct answer-engine facts for entity disambiguation, privacy, cloud chatbot differences, models, Skills, and Mac Gateway.</p>
+          <p>Direct answer-engine facts for entity identity, privacy, mobile agent architecture, models, Skills, and Mac Gateway.</p>
         </article>
       </div>
     </div>
@@ -312,7 +312,7 @@
           <p class="section-kicker">Languages</p>
           <h2>Localized entry pages for Chinese and Japanese search.</h2>
         </div>
-        <p class="section-copy">PhoneClaw already has zh/en/ja product localization. The website now exposes canonical Chinese and Japanese landing pages with hreflang, so search engines do not have to infer language intent from README text alone.</p>
+        <p class="section-copy">PhoneClaw already has zh/en/ja product localization. The website now exposes canonical Chinese and Japanese landing pages with hreflang, so search engines can match language intent directly.</p>
       </div>
       <div class="flow">
         <article class="data-row">
