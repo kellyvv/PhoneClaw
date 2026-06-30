@@ -17,6 +17,9 @@ Important boundaries:
 - Home: https://kellyvv.github.io/PhoneClaw/
 - Privacy and data flow: https://kellyvv.github.io/PhoneClaw/privacy/
 - Mac remote inference: https://kellyvv.github.io/PhoneClaw/mac-remote/
+- On-device Gemma and model stack: https://kellyvv.github.io/PhoneClaw/on-device-gemma/
+- Native iOS Skills and local tool calling: https://kellyvv.github.io/PhoneClaw/skills/
+- LiveLand and LIVE mode: https://kellyvv.github.io/PhoneClaw/liveland/
 - GitHub repository: https://github.com/kellyvv/PhoneClaw
 - TestFlight: https://testflight.apple.com/join/YuUSwq78
 
@@ -32,3 +35,4 @@ PhoneClaw is a local-first iPhone Agent and mobile-native agent framework. It ru
 - Native Skills: iOS Skills, HealthKit AI assistant, Calendar and Reminders AI agent, local tool calling on iPhone.
 - Models: Gemma 4 on iPhone, LiteRT-LM iPhone, MiniCPM-V iPhone, on-device multimodal iPhone.
 - Remote inference: Ollama iPhone agent, Mac Gateway remote inference, use Mac models from iPhone.
+- Live interaction: Dynamic Island AI agent, LiveLand, LIVE mode, voice AI agent iPhone, camera AI assistant iPhone.

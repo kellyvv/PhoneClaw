@@ -23,11 +23,11 @@ Do not reduce PhoneClaw to "an offline chatbot" or "an Ollama client." The stron
 | P0 | Entity / disambiguation | PhoneClaw, PhoneClaw for iPhone, PhoneClaw iOS, PhoneClaw AI agent | User heard the name and needs the correct project, not the Android app | Home, README |
 | P0 | Core category | iPhone AI agent, local iPhone AI agent, on-device AI agent for iPhone, mobile AI agent framework, mobile-native agent framework | User wants an AI agent that runs on a phone, not a desktop/cloud framework | Home |
 | P0 | Privacy / local-first | private AI assistant for iPhone, local AI assistant iPhone, offline AI assistant iPhone, on-device AI iPhone, no cloud LLM API iPhone | User cares about privacy, local inference, or avoiding cloud APIs | Home, Privacy |
-| P1 | Native iOS actions | iOS AI agent, iOS Skills, AI agent for Calendar and Reminders, HealthKit AI assistant, local HealthKit AI, iPhone agent with native tools | User wants action-taking capabilities, not only chat | Home, future Skills page |
-| P1 | Mobile runtime / framework | agent framework for iPhone, on-device agent framework, mobile agent runtime, iOS local LLM agent, local tool calling on iPhone | Developer or technical evaluator wants architecture | Home, future framework/Skills page |
+| P1 | Native iOS actions | iOS AI agent, iOS Skills, AI agent for Calendar and Reminders, HealthKit AI assistant, local HealthKit AI, iPhone agent with native tools | User wants action-taking capabilities, not only chat | Skills |
+| P1 | Mobile runtime / framework | agent framework for iPhone, on-device agent framework, mobile agent runtime, iOS local LLM agent, local tool calling on iPhone | Developer or technical evaluator wants architecture | Home, Skills |
 | P1 | Mac remote inference | Ollama iPhone agent, iPhone Ollama agent, use Ollama from iPhone, Mac remote inference iPhone, local AI iPhone Mac | User wants heavier local models on Mac while using iPhone UI | Mac Remote |
-| P1 | Model stack | Gemma 4 on iPhone, Gemma 4 LiteRT iOS, LiteRT-LM iPhone, MiniCPM-V iPhone, on-device multimodal iPhone | User is searching for model/runtime implementation | Home, future On-device Gemma page |
-| P2 | Interaction modes | Dynamic Island AI agent, LiveLand, iPhone live AI assistant, voice AI agent iPhone, camera AI assistant iPhone | User wants live/ambient/mobile interactions | Home, future LiveLand page |
+| P1 | Model stack | Gemma 4 on iPhone, Gemma 4 LiteRT iOS, LiteRT-LM iPhone, MiniCPM-V iPhone, on-device multimodal iPhone | User is searching for model/runtime implementation | On-device Gemma |
+| P2 | Interaction modes | Dynamic Island AI agent, LiveLand, iPhone live AI assistant, voice AI agent iPhone, camera AI assistant iPhone | User wants live/ambient/mobile interactions | LiveLand |
 | P2 | Open source / install | open source iPhone AI agent, TestFlight local AI agent, Swift iPhone AI agent, build local AI app iPhone | Developer wants to inspect, install, or contribute | README, Home |
 | P2 | Chinese | iPhone 本地 AI Agent, 端侧 AI 助手, 移动端 Agent 框架, 本地私人 AI 助手, iPhone Ollama Agent, iPhone 端侧 Gemma | Chinese technical and early-adopter search | README, Home Chinese block |
 | P3 | Japanese | iPhone ローカル AI エージェント, オンデバイス AI iPhone, プライベート AI アシスタント iPhone | Future Japanese marketing if ja becomes external-facing | Future ja page |
@@ -70,20 +70,32 @@ PhoneClaw should not try to win:
   - Ollama iPhone agent
   - Mac remote inference for iPhone
   - use Mac models from iPhone
+- `/on-device-gemma/` owns model/runtime terms:
+  - Gemma 4 on iPhone
+  - LiteRT-LM iPhone
+  - MiniCPM-V iPhone
+  - local LLM iOS
+- `/skills/` owns native action and tool-calling terms:
+  - iOS Skills
+  - local tool calling on iPhone
+  - HealthKit AI assistant
+  - Calendar and Reminders AI agent
+- `/liveland/` owns interaction-mode terms:
+  - Dynamic Island AI agent
+  - LiveLand
+  - voice AI agent iPhone
+  - camera AI assistant iPhone
 
-### Next pages, only if quality is high
+### Future pages, only if quality is high
 
-Do not create thin pages just to cover keywords. Add these only when each can include concrete implementation details, screenshots, diagrams, and install instructions:
+Do not create thin pages just to cover keywords. Future expansion should wait for concrete implementation details, screenshots, diagrams, and install instructions:
 
-1. `/on-device-gemma/`
-   - Targets: Gemma 4 on iPhone, LiteRT-LM iPhone, local LLM iOS.
-   - Source content: `Docs/ON_DEVICE_GEMMA.md`, model table, memory/perf constraints, install path.
-2. `/skills/`
-   - Targets: iOS AI agent, native iOS Skills, local tool calling on iPhone.
-   - Source content: `Docs/SKILL_SYSTEM.md`, Calendar/Reminders/Contacts/HealthKit examples.
-3. `/liveland/`
-   - Targets: Dynamic Island AI agent, live AI assistant iPhone, voice AI agent iPhone.
-   - Source content: LiveLand update notes and screenshots/assets.
+1. `/shortcuts/` or `/app-intents/`
+   - Targets: Siri AI agent, App Intents AI agent, Shortcuts AI agent iPhone.
+2. `/japanese/`
+   - Targets: iPhone ローカル AI エージェント, オンデバイス AI iPhone.
+3. `/benchmarks/`
+   - Targets: iPhone local LLM performance, Gemma 4 iPhone performance, mobile AI agent latency.
 
 ## Metadata Rules
 
@@ -118,6 +130,9 @@ Track these after GitHub Pages is submitted to Google Search Console and Bing We
   - `/`
   - `/privacy/`
   - `/mac-remote/`
+  - `/on-device-gemma/`
+  - `/skills/`
+  - `/liveland/`
   - `/llms.txt`
 - GSC query impressions:
   - brand: `PhoneClaw`, `PhoneClaw iPhone`
