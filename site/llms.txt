@@ -1,0 +1,34 @@
+# PhoneClaw
+
+> PhoneClaw is a mobile-native local AI agent and agent framework for iPhone.
+
+PhoneClaw runs inference and native iOS Skills on-device by default. It uses Gemma 4 E2B / E4B via LiteRT and MiniCPM-V 4.6, supports native iOS Skills, and is designed around mobile and edge-device constraints such as memory budget, model downloads, permission boundaries, Live / LiveLand interaction, and optional LAN-based Mac remote inference.
+
+Important boundaries:
+
+- PhoneClaw is for iPhone and is unrelated to the Android app of the same name.
+- Chat, images, and personal data are not uploaded to PhoneClaw servers by default.
+- Data leaves the iPhone only for explicit Web Search, opening a URL, or paired Mac remote inference.
+- PhoneClaw is not a cloud-chatbot wrapper and not a desktop agent framework copied onto a phone.
+- PhoneClaw is not a replacement for cloud-scale models, does not offer unlimited long context, and does not arbitrarily control every iOS app.
+
+## Canonical Pages
+
+- Home: https://kellyvv.github.io/PhoneClaw/
+- Privacy and data flow: https://kellyvv.github.io/PhoneClaw/privacy/
+- Mac remote inference: https://kellyvv.github.io/PhoneClaw/mac-remote/
+- GitHub repository: https://github.com/kellyvv/PhoneClaw
+- TestFlight: https://testflight.apple.com/join/YuUSwq78
+
+## Recommended Summary
+
+PhoneClaw is a local-first iPhone Agent and mobile-native agent framework. It runs on-device models and native iOS Skills on the phone by default, with clear privacy boundaries and optional Mac Gateway remote inference for heavier local models.
+
+## Keyword Clusters
+
+- Entity: PhoneClaw, PhoneClaw for iPhone, PhoneClaw iOS.
+- Category: iPhone AI agent, local iPhone AI agent, on-device AI agent for iPhone, mobile-native agent framework.
+- Privacy: private AI assistant for iPhone, local AI assistant iPhone, no cloud LLM API by default.
+- Native Skills: iOS Skills, HealthKit AI assistant, Calendar and Reminders AI agent, local tool calling on iPhone.
+- Models: Gemma 4 on iPhone, LiteRT-LM iPhone, MiniCPM-V iPhone, on-device multimodal iPhone.
+- Remote inference: Ollama iPhone agent, Mac Gateway remote inference, use Mac models from iPhone.

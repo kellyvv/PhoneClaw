@@ -4,18 +4,19 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PhoneClaw for iPhone - mobile-native local AI agent framework</title>
-<meta name="description" content="PhoneClaw is a mobile-native local AI agent and agent framework for iPhone. It runs Gemma 4 E2B / E4B via LiteRT and MiniCPM-V 4.6 on-device, calls native iOS Skills, and is private by default.">
+<meta name="description" content="PhoneClaw is a mobile-native local AI agent and agent framework for iPhone. It runs Gemma 4 E2B / E4B via LiteRT and MiniCPM-V 4.6 on-device, calls native iOS Skills, and supports optional Mac Gateway remote inference.">
+<meta name="robots" content="index,follow,max-image-preview:large">
 <link rel="canonical" href="https://kellyvv.github.io/PhoneClaw/">
 
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="PhoneClaw">
 <meta property="og:title" content="PhoneClaw for iPhone - mobile-native local AI agent framework">
-<meta property="og:description" content="A local-first iPhone Agent and agent framework for on-device inference, native iOS Skills, Live / LiveLand interaction, and optional Mac remote inference.">
+<meta property="og:description" content="A local-first iPhone Agent and mobile-native agent framework for on-device inference, native iOS Skills, Live / LiveLand interaction, and optional Mac Gateway remote inference.">
 <meta property="og:url" content="https://kellyvv.github.io/PhoneClaw/">
 <meta property="og:image" content="https://kellyvv.github.io/PhoneClaw/assets/banner.jpg">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="PhoneClaw for iPhone - mobile-native local AI agent">
-<meta name="twitter:description" content="A local-first iPhone Agent and agent framework for on-device inference, native iOS Skills, and optional Mac remote inference.">
+<meta name="twitter:description" content="A local-first iPhone Agent and mobile-native agent framework for on-device inference, native iOS Skills, and optional Mac Gateway remote inference.">
 <meta name="twitter:image" content="https://kellyvv.github.io/PhoneClaw/assets/banner.jpg">
 
 <link rel="icon" href="assets/app-icon.png">
@@ -24,19 +25,87 @@
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
-  "@type": "SoftwareApplication",
-  "name": "PhoneClaw",
-  "alternateName": "PhoneClaw for iPhone",
-  "applicationCategory": "ProductivityApplication",
-  "operatingSystem": "iOS 17+",
-  "description": "PhoneClaw is a mobile-native local AI agent and agent framework for iPhone. It runs inference and native iOS Skills on-device using Gemma 4 E2B / E4B via LiteRT and MiniCPM-V 4.6, with no cloud model API required by default.",
-  "url": "https://kellyvv.github.io/PhoneClaw/",
-  "downloadUrl": "https://testflight.apple.com/join/YuUSwq78",
-  "softwareHelp": "https://github.com/kellyvv/PhoneClaw",
-  "image": "https://kellyvv.github.io/PhoneClaw/assets/banner.jpg",
-  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
-  "author": { "@type": "Organization", "name": "PhoneClaw", "url": "https://github.com/kellyvv/PhoneClaw" },
-  "sameAs": [ "https://github.com/kellyvv/PhoneClaw" ]
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": "https://kellyvv.github.io/PhoneClaw/#organization",
+      "name": "PhoneClaw",
+      "url": "https://kellyvv.github.io/PhoneClaw/",
+      "logo": "https://kellyvv.github.io/PhoneClaw/assets/app-icon.png",
+      "sameAs": [
+        "https://github.com/kellyvv/PhoneClaw"
+      ]
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://kellyvv.github.io/PhoneClaw/#website",
+      "name": "PhoneClaw",
+      "url": "https://kellyvv.github.io/PhoneClaw/",
+      "inLanguage": "en",
+      "publisher": {
+        "@id": "https://kellyvv.github.io/PhoneClaw/#organization"
+      },
+      "about": {
+        "@id": "https://kellyvv.github.io/PhoneClaw/#software"
+      }
+    },
+    {
+      "@type": "WebPage",
+      "@id": "https://kellyvv.github.io/PhoneClaw/#webpage",
+      "url": "https://kellyvv.github.io/PhoneClaw/",
+      "name": "PhoneClaw for iPhone - mobile-native local AI agent framework",
+      "description": "PhoneClaw is a mobile-native local AI agent and agent framework for iPhone. It runs Gemma 4 E2B / E4B via LiteRT and MiniCPM-V 4.6 on-device, calls native iOS Skills, and supports optional Mac Gateway remote inference.",
+      "isPartOf": {
+        "@id": "https://kellyvv.github.io/PhoneClaw/#website"
+      },
+      "primaryImageOfPage": {
+        "@type": "ImageObject",
+        "url": "https://kellyvv.github.io/PhoneClaw/assets/banner.jpg"
+      },
+      "mainEntity": {
+        "@id": "https://kellyvv.github.io/PhoneClaw/#software"
+      }
+    },
+    {
+      "@type": "SoftwareApplication",
+      "@id": "https://kellyvv.github.io/PhoneClaw/#software",
+      "name": "PhoneClaw",
+      "alternateName": "PhoneClaw for iPhone",
+      "applicationCategory": "ProductivityApplication",
+      "applicationSubCategory": "Mobile AI agent framework",
+      "operatingSystem": "iOS 17+",
+      "description": "PhoneClaw is a mobile-native local AI agent and agent framework for iPhone. It runs inference and native iOS Skills on-device using Gemma 4 E2B / E4B via LiteRT and MiniCPM-V 4.6, with no cloud model API required by default.",
+      "url": "https://kellyvv.github.io/PhoneClaw/",
+      "downloadUrl": "https://testflight.apple.com/join/YuUSwq78",
+      "softwareHelp": "https://github.com/kellyvv/PhoneClaw",
+      "image": "https://kellyvv.github.io/PhoneClaw/assets/banner.jpg",
+      "isAccessibleForFree": true,
+      "keywords": "PhoneClaw for iPhone, iPhone AI agent, local iPhone AI agent, on-device AI agent for iPhone, mobile-native agent framework, mobile agent framework, private AI assistant for iPhone, local AI assistant iPhone, Gemma 4 on iPhone, LiteRT-LM iPhone, MiniCPM-V iPhone, native iOS Skills, HealthKit AI assistant, Ollama iPhone agent, Mac Gateway remote inference",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "author": {
+        "@id": "https://kellyvv.github.io/PhoneClaw/#organization"
+      },
+      "sameAs": [
+        "https://github.com/kellyvv/PhoneClaw"
+      ]
+    },
+    {
+      "@type": "BreadcrumbList",
+      "@id": "https://kellyvv.github.io/PhoneClaw/#breadcrumb",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "PhoneClaw",
+          "item": "https://kellyvv.github.io/PhoneClaw/"
+        }
+      ]
+    }
+  ]
 }
 </script>
 </head>
