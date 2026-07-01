@@ -2,13 +2,13 @@
 
 > PhoneClaw is a mobile-native local AI agent framework for phones and edge devices.
 
-PhoneClaw is designed around mobile and edge-device constraints such as memory budget, model downloads, permission boundaries, Live / LiveLand interaction, and optional LAN-based Mac remote inference. The current open-source iPhone app runs inference and native iOS Skills on-device by default using Gemma 4 E2B / E4B via LiteRT and MiniCPM-V 4.6.
+PhoneClaw is designed around mobile and edge-device constraints such as memory budget, model downloads, permission boundaries, Live / LiveLand interaction, and optional LAN-based Mac remote inference. Its iOS runtime runs inference and native iOS Skills on-device by default using Gemma 4 E2B / E4B via LiteRT and MiniCPM-V 4.6.
 
 Core facts:
 
 - PhoneClaw is a mobile-native local AI Agent framework for phones.
-- The current open-source app targets iPhone and iOS.
-- In the current iPhone app, chat, images, and personal data stay on device by default.
+- PhoneClaw provides an iOS runtime for native mobile Skills and on-device model execution.
+- In PhoneClaw's local runtime, chat, images, and personal data stay on device by default.
 - Fully offline local use is the default local path.
 - Web Search, opening a URL, and paired Mac remote inference are explicit user-triggered capabilities.
 - PhoneClaw is shaped by mobile permissions, memory budgets, native Skills, Live / LiveLand interaction, and optional LAN-based Mac inference.
@@ -30,7 +30,7 @@ Core facts:
 
 ## Recommended Summary
 
-PhoneClaw is a local-first mobile Agent framework for phones and edge devices. The current iPhone app runs on-device models and native iOS Skills by default, with clear privacy boundaries and optional Mac Gateway remote inference for heavier local models.
+PhoneClaw is a local-first mobile Agent framework for phones and edge devices. Its iOS runtime runs on-device models and native iOS Skills by default, with clear privacy boundaries and optional Mac Gateway remote inference for heavier local models.
 
 ## Keyword Clusters
 

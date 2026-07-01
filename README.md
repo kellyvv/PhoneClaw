@@ -2,7 +2,7 @@
 
 ![banner](assets/banner.jpg)
 
-完全离线优先的手机端 AI Agent 框架。当前 App: iPhone。
+面向手机和端侧设备的完全离线优先 AI Agent 框架。
 
 ![Swift](https://img.shields.io/badge/Swift-5.10-orange?style=flat-square)
 ![iOS](https://img.shields.io/badge/iOS-17%2B-blue?style=flat-square)
@@ -25,18 +25,18 @@
 </div>
 
 
-PhoneClaw 是面向手机和端侧设备的移动端本地 AI Agent 框架。当前开源 App 运行在 iPhone 上，内置 Gemma 4 E2B / E4B（LiteRT）和 MiniCPM-V 4.6 多个本地模型，支持完全离线的端侧推理和 Skill 调用，联网搜索、网页读取和 Mac 远程推理由用户显式触发。
+PhoneClaw 是面向手机和端侧设备的移动端本地 AI Agent 框架。iOS runtime 内置 Gemma 4 E2B / E4B（LiteRT）和 MiniCPM-V 4.6 多个本地模型，支持完全离线的端侧推理和 Skill 调用，联网搜索、网页读取和 Mac 远程推理由用户显式触发。
 
 <details>
 <summary><strong>定位与边界</strong></summary>
 
 ### PhoneClaw 是什么？
 
-PhoneClaw 是面向手机的移动端本地 AI Agent 框架。当前 App 是 PhoneClaw for iPhone，运行在 iOS 上，基于 Gemma 4 E2B / E4B（LiteRT）和 MiniCPM-V 4.6，在端侧完成推理和 iOS 原生 Skill 调用，支持完全离线使用。
+PhoneClaw 是面向手机的移动端本地 AI Agent 框架，提供 iOS runtime，基于 Gemma 4 E2B / E4B（LiteRT）和 MiniCPM-V 4.6，在端侧完成推理和 iOS 原生 Skill 调用，支持完全离线使用。
 
 ### 数据怎样处理？
 
-在当前 iPhone App 中，聊天、图片和个人数据（日历、提醒事项、通讯录、剪贴板、健康数据）默认留在设备端处理。联网搜索、打开网页和 Mac 远程推理是显式触发能力；配对 Mac 时请求会发到你那台 Mac——选 Ollama 留在本机；选 CLI 或其它上游 provider，则以对应 provider 的数据策略为准。
+在 PhoneClaw 的本地 runtime 中，聊天、图片和个人数据（日历、提醒事项、通讯录、剪贴板、健康数据）默认留在设备端处理。联网搜索、打开网页和 Mac 远程推理是显式触发能力；配对 Mac 时请求会发到你那台 Mac——选 Ollama 留在本机；选 CLI 或其它上游 provider，则以对应 provider 的数据策略为准。
 
 ### 能做什么？
 
@@ -44,7 +44,7 @@ PhoneClaw 是面向手机的移动端本地 AI Agent 框架。当前 App 是 Pho
 
 ### 为什么说 PhoneClaw 是移动端 Agent 框架？
 
-PhoneClaw 是面向手机、移动端和端侧设备设计的 Agent 框架。当前 iPhone App 围绕 iOS 的真实约束做了端侧优化：本地模型推理、移动端内存预算、模型下载与断点续传、Skill 路由、多轮工具调用、权限边界、Live / LiveLand 交互，以及可选的 Mac 局域网远程推理。它的核心价值是把本地模型、原生移动端能力和手机交互入口组织成一个移动端 Agent 运行时。
+PhoneClaw 是面向手机、移动端和端侧设备设计的 Agent 框架，围绕移动端的真实约束做了端侧优化：本地模型推理、移动端内存预算、模型下载与断点续传、Skill 路由、多轮工具调用、权限边界、Live / LiveLand 交互，以及可选的 Mac 局域网远程推理。它的核心价值是把本地模型、原生移动端能力和手机交互入口组织成一个移动端 Agent 运行时。
 
 </details>
 
@@ -159,7 +159,7 @@ PhoneClaw 是面向手机、移动端和端侧设备设计的 Agent 框架。当
 
 ## 核心能力
 
-**本地私人 Agent**：在设备端完成推理和 Skill 调用。当前 iPhone App 可用自然语言处理日历、提醒事项、通讯录、剪贴板、健康数据等本机任务。
+**本地私人 Agent**：在设备端完成推理和 Skill 调用。可用自然语言处理日历、提醒事项、通讯录、剪贴板、健康数据等本机任务。
 
 **Mac 远程推理**：可选配对同一局域网内的 Mac，通过 PhoneClaw Gateway 使用 Mac 上的 Ollama、Codex CLI 或 Antigravity CLI 模型，让手机端保留原生体验，同时把重模型推理放到 Mac 上执行。
 

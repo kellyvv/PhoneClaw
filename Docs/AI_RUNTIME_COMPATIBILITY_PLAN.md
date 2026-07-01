@@ -161,7 +161,7 @@ Use these boundaries instead:
 
 ## Acceptance Criteria
 
-- The current app still builds without unguarded iOS 26/27 SDK imports in normal files.
+- The app still builds without unguarded iOS 26/27 SDK imports in normal files.
 - Foundation Models routing consumes registry-driven skill candidates.
 - New Skill/Prompt/Runtime docs describe contracts that can be tested.
 - SkillKit can validate a draft manifest and generate SKILL.md skeletons into a temp directory without overwriting existing files by default.

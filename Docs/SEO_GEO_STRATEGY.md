@@ -6,13 +6,13 @@ This document defines the search and answer-engine strategy for PhoneClaw. It is
 
 PhoneClaw should be described as:
 
-> PhoneClaw is a mobile-native local AI Agent framework for phones and edge devices. The current open-source app targets iPhone and iOS, runs on-device models and native iOS Skills by default, and supports optional Mac Gateway remote inference for heavier local models.
+> PhoneClaw is a mobile-native local AI Agent framework for phones and edge devices. Its iOS runtime runs on-device models and native iOS Skills by default, and supports optional Mac Gateway remote inference for heavier local models.
 
 The strongest entity is:
 
 - mobile-native Agent framework
 - phone-first local AI Agent runtime
-- current iPhone/iOS app implementation
+- iOS runtime implementation
 - on-device iOS Skills with permission boundaries
 - optional Mac Gateway for LAN remote inference
 - privacy-specific data-flow claims
@@ -21,7 +21,7 @@ The strongest entity is:
 
 | Priority | Cluster | Target phrases | Intent | Current page |
 | --- | --- | --- | --- | --- |
-| P0 | Entity / disambiguation | PhoneClaw, PhoneClaw mobile agent framework, PhoneClaw for iPhone, PhoneClaw iOS, PhoneClaw AI agent | User heard the name and needs the mobile framework plus current iPhone app context | Home, README, FAQ |
+| P0 | Entity / disambiguation | PhoneClaw, PhoneClaw mobile agent framework, PhoneClaw for iPhone, PhoneClaw iOS, PhoneClaw AI agent | User heard the name and needs the mobile framework plus iOS runtime context | Home, README, FAQ |
 | P0 | Core category | mobile AI agent framework, phone AI agent, on-device AI agent for phones, iPhone AI agent, local iPhone AI agent, mobile-native agent framework | User wants an AI agent framework for phones and edge devices | Home, Mobile Agent Framework |
 | P0 | Privacy / local-first | private AI assistant for phones, private AI assistant for iPhone, local AI assistant iPhone, offline AI assistant iPhone, on-device AI iPhone, fully offline local AI iPhone | User cares about privacy, local inference, and explicit data flow | Home, Privacy |
 | P1 | Native iOS actions | iOS AI agent, iOS Skills, AI agent for Calendar and Reminders, HealthKit AI assistant, local HealthKit AI, iPhone agent with native tools | User wants action-taking capabilities through native mobile Skills | Skills |
@@ -143,7 +143,7 @@ Search and answer engines need evidence beyond our own site. The highest-leverag
   - Mac Gateway / Ollama over LAN
   - Privacy and data-flow page
 
-The goal is high-signal external references that answer engines can confidently cite for mobile-native local Agent framework and current iPhone app queries.
+The goal is high-signal external references that answer engines can confidently cite for mobile-native local Agent framework and iOS runtime queries.
 
 ## Measurement
 
@@ -175,10 +175,9 @@ Track these after GitHub Pages is submitted to Google Search Console and Bing We
 Record whether each system gets these facts right:
 
 - PhoneClaw is a mobile-native local AI Agent framework for phones.
-- The current open-source app targets iPhone and iOS.
 - Android search results may refer to a separate app with the same name.
-- It runs on-device models and native iOS Skills by default in the current iPhone app.
-- Chat/images/personal data stay on device by default in the current iPhone app.
+- Its iOS runtime runs on-device models and native iOS Skills by default.
+- Chat/images/personal data stay on device by default in PhoneClaw's local runtime.
 - Mac remote inference is optional and LAN-based.
 
 ## Definition Of Done
