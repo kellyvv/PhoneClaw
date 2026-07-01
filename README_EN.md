@@ -2,7 +2,7 @@
 
 ![banner](assets/banner.jpg)
 
-A local-first AI Agent for iPhone. Private by default. Native.
+A local-first AI Agent framework for phones. Current app: iPhone.
 
 ![Swift](https://img.shields.io/badge/Swift-5.10-orange?style=flat-square)
 ![iOS](https://img.shields.io/badge/iOS-17%2B-blue?style=flat-square)
@@ -25,26 +25,26 @@ A local-first AI Agent for iPhone. Private by default. Native.
 </div>
 
 
-PhoneClaw is a private local Agent running on iPhone. It ships with multiple on-device models — Gemma 4 E2B / E4B via LiteRT and MiniCPM-V 4.6 — and supports fully offline on-device inference and native Skill execution, with Web Search, webpage reading, and Mac remote inference available as explicit user-triggered capabilities.
+PhoneClaw is a mobile-native local AI Agent framework for phones and edge devices. The current open-source app runs on iPhone, ships with Gemma 4 E2B / E4B via LiteRT and MiniCPM-V 4.6, and supports fully offline on-device inference and native Skill execution, with Web Search, webpage reading, and Mac remote inference available as explicit user-triggered capabilities.
 
 <details>
 <summary><strong>Positioning and boundaries</strong></summary>
 
 ### What is PhoneClaw?
 
-PhoneClaw for iPhone is a private, local AI agent for iOS. It runs inference and native iOS Skills on-device using Gemma 4 E2B / E4B via LiteRT and MiniCPM-V 4.6, with fully offline use as the default local mode.
+PhoneClaw is a mobile-native local AI Agent framework for phones. The current app is PhoneClaw for iPhone, an iOS implementation that runs inference and native iOS Skills on-device using Gemma 4 E2B / E4B via LiteRT and MiniCPM-V 4.6, with fully offline use as the default local mode.
 
 ### How does PhoneClaw handle my data?
 
-Chat, images, and personal data (Calendar, Reminders, Contacts, Clipboard, HealthKit) stay on iPhone by default. Web Search, opening a URL, and paired Mac remote inference are explicit user-triggered capabilities. With a paired Mac the request goes to that Mac — with Ollama it stays on the Mac; with a CLI or other upstream provider, that provider's data policy applies.
+In the current iPhone app, chat, images, and personal data (Calendar, Reminders, Contacts, Clipboard, HealthKit) stay on device by default. Web Search, opening a URL, and paired Mac remote inference are explicit user-triggered capabilities. With a paired Mac the request goes to that Mac — with Ollama it stays on the Mac; with a CLI or other upstream provider, that provider's data policy applies.
 
-### What can PhoneClaw do on iPhone?
+### What can the current PhoneClaw app do on iPhone?
 
 Using natural language: Calendar (create events, read schedule, busy/free analysis), Reminders, Contacts (find, save, update, delete), Clipboard, HealthKit summaries (steps, distance, calories, heart rate, sleep, workouts), image understanding, voice and LIVE real-time conversation, LiveLand from the Dynamic Island, translation, and explicit Web Search when realtime information is needed.
 
 ### Why is PhoneClaw a mobile-native agent framework?
 
-PhoneClaw is a mobile-native iPhone Agent and agent framework for on-device and edge devices. It is optimized around real iOS constraints: local model inference, mobile memory budgets, resumable model downloads, Skill routing, multi-turn tool calls, permission boundaries, Live / LiveLand interaction, and optional LAN-based Mac remote inference. Its core value is a phone-first agent runtime that combines local models, native iOS capabilities, and mobile interaction surfaces.
+PhoneClaw is a mobile-native Agent framework for phones, on-device models, and edge devices. The current iPhone app is optimized around real iOS constraints: local model inference, mobile memory budgets, resumable model downloads, Skill routing, multi-turn tool calls, permission boundaries, Live / LiveLand interaction, and optional LAN-based Mac remote inference. Its core value is a phone-first agent runtime that combines local models, native mobile capabilities, and mobile interaction surfaces.
 
 </details>
 
@@ -55,7 +55,7 @@ PhoneClaw is a mobile-native iPhone Agent and agent framework for on-device and 
 - Added **LiveLand**: use PhoneClaw from Dynamic Island. The local AI listens, understands your request, runs the task, and shows the result right there
 - Launch LiveLand from Home Screen widgets, Lock Screen widgets, Shortcuts, Control Center widgets, or inside the app. It also works on non-iOS 27 systems
 - Task progress is easier to follow: PhoneClaw now shows when it received your command, is understanding it, is querying or executing, is preparing the result, and is done
-- More natural phone tasks: ask for health data, create reminders, schedule calendar events, find contacts, translate text, and more without memorizing fixed commands
+- More natural phone tasks: ask for health data, create reminders, schedule calendar events, find contacts, translate text, and more through natural language
 - Fixed a LiveLand widget launch issue that could incorrectly show "download model first" or "model loading" even after the model was already installed
 - Safer actions: unclear times, titles, contacts, deletes, and bulk operations ask for clarification or confirmation before running
 - LiveLand runs on local models by default, with a fully offline local path and local execution free of per-call token billing
@@ -115,7 +115,7 @@ PhoneClaw is a mobile-native iPhone Agent and agent framework for on-device and 
 
 ### 2026-04-20
 
-- Released an unsigned IPA — sign and install to iPhone via [Sideloadly](https://sideloadly.io/), no Xcode or Mac development environment required. [Download](https://github.com/kellyvv/PhoneClaw/releases/tag/v1.1.0)
+- Released an unsigned IPA — sign and install to iPhone via [Sideloadly](https://sideloadly.io/). [Download](https://github.com/kellyvv/PhoneClaw/releases/tag/v1.1.0)
 
 ### 2026-04-18
 
@@ -123,14 +123,14 @@ PhoneClaw is a mobile-native iPhone Agent and agent framework for on-device and 
 
 ### 2026-04-17
 
-- Added **LIVE Mode**: a new real-time voice interaction mode with natural conversation flow — interrupt anytime without waiting for the model to finish speaking
+- Added **LIVE Mode**: a new real-time voice interaction mode with natural conversation flow and barge-in interruption
 - LIVE Mode supports **camera input**: the model can recognize and understand the environment, objects, and scenes captured by the camera in real time, enabling multimodal "see and speak" interaction
 
 ### 2026-04-10
 
-- Added Health Skill: read HealthKit data including today's/yesterday's steps, weekly step trends, walking distance, active calories, resting heart rate, last night's sleep, weekly sleep summary, and recent workouts — 9 tools total, all data processed locally and never uploaded
+- Added Health Skill: read HealthKit data including today's/yesterday's steps, weekly step trends, walking distance, active calories, resting heart rate, last night's sleep, weekly sleep summary, and recent workouts — 9 tools total, all data processed locally
 - Improved multi-turn response speed: cross-turn KV cache reuse reduces time-to-first-token by ~3.5x for consecutive queries within the same skill
-- The 9 health tools are automatically selected by the model based on user intent — no need to specify a query type
+- The 9 health tools are automatically selected by the model based on user intent
 
 ### 2026-04-09
 
@@ -138,8 +138,8 @@ PhoneClaw is a mobile-native iPhone Agent and agent framework for on-device and 
 
 ### 2026-04-08
 
-- Model downloads now include a ModelScope mirror, so users in mainland China can download Gemma 4 without a VPN
-- Major rework of memory management: the inference budget is now dynamically derived from actual available memory, with the obsolete prompt-length subtraction removed, so long prompts and long answers are no longer falsely truncated; multi-turn tool calls also keep their context more reliably
+- Model downloads now include a ModelScope mirror for faster Gemma 4 downloads in mainland China
+- Major rework of memory management: the inference budget is now dynamically derived from actual available memory, with improved long prompt, long answer, and multi-turn tool-call context handling
 
 ### 2026-04-07
 
@@ -158,7 +158,7 @@ PhoneClaw is a mobile-native iPhone Agent and agent framework for on-device and 
 
 ## Core Features
 
-**Private Local Agent**: Run inference and Skill calls directly on iPhone. Use natural language to work with Calendar, Reminders, Contacts, Clipboard, Health data, and other local tasks.
+**Private Local Agent**: Run inference and Skill calls directly on device. In the current iPhone app, use natural language to work with Calendar, Reminders, Contacts, Clipboard, Health data, and other local tasks.
 
 **Mac Remote Inference**: Optionally pair with a Mac on the same LAN through PhoneClaw Gateway and use Mac-side Ollama, Codex CLI, or Antigravity CLI models while keeping the native iPhone chat and Skill experience.
 
@@ -172,13 +172,13 @@ PhoneClaw is a mobile-native iPhone Agent and agent framework for on-device and 
 
 ## Technical and Experience Features
 
-**File-Driven Skill System**: Each capability is defined by a single Markdown file (SKILL.md). Adding or modifying a skill requires no recompilation. Skills are language-agnostic — anyone can write and share them.
+**File-Driven Skill System**: Each capability is defined by a single Markdown file (SKILL.md). Adding or modifying a skill can happen through the Skill file. Skills are language-agnostic — anyone can write and share them.
 
 **Model Management and Resumable Downloads**: Gemma main models and LIVE voice models can be downloaded, canceled, resumed, and retried directly on iPhone, or bundled into the app at build time.
 
 **Fully Offline First with Clear Data Flow**: Inference and local Skill calls run on-device by default. Conversations, images, and personal data stay on iPhone. Web Search, webpage reading, and paired Mac remote inference are explicit user-triggered capabilities; Mac remote inference sends the current request to your paired Mac, and any further upstream access depends on the provider selected in the Mac client.
 
-**Mobile Memory Optimization**: Includes model switching, system prompt editing, cache cleanup, and history trimming tuned for iPhone on-device inference limits.
+**Mobile Memory Optimization**: Includes model switching, system prompt editing, cache cleanup, and history trimming tuned for phone-scale on-device inference limits.
 
 **Bilingual Experience**: Choose Auto, Chinese, or English in settings. The UI, default system prompt, built-in Skills, tool results, and permission text switch together.
 
@@ -278,7 +278,7 @@ The default recommended flow is now:
 
 You only need the `Models/` directory on your Mac if you want to bundle a model inside the app itself.
 
-Gemma 4 now runs on LiteRT-LM: each model is a single `.litertlm` file (no MLX weight directory). Install the Hugging Face CLI first:
+Gemma 4 now runs on LiteRT-LM: each model is a single `.litertlm` file in place of an MLX weight directory. Install the Hugging Face CLI first:
 
 ```bash
 brew install hf
@@ -313,7 +313,7 @@ Models/
 └── gemma-4-E4B-it.litertlm
 ```
 
-> `Models/` is gitignored and will not be committed.
+> `Models/` is listed in `.gitignore` and stays outside commits.
 > Approximate file sizes: E2B ~2.4 GB, E4B ~3.4 GB.
 > In mainland China, set `HF_ENDPOINT=https://hf-mirror.com` to use the mirror, or download the same file from the ModelScope mirror.
 
@@ -333,7 +333,7 @@ hf download csukuangfj/vits-zh-hf-keqing \
   --exclude "*.py" "*.sh" ".gitattributes"
 ```
 
-After downloading, add `Models/sherpa-asr-zh` and `Models/vits-zh-hf-keqing` as folder references to `Copy Bundle Resources` in Xcode. Skipping this step won't break the build — LIVE mode will fall back to system speech.
+After downloading, add `Models/sherpa-asr-zh` and `Models/vits-zh-hf-keqing` as folder references to `Copy Bundle Resources` in Xcode. LIVE mode can also use system speech as a fallback.
 
 ### 4. Open the workspace
 
@@ -341,7 +341,7 @@ After downloading, add `Models/sherpa-asr-zh` and `Models/vits-zh-hf-keqing` as 
 open PhoneClaw.xcworkspace
 ```
 
-> Do not open `.xcodeproj`. Always open `.xcworkspace`.
+> Always open `.xcworkspace`.
 
 ### 5. Configure signing and run
 
@@ -411,7 +411,7 @@ ollama pull gemma3:4b
 3. Tap the Mac, then approve the request in the Mac client
 4. After pairing, choose a Mac-side model and return to chat
 
-Remote models appear under the `Remote` section in the model picker. If the iPhone cannot find the Mac, check that the Mac client is running, Local Network permission is allowed, both devices are on the same Wi-Fi, and the macOS firewall allows `PhoneClawGateway.app` to accept LAN connections.
+Remote models appear under the `Remote` section in the model picker. For Mac discovery, check that the Mac client is running, Local Network permission is allowed, both devices are on the same Wi-Fi, and the macOS firewall allows `PhoneClawGateway.app` to accept LAN connections.
 
 ## Default Install Flow and Model Bundling
 
@@ -425,13 +425,13 @@ Advantages:
 2. Faster first-time app installation from the Mac
 3. Users can choose E2B or E4B directly on the phone
 
-By default, the project no longer bundles anything from `Models/` into the app.
+By default, the project builds a lightweight app while model files download on device or get copied explicitly during custom builds.
 
 ### Option B — E2B only
 
 1. Keep `Models/gemma-4-E2B-it.litertlm`, remove `Models/gemma-4-E4B-it.litertlm`
 2. In Xcode's Project Navigator, delete the unused model file reference and choose Remove Reference
-3. In PhoneClaw > Build Phases > Copy Bundle Resources, make sure `gemma-4-E2B-it.litertlm` is included (as a single file, not a folder reference) and confirm only that one remains
+3. In PhoneClaw > Build Phases > Copy Bundle Resources, make sure `gemma-4-E2B-it.litertlm` is included as a single file resource
 4. Edit `allModels` in `LLM/Models/PredefinedModels.swift` to only include the models actually shipped (otherwise the settings page will show options that don't exist)
 
 ### Option C — Both E2B and E4B
@@ -487,8 +487,8 @@ The `type` field controls routing: `device` calls native iOS APIs, `content` is 
 
 ## FAQ
 
-Why are there no permission dialogs after install?
-The corresponding Skill has likely not reached the system API call yet. If you previously denied permission, iOS will not prompt again — go to system Settings to re-enable.
+How do I trigger permission dialogs after install?
+Permission dialogs appear when a Skill reaches the related system API call. After a previous denial, re-enable the permission in system Settings.
 
 Why does the model fail to load after switching?
 Verify that the model file name matches `allModels` in `LLM/Models/PredefinedModels.swift`, that the model has finished downloading on-device if you are using the shell-only install flow, or that it was actually included in the app bundle if you are shipping it built-in, and that the device has enough memory.
@@ -496,7 +496,7 @@ Verify that the model file name matches `allModels` in `LLM/Models/PredefinedMod
 Why does creating a reminder fail?
 The latest code first attempts to reuse an existing writable reminder list. If none is found, it tries to automatically create a PhoneClaw list. If that also fails, the system reminder source itself is likely read-only.
 
-Why can't my iPhone find the Mac client?
+How do I make the iPhone discover the Mac client?
 Make sure `PhoneClawGateway.app` is running and macOS has allowed Local Network permission. The iPhone and Mac must be on the same LAN. If discovery still fails, check that the macOS firewall allows the app to accept incoming connections, or rebuild the app with `bash MacGateway/build-app.sh` and open the generated app again.
 
 ## Roadmap
@@ -519,7 +519,7 @@ Make sure `PhoneClawGateway.app` is running and macOS has allowed Local Network 
 
 ### 2. More Skills
 
-Continue breaking capabilities into focused Skills rather than embedding all logic in a single large prompt. Directions worth adding:
+Continue breaking capabilities into focused Skills with clear model, tool, and permission responsibilities. Directions worth adding:
 
 - [ ] File management
 - [x] Image understanding

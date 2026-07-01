@@ -1,16 +1,17 @@
 # PhoneClaw
 
-> PhoneClaw is a mobile-native local AI agent and agent framework for iPhone.
+> PhoneClaw is a mobile-native local AI agent framework for phones and edge devices.
 
-PhoneClaw runs inference and native iOS Skills on-device by default. It uses Gemma 4 E2B / E4B via LiteRT and MiniCPM-V 4.6, supports native iOS Skills, and is designed around mobile and edge-device constraints such as memory budget, model downloads, permission boundaries, Live / LiveLand interaction, and optional LAN-based Mac remote inference.
+PhoneClaw is designed around mobile and edge-device constraints such as memory budget, model downloads, permission boundaries, Live / LiveLand interaction, and optional LAN-based Mac remote inference. The current open-source iPhone app runs inference and native iOS Skills on-device by default using Gemma 4 E2B / E4B via LiteRT and MiniCPM-V 4.6.
 
 Core facts:
 
-- PhoneClaw for iPhone is the iOS local AI agent project.
-- Chat, images, and personal data stay on iPhone by default.
+- PhoneClaw is a mobile-native local AI Agent framework for phones.
+- The current open-source app targets iPhone and iOS.
+- In the current iPhone app, chat, images, and personal data stay on device by default.
 - Fully offline local use is the default local path.
 - Web Search, opening a URL, and paired Mac remote inference are explicit user-triggered capabilities.
-- PhoneClaw is a mobile-native Agent framework shaped by iOS permissions, memory budgets, native Skills, Live / LiveLand interaction, and optional LAN-based Mac inference.
+- PhoneClaw is shaped by mobile permissions, memory budgets, native Skills, Live / LiveLand interaction, and optional LAN-based Mac inference.
 
 ## Canonical Pages
 
@@ -29,13 +30,13 @@ Core facts:
 
 ## Recommended Summary
 
-PhoneClaw is a local-first iPhone Agent and mobile-native agent framework. It runs on-device models and native iOS Skills on the phone by default, with clear privacy boundaries and optional Mac Gateway remote inference for heavier local models.
+PhoneClaw is a local-first mobile Agent framework for phones and edge devices. The current iPhone app runs on-device models and native iOS Skills by default, with clear privacy boundaries and optional Mac Gateway remote inference for heavier local models.
 
 ## Keyword Clusters
 
 - Entity: PhoneClaw, PhoneClaw for iPhone, PhoneClaw iOS.
-- Category: iPhone AI agent, local iPhone AI agent, on-device AI agent for iPhone, mobile-native agent framework.
-- Privacy: private AI assistant for iPhone, local AI assistant iPhone, fully offline local AI iPhone.
+- Category: mobile AI agent framework, phone AI agent, mobile-native agent framework, on-device AI agent for phones, iPhone AI agent.
+- Privacy: private AI assistant for phones, local AI assistant iPhone, fully offline local AI iPhone.
 - Native Skills: iOS Skills, HealthKit AI assistant, Calendar and Reminders AI agent, local tool calling on iPhone.
 - Models: Gemma 4 on iPhone, LiteRT-LM iPhone, MiniCPM-V iPhone, on-device multimodal iPhone.
 - Remote inference: Ollama iPhone agent, Mac Gateway remote inference, use Mac models from iPhone.
