@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PhoneClaw - phones 向けモバイルネイティブなローカル AI Agent フレームワーク</title>
-<meta name="description" content="PhoneClaw は phones とエッジデバイス向けのローカル AI Agent フレームワークです。現在の iPhone アプリは Gemma 4、MiniCPM-V、iOS Skills、LiveLand、任意の Mac Gateway 推論に対応します。">
+<title>PhoneClaw - スマートフォン向けモバイルネイティブなローカル AI Agent フレームワーク</title>
+<meta name="description" content="PhoneClaw はスマートフォンとエッジデバイス向けのローカル AI Agent フレームワークです。Gemma 4、MiniCPM-V、iOS Skills、LiveLand、任意の Mac Gateway 推論に対応します。">
 <meta name="robots" content="index,follow,max-image-preview:large">
 <link rel="canonical" href="https://kellyvv.github.io/PhoneClaw/ja/">
 <link rel="alternate" hreflang="en" href="https://kellyvv.github.io/PhoneClaw/">
@@ -14,8 +14,8 @@
 
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="PhoneClaw">
-<meta property="og:title" content="PhoneClaw - モバイルネイティブなローカル AI Agent フレームワーク">
-<meta property="og:description" content="phones とエッジデバイス向けのローカル優先 AI Agent フレームワーク。現在のアプリは iPhone 向けです。">
+<meta property="og:title" content="PhoneClaw - スマートフォン向けローカル AI Agent フレームワーク">
+<meta property="og:description" content="スマートフォンとエッジデバイス向けのローカル優先 AI Agent フレームワーク。オンデバイスモデル、iOS Skills、LiveLand、Mac Gateway を備えます。">
 <meta property="og:url" content="https://kellyvv.github.io/PhoneClaw/ja/">
 <meta property="og:image" content="https://kellyvv.github.io/PhoneClaw/assets/banner.jpg">
 <meta name="twitter:card" content="summary_large_image">
@@ -33,9 +33,9 @@
       "@type": "WebPage",
       "@id": "https://kellyvv.github.io/PhoneClaw/ja/#webpage",
       "url": "https://kellyvv.github.io/PhoneClaw/ja/",
-      "name": "PhoneClaw - phones 向けモバイルネイティブなローカル AI Agent フレームワーク",
+      "name": "PhoneClaw - スマートフォン向けモバイルネイティブなローカル AI Agent フレームワーク",
       "inLanguage": "ja",
-      "description": "PhoneClaw は phones とエッジデバイス向けのローカル AI Agent フレームワークです。現在のアプリは iPhone と iOS 向けです。",
+      "description": "PhoneClaw はスマートフォンとエッジデバイス向けのローカル AI Agent フレームワークです。iOS runtime とネイティブ mobile Skills を備えます。",
       "about": {
         "@type": "SoftwareApplication",
         "@id": "https://kellyvv.github.io/PhoneClaw/#software",
@@ -67,7 +67,7 @@
     <div class="hero-content">
       <p class="eyebrow">Mobile local AI Agent framework</p>
       <h1>PhoneClaw</h1>
-      <p class="lede">PhoneClaw は phones とエッジデバイス向けのモバイルネイティブなローカル AI Agent フレームワークです。オンデバイスモデル、ネイティブ iOS Skills、権限境界、Live / LiveLand、任意の LAN ベース Mac 推論を組み合わせます。</p>
+      <p class="lede">PhoneClaw はスマートフォンとエッジデバイス向けのモバイルネイティブなローカル AI Agent フレームワークです。オンデバイスモデル、ネイティブ iOS Skills、権限境界、Live / LiveLand、任意の LAN ベース Mac 推論を組み合わせます。</p>
       <div class="hero-actions">
         <a class="button primary" href="https://testflight.apple.com/join/YuUSwq78">TestFlight に参加</a>
         <a class="button" href="https://github.com/kellyvv/PhoneClaw">GitHub を見る</a>
@@ -78,14 +78,48 @@
 </header>
 
 <main>
+  <section class="band white">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <p class="section-kicker">Core facts</p>
+          <h2>PhoneClaw の役割、機能、データフロー。</h2>
+        </div>
+        <p class="section-copy">ユーザーにも検索エンジンにも読み取りやすい形で、PhoneClaw の主要な事実を整理しています。</p>
+      </div>
+      <div class="fact-grid">
+        <article class="fact-card">
+          <span class="card-mark">01</span>
+          <h3>PhoneClaw とは？</h3>
+          <p>PhoneClaw はスマートフォンとエッジデバイス向けのモバイルネイティブなローカル AI Agent フレームワークです。iOS runtime、オンデバイスモデル、ネイティブ mobile Skills を備えます。</p>
+        </article>
+        <article class="fact-card">
+          <span class="card-mark">02</span>
+          <h3>何ができますか？</h3>
+          <p>Calendar、Reminders、Contacts、Clipboard、HealthKit、画像理解、音声と LIVE、LiveLand、翻訳、Web Search、Mac Gateway を自然言語で扱えます。</p>
+        </article>
+        <article class="fact-card">
+          <span class="card-mark">03</span>
+          <h3>データはどう流れますか？</h3>
+          <p>チャット、画像、個人データはデフォルトでデバイス上に残ります。Web Search、URL 読み取り、Mac 推論はユーザーが選ぶ機能です。</p>
+        </article>
+        <article class="fact-card">
+          <span class="card-mark">04</span>
+          <h3>なぜモバイルネイティブ？</h3>
+          <p>メモリ予算、モデルダウンロード、権限境界、Skill ルーティング、スマートフォン入口、Live interaction、LAN 推論を前提にした runtime です。</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
   <section class="band light">
     <div class="wrap">
       <div class="section-head">
         <div>
-          <p class="section-kicker">Positioning</p>
-          <h2>phone runtime から設計されたモバイル Agent です。</h2>
+          <p class="section-kicker">Runtime</p>
+          <h2>スマートフォン runtime から設計された Agent stack。</h2>
         </div>
-        <p class="section-copy">PhoneClaw は phone を Agent runtime として扱います。モデル読み込み、Skill ルーティング、権限確認、メモリ予算、ダウンロード、Live 入口、タスク状態はモバイル制約を前提に設計されています。</p>
+        <p class="section-copy">PhoneClaw はスマートフォンを Agent runtime として扱います。モデル読み込み、Skill ルーティング、権限確認、メモリ予算、ダウンロード、Live 入口、タスク状態はモバイル制約を前提に設計されています。</p>
       </div>
       <div class="flow">
         <article class="data-row">
@@ -132,7 +166,7 @@
       <a href="../privacy/">Privacy</a>
       <a href="https://github.com/kellyvv/PhoneClaw">GitHub</a>
     </div>
-    <p>phones とエッジデバイス向けのローカル優先 AI Agent フレームワーク。</p>
+    <p>スマートフォンとエッジデバイス向けのローカル優先 AI Agent フレームワーク。</p>
   </div>
 </footer>
 

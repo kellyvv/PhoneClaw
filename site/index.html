@@ -60,6 +60,8 @@
       "url": "https://kellyvv.github.io/PhoneClaw/",
       "name": "PhoneClaw - mobile-native local AI agent framework for phones",
       "description": "PhoneClaw is a mobile-native local AI agent framework for phones and edge devices. Its iOS runtime runs Gemma 4 E2B / E4B via LiteRT and MiniCPM-V 4.6 on-device, calls native iOS Skills, and supports optional Mac Gateway remote inference.",
+      "inLanguage": "en",
+      "dateModified": "2026-07-02",
       "isPartOf": {
         "@id": "https://kellyvv.github.io/PhoneClaw/#website"
       },
@@ -120,12 +122,12 @@
   <div class="wrap">
     <a class="brand" href="./"><img src="assets/app-icon.png" alt="">PhoneClaw</a>
     <div class="nav-links">
+      <a href="#facts">Facts</a>
+      <a href="#stack">Stack</a>
+      <a href="privacy/">Privacy</a>
       <a href="mobile-agent-framework/">Framework</a>
       <a href="on-device-gemma/">Models</a>
       <a href="skills/">Skills</a>
-      <a href="liveland/">LiveLand</a>
-      <a href="privacy/">Privacy</a>
-      <a href="faq/">FAQ</a>
       <a href="zh/">ZH</a>
       <a class="nav-cta" href="https://testflight.apple.com/join/YuUSwq78">TestFlight</a>
     </div>
@@ -133,38 +135,80 @@
 </nav>
 
 <header class="hero">
+  <div class="hero-scrim"></div>
   <div class="wrap">
     <div class="hero-content">
       <p class="eyebrow">Mobile-native local AI agent framework</p>
       <h1>PhoneClaw</h1>
-      <p class="lede">A mobile-native local AI Agent framework for phones and edge devices. PhoneClaw brings on-device models, native iOS Skills, scoped permissions, Live interaction, and optional Mac inference into one phone-first runtime.</p>
+      <p class="lede">A local-first AI Agent framework for phones and edge devices, with on-device models, native iOS Skills, Live / LiveLand interaction, and optional Mac Gateway inference.</p>
       <div class="hero-actions">
         <a class="button primary" href="https://testflight.apple.com/join/YuUSwq78">Join TestFlight</a>
         <a class="button" href="https://github.com/kellyvv/PhoneClaw">View source</a>
       </div>
-      <p class="disamb">PhoneClaw is built for mobile devices, native mobile Skills, and phone-first local agent workflows.</p>
+      <ul class="hero-proof" aria-label="PhoneClaw core facts">
+        <li><strong>Fully offline local path</strong><span>Gemma 4 E2B / E4B via LiteRT</span></li>
+        <li><strong>Native mobile Skills</strong><span>Calendar, Reminders, Contacts, HealthKit</span></li>
+        <li><strong>Phone-first runtime</strong><span>Memory budgets, permissions, widgets, LiveLand</span></li>
+        <li><strong>Optional edge inference</strong><span>Mac Gateway with Ollama or CLI models</span></li>
+      </ul>
+      <p class="disamb">PhoneClaw is built for mobile devices, native mobile capabilities, and phone-first local agent workflows.</p>
     </div>
   </div>
 </header>
 
 <main>
+  <section id="facts" class="band white">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <p class="section-kicker">Core facts</p>
+          <h2>PhoneClaw in concrete terms.</h2>
+        </div>
+        <p class="section-copy">These facts are written for people first and are structured so search and answer engines can extract the product accurately.</p>
+      </div>
+      <div class="fact-grid">
+        <article class="fact-card">
+          <span class="card-mark">01</span>
+          <h3>What is PhoneClaw?</h3>
+          <p>PhoneClaw is a mobile-native local AI Agent framework for phones and edge devices. Its iOS runtime runs on-device models and native iOS Skills on the phone.</p>
+        </article>
+        <article class="fact-card">
+          <span class="card-mark">02</span>
+          <h3>What can it do?</h3>
+          <p>Use natural language for Calendar, Reminders, Contacts, Clipboard, HealthKit summaries, image understanding, voice and LIVE mode, LiveLand, translation, Web Search, and Mac Gateway.</p>
+        </article>
+        <article class="fact-card">
+          <span class="card-mark">03</span>
+          <h3>How does data flow?</h3>
+          <p>Chat, images, and personal data stay on the device by default. Web Search, URL reading, and Mac remote inference run when the user selects those capabilities.</p>
+        </article>
+        <article class="fact-card">
+          <span class="card-mark">04</span>
+          <h3>Why mobile-native?</h3>
+          <p>The runtime handles mobile memory budgets, resumable model downloads, scoped permissions, Skill routing, phone entry points, Live interaction, and LAN-based edge inference.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
   <section class="band light">
     <div class="wrap">
       <div class="section-head">
         <div>
           <p class="section-kicker">Product</p>
-          <h2>A phone-first agent surface.</h2>
+          <h2>Designed around real phone work.</h2>
         </div>
-        <p class="section-copy">PhoneClaw treats the phone as the runtime for local inference, native Skills, permission checks, model downloads, memory budgeting, and Live interaction modes.</p>
+        <p class="section-copy">PhoneClaw treats the phone as the agent runtime for local inference, native Skills, permission checks, model downloads, memory budgeting, and Live interaction modes.</p>
       </div>
 
       <div class="product-grid">
-        <div class="showcase">
-          <div class="showcase-content">
-            <h3>Local-first by default</h3>
-            <p>Gemma 4 E2B / E4B via LiteRT and MiniCPM-V 4.6 run on-device for private everyday tasks.</p>
-          </div>
-        </div>
+        <figure class="showcase">
+          <img src="assets/banner.jpg" alt="PhoneClaw on-device AI Agent for phone banner">
+          <figcaption>
+            <strong>On-device AI Agent for Phone</strong>
+            <span>Offline, private by default, native to mobile workflows.</span>
+          </figcaption>
+        </figure>
         <div class="capability-grid">
           <article class="tile">
             <img src="assets/app-icon.png" alt="">
@@ -174,31 +218,31 @@
           <article class="tile">
             <img src="assets/liveland-launcher.png" alt="">
             <h3>Live and LiveLand</h3>
-            <p>Voice, camera-aware LIVE mode, and Dynamic Island status for mobile tasks in motion.</p>
+            <p>Voice, camera-aware LIVE mode, widgets, Shortcuts, Control Center, and Dynamic Island status.</p>
           </article>
           <article class="tile">
             <img src="assets/brand-mark.png" alt="">
             <h3>Mobile runtime work</h3>
-            <p>Memory budgeting, model switching, resumable downloads, cache cleanup, and history trimming.</p>
+            <p>Model switching, resumable downloads, cache cleanup, history trimming, and local memory policy.</p>
           </article>
           <article class="tile">
             <img src="assets/app-icon.png" alt="">
             <h3>Mac as an edge node</h3>
-            <p>Pair a Mac over LAN to use Ollama or CLI models while the iPhone keeps the agent experience.</p>
+            <p>Pair a Mac over LAN to use Ollama, Codex CLI, or Antigravity CLI while the phone keeps the agent experience.</p>
           </article>
         </div>
       </div>
     </div>
   </section>
 
-  <section id="framework" class="band dark">
+  <section id="stack" class="band dark">
     <div class="wrap">
       <div class="section-head">
         <div>
-          <p class="section-kicker">Framework</p>
-          <h2>The agent stack is shaped by iOS limits.</h2>
+          <p class="section-kicker">Agent stack</p>
+          <h2>A phone-first runtime from input to execution.</h2>
         </div>
-        <p class="section-copy">Desktop agent frameworks assume long-running processes, generous memory, broad file access, and easy background execution. PhoneClaw starts from the opposite constraints.</p>
+        <p class="section-copy">The framework combines mobile entry points, Skill-aware planning, native iOS tools, local models, and optional LAN inference into one runtime.</p>
       </div>
       <div class="stack">
         <article class="panel">
@@ -209,7 +253,7 @@
         <article class="panel">
           <span class="panel-label">02 Routing</span>
           <h3>Skill-aware planning</h3>
-          <p>File-driven Skills, scoped tool lists, argument extraction, clarification, and safer multi-turn task handling.</p>
+          <p>File-driven Skills, scoped tool lists, argument extraction, clarification, and multi-turn task handling.</p>
         </article>
         <article class="panel">
           <span class="panel-label">03 Execution</span>
@@ -219,7 +263,7 @@
         <article class="panel">
           <span class="panel-label">04 Inference</span>
           <h3>On-device or LAN</h3>
-          <p>LiteRT local models by default, with optional Mac Gateway for heavier models on a trusted local machine.</p>
+          <p>LiteRT local models for the fully offline path, with optional Mac Gateway for heavier models on a trusted local machine.</p>
         </article>
       </div>
     </div>
@@ -229,10 +273,10 @@
     <div class="wrap">
       <div class="section-head">
         <div>
-          <p class="section-kicker">Boundaries</p>
-          <h2>The privacy claim is concrete.</h2>
+          <p class="section-kicker">Data flow</p>
+          <h2>Privacy claims mapped to product behavior.</h2>
         </div>
-        <p class="section-copy">PhoneClaw keeps chat, images, and personal data on the device by default. Explicit user actions add network paths: Web Search, opening a URL, or Mac remote inference.</p>
+        <p class="section-copy">The privacy page expands this into a full table. The summary below keeps the homepage specific and crawlable.</p>
       </div>
       <div class="flow">
         <article class="data-row">
@@ -312,7 +356,7 @@
           <p class="section-kicker">Languages</p>
           <h2>Localized entry pages for Chinese and Japanese search.</h2>
         </div>
-        <p class="section-copy">PhoneClaw already has zh/en/ja product localization. The website now exposes canonical Chinese and Japanese landing pages with hreflang, so search engines can match language intent directly.</p>
+        <p class="section-copy">PhoneClaw already has zh/en/ja product localization. The website exposes canonical Chinese and Japanese landing pages with hreflang, so search engines can match language intent directly.</p>
       </div>
       <div class="flow">
         <article class="data-row">
