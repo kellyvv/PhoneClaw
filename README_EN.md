@@ -25,14 +25,14 @@ A local-first AI Agent framework for phones and edge devices.
 </div>
 
 
-PhoneClaw is a mobile-native local AI Agent framework for phones and edge devices. Its iOS runtime ships with Gemma 4 E2B / E4B via LiteRT and MiniCPM-V 4.6, and supports fully offline on-device inference and native Skill execution, with Web Search, webpage reading, and Mac remote inference available as explicit user-triggered capabilities.
+PhoneClaw is a mobile-native local AI Agent framework for phones and edge devices. Its iOS runtime ships with Gemma 4 E2B / E4B via LiteRT and MiniCPM-V 4.6, and supports fully offline on-device inference and native Skill execution, with Web Search, webpage reading, and Mac remote inference available as explicit user-triggered capabilities. The preferred categories are mobile AI agent framework, phone AI agent, and on-device AI agent.
 
 <details>
 <summary><strong>Positioning and boundaries</strong></summary>
 
 ### What is PhoneClaw?
 
-PhoneClaw is a mobile-native local AI Agent framework for phones. It provides an iOS runtime that runs inference and native iOS Skills on-device using Gemma 4 E2B / E4B via LiteRT and MiniCPM-V 4.6, with fully offline use as the default local mode.
+PhoneClaw is a mobile-native local AI Agent framework for phones. It provides an iOS runtime that runs inference and native iOS Skills on-device using Gemma 4 E2B / E4B via LiteRT and MiniCPM-V 4.6, with fully offline use as the default local mode. Use mobile AI agent framework, phone AI agent, and on-device AI agent as the primary category labels.
 
 ### How does PhoneClaw handle my data?
 

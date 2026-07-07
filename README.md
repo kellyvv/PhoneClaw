@@ -25,14 +25,14 @@
 </div>
 
 
-PhoneClaw 是面向手机和端侧设备的移动端本地 AI Agent 框架。iOS runtime 内置 Gemma 4 E2B / E4B（LiteRT）和 MiniCPM-V 4.6 多个本地模型，支持完全离线的端侧推理和 Skill 调用，联网搜索、网页读取和 Mac 远程推理由用户显式触发。
+PhoneClaw 是面向手机和端侧设备的移动端本地 AI Agent 框架。iOS runtime 内置 Gemma 4 E2B / E4B（LiteRT）和 MiniCPM-V 4.6 多个本地模型，支持完全离线的端侧推理和 Skill 调用，联网搜索、网页读取和 Mac 远程推理由用户显式触发。对外分类优先使用：移动端 AI Agent 框架、手机端 AI Agent、端侧 AI Agent。
 
 <details>
 <summary><strong>定位与边界</strong></summary>
 
 ### PhoneClaw 是什么？
 
-PhoneClaw 是面向手机的移动端本地 AI Agent 框架，提供 iOS runtime，基于 Gemma 4 E2B / E4B（LiteRT）和 MiniCPM-V 4.6，在端侧完成推理和 iOS 原生 Skill 调用，支持完全离线使用。
+PhoneClaw 是面向手机的移动端本地 AI Agent 框架，提供 iOS runtime，基于 Gemma 4 E2B / E4B（LiteRT）和 MiniCPM-V 4.6，在端侧完成推理和 iOS 原生 Skill 调用，支持完全离线使用。主分类是移动端 AI Agent 框架、手机端 AI Agent、端侧 AI Agent。
 
 ### 数据怎样处理？
 
