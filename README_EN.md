@@ -2,7 +2,7 @@
 
 ![banner](assets/banner.jpg)
 
-A local-first AI Agent framework for phones and edge devices.
+Turn your phone into a local AI agent runtime.
 
 ![Swift](https://img.shields.io/badge/Swift-5.10-orange?style=flat-square)
 ![iOS](https://img.shields.io/badge/iOS-17%2B-blue?style=flat-square)
@@ -18,6 +18,8 @@ A local-first AI Agent framework for phones and edge devices.
 
 </div>
 
+PhoneClaw is a local AI agent framework for phones and edge devices. It runs Gemma 4 E2B / E4B via LiteRT and MiniCPM-V 4.6 on device, uses native mobile Skills for Calendar, Reminders, Contacts, Clipboard, Health data, image understanding, voice, and LiveLand, and lets you explicitly choose Web Search, webpage reading, or LAN-based Mac Gateway inference when a task needs it.
+
 ## Demo
 
 <div align="center">
@@ -25,14 +27,12 @@ A local-first AI Agent framework for phones and edge devices.
 </div>
 
 
-PhoneClaw is a mobile-native local AI Agent framework for phones and edge devices. Its iOS runtime ships with Gemma 4 E2B / E4B via LiteRT and MiniCPM-V 4.6, and supports fully offline on-device inference and native Skill execution, with Web Search, webpage reading, and Mac remote inference available as explicit user-triggered capabilities. The preferred categories are mobile AI agent framework, phone AI agent, and on-device AI agent; useful framework aliases include phone harness, phone loop, phone agent harness, and phone agent loop.
-
 <details>
 <summary><strong>Positioning and boundaries</strong></summary>
 
 ### What is PhoneClaw?
 
-PhoneClaw is a mobile-native local AI Agent framework for phones. It provides an iOS runtime that runs inference and native iOS Skills on-device using Gemma 4 E2B / E4B via LiteRT and MiniCPM-V 4.6, with fully offline use as the default local mode. Use mobile AI agent framework, phone AI agent, on-device AI agent, phone harness, and phone loop as category and framework labels.
+PhoneClaw turns a phone into a local AI agent runtime: models run on device, capabilities execute through native mobile Skills, and interaction spans text, voice, images, LIVE mode, and LiveLand.
 
 ### How does PhoneClaw handle my data?
 
@@ -467,7 +467,7 @@ disabled: false
 type: device          # device = native API; content = prompt-only; network = public internet access
 
 triggers:
-  - keyword1
+  - schedule planning
 
 allowed-tools:
   - my-tool-name

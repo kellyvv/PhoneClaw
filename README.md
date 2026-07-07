@@ -2,7 +2,7 @@
 
 ![banner](assets/banner.jpg)
 
-面向手机和端侧设备的完全离线优先 AI Agent 框架。
+把手机变成本地 AI Agent 运行时。
 
 ![Swift](https://img.shields.io/badge/Swift-5.10-orange?style=flat-square)
 ![iOS](https://img.shields.io/badge/iOS-17%2B-blue?style=flat-square)
@@ -18,6 +18,8 @@
 
 </div>
 
+PhoneClaw 是面向手机和端侧设备的本地 AI Agent 框架。它在设备端运行 Gemma 4 E2B / E4B（LiteRT）和 MiniCPM-V 4.6，通过原生移动端 Skills 处理日历、提醒事项、通讯录、剪贴板、健康数据、图片理解、语音和 LiveLand；需要实时信息时，可以由用户显式触发联网搜索、网页读取或局域网 Mac Gateway 推理。
+
 ## 演示视频
 
 <div align="center">
@@ -25,14 +27,12 @@
 </div>
 
 
-PhoneClaw 是面向手机和端侧设备的移动端本地 AI Agent 框架。iOS runtime 内置 Gemma 4 E2B / E4B（LiteRT）和 MiniCPM-V 4.6 多个本地模型，支持完全离线的端侧推理和 Skill 调用，联网搜索、网页读取和 Mac 远程推理由用户显式触发。对外分类优先使用：移动端 AI Agent 框架、手机端 AI Agent、端侧 AI Agent；英文框架别名包括 phone harness、phone loop、phone agent harness、phone agent loop。
-
 <details>
 <summary><strong>定位与边界</strong></summary>
 
 ### PhoneClaw 是什么？
 
-PhoneClaw 是面向手机的移动端本地 AI Agent 框架，提供 iOS runtime，基于 Gemma 4 E2B / E4B（LiteRT）和 MiniCPM-V 4.6，在端侧完成推理和 iOS 原生 Skill 调用，支持完全离线使用。主分类是移动端 AI Agent 框架、手机端 AI Agent、端侧 AI Agent，别名可使用 phone harness 和 phone loop。
+PhoneClaw 把手机变成一个本地 AI Agent 运行时：模型在设备端运行，能力通过原生移动端 Skills 执行，交互入口覆盖文字、语音、图片、LIVE 和 LiveLand。
 
 ### 数据怎样处理？
 
@@ -404,7 +404,7 @@ disabled: false
 type: device          # device = 调系统 API; content = 纯 prompt 类; network = 访问公开互联网
 
 triggers:
-  - 关键词1
+  - 日程安排
 
 allowed-tools:
   - my-tool-name      # device 类必填; content 类可留空数组 []

@@ -6,46 +6,48 @@ Short copy, post templates, and positioning notes for sharing PhoneClaw.
 
 English:
 
-> PhoneClaw is a private local iPhone Agent powered by Gemma, running inference and Skills on-device.
+> PhoneClaw turns phones into local AI agent runtimes with on-device models, native mobile Skills, LiveLand, and optional Mac Gateway inference.
 
 Chinese:
 
-> PhoneClaw 是运行在 iPhone 本地的私人 Agent，基于 Gemma 端侧推理，支持本机 Skill 调用。
+> PhoneClaw 把手机变成本地 AI Agent 运行时，提供端侧模型、原生移动端 Skills、LiveLand 和可选 Mac Gateway 推理。
 
 ## Short description
 
 English:
 
-> PhoneClaw brings local agent workflows to iPhone: on-device Gemma inference, native iOS Skills, image understanding, voice interaction, HealthKit and Calendar queries, and explicit Web Search when realtime information is needed.
+> PhoneClaw brings local agent workflows to the phone: on-device Gemma inference, native mobile Skills, image understanding, voice interaction, HealthKit and Calendar queries, LiveLand, and explicit Web Search when realtime information is needed.
 
 Chinese:
 
-> PhoneClaw 把本地 Agent 带到 iPhone：端侧 Gemma 推理、iOS 原生 Skill、图片理解、语音交互、健康与日历查询，以及用户明确需要时的联网搜索。
+> PhoneClaw 把本地 Agent 带到手机：端侧 Gemma 推理、原生移动端 Skills、图片理解、语音交互、健康与日历查询、LiveLand，以及用户明确需要时的联网搜索。
 
 ## What to emphasize
 
-- Local iPhone Agent, not a cloud chatbot wrapper.
-- No cloud model API required.
-- Native iOS Skills with permission boundaries.
+- Phone as the local AI agent runtime.
+- Fully offline local path with on-device models.
+- Native mobile Skills with permission boundaries.
 - Useful personal workflows: schedule, reminders, contacts, Health data, clipboard, images, voice, web search.
+- LiveLand and LIVE mode as mobile-native interaction surfaces.
+- Optional Mac Gateway for heavier local inference over LAN.
 - Open source and available on TestFlight.
 
-## What not to overclaim
+## Product boundaries
 
-- Do not call it a full cloud LLM replacement.
-- Do not imply unlimited long-context chat.
-- Do not imply arbitrary control of every iOS app.
-- Do not imply personal data is uploaded for analysis.
-- Do not promise background automation that iOS does not allow.
+- PhoneClaw focuses on phone-scale local agent workflows.
+- Local inference and native Skills run on the device by default.
+- Web Search, webpage reading, and Mac Gateway are explicit user-triggered capabilities.
+- Native actions follow mobile OS permission boundaries.
+- Mac Gateway data handling depends on the Mac-side provider selected by the user.
 
 ## X / Twitter post
 
 English:
 
 ```text
-PhoneClaw is an open-source local iPhone Agent powered by Gemma.
+PhoneClaw is an open-source local AI agent runtime for phones.
 
-It runs inference and native Skills on-device:
+It runs models and native mobile Skills on device:
 - Calendar and reminders
 - Contacts and clipboard
 - HealthKit summaries
@@ -60,9 +62,9 @@ TestFlight: https://testflight.apple.com/join/YuUSwq78
 Chinese:
 
 ```text
-PhoneClaw 是一个开源的 iPhone 本地 Agent。
+PhoneClaw 是一个开源的手机本地 AI Agent 运行时。
 
-基于 Gemma 端侧推理，可以在手机本地调用 Skill：
+基于 Gemma 端侧推理，可以调用原生移动端 Skills：
 - 日历 / 提醒事项
 - 通讯录 / 剪贴板
 - 健康数据摘要
@@ -77,11 +79,11 @@ TestFlight: https://testflight.apple.com/join/YuUSwq78
 ## Hacker News / Reddit style post
 
 ```text
-Show HN: PhoneClaw - an open-source local iPhone Agent powered by Gemma
+Show HN: PhoneClaw - a local AI agent runtime for phones
 
-PhoneClaw runs inference and Skill calls on-device. The goal is not to replace cloud-scale chat, but to make local personal workflows useful on iPhone: calendar queries, reminders, contacts, HealthKit summaries, clipboard, image understanding, voice, and explicit Web Search.
+PhoneClaw runs inference and Skill calls on device. It is designed for practical phone workflows: calendar queries, reminders, contacts, HealthKit summaries, clipboard, image understanding, voice, LiveLand, and explicit Web Search.
 
-The Skill system is file-driven: each capability is defined by SKILL.md and backed by permission-scoped native tools.
+The Skill system is file-driven: each capability is defined by SKILL.md and backed by permission-scoped native mobile tools.
 
 GitHub: https://github.com/kellyvv/PhoneClaw
 TestFlight: https://testflight.apple.com/join/YuUSwq78
@@ -111,21 +113,21 @@ Point to show: explicit realtime search, then local organization.
 2. Ask: "What are the key things in this image?"
 3. Ask: "What should I do next?"
 
-Point to show: multimodal reasoning on iPhone.
+Point to show: multimodal reasoning on the phone.
 
 ## Suggested GitHub topics
 
 ```text
 gemma
 on-device-ai
-ios
-swift
 local-agent
 mobile-agent
 ai-agent
+phone-harness
+phone-loop
 litert
-healthkit
-app-intents
+swift
+ios
 ```
 
 ## Useful links
