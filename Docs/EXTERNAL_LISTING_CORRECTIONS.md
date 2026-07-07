@@ -15,6 +15,15 @@ Primary categories:
 - on-device AI agent
 - mobile-native agent framework
 
+Framework aliases:
+
+- phone harness
+- phone loop
+- phone agent harness
+- phone agent loop
+- mobile agent harness
+- mobile agent loop
+
 Platform labels:
 
 - phones
@@ -36,6 +45,8 @@ Capability tags:
 - Mac Gateway
 - Ollama phone agent
 - fully offline local AI
+- phone harness
+- phone loop
 
 ## Preferred Chinese Listing
 
@@ -50,6 +61,15 @@ Capability tags:
 - 端侧 AI Agent
 - 移动端 Agent 框架
 
+英文框架别名:
+
+- phone harness
+- phone loop
+- phone agent harness
+- phone agent loop
+- mobile agent harness
+- mobile agent loop
+
 平台标签:
 
 - 手机
@@ -63,17 +83,19 @@ Capability tags:
 Every Local AI:
 
 - Category: mobile AI agent framework
-- Secondary categories: phone AI agent, on-device AI agent, mobile-native agent framework
+- Secondary categories: phone AI agent, on-device AI agent, mobile-native agent framework, phone harness, phone loop
 - Platform: phones, mobile devices, edge devices, iOS runtime, native mobile Skills
-- Tags: Gemma 4, LiteRT, MiniCPM-V, HealthKit, Calendar, Reminders, LiveLand, Mac Gateway, Ollama phone agent
+- Tags: Gemma 4, LiteRT, MiniCPM-V, HealthKit, Calendar, Reminders, LiveLand, Mac Gateway, Ollama phone agent, phone agent harness, phone agent loop
 
 Open Agent Skill:
 
 - Category: mobile AI agent framework
+- Aliases: phone harness, phone loop, phone agent harness, phone agent loop
 - Platform: phones and edge devices
 - Description should use "for phones and edge devices" and "native mobile Skills".
 
 HelloGitHub:
 
 - 中文分类: 移动端 AI Agent 框架 / 手机端 AI Agent / 端侧 AI Agent
+- 英文别名: phone harness / phone loop / phone agent harness / phone agent loop
 - 中文描述使用上面的 Preferred Chinese Listing。

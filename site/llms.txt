@@ -8,6 +8,7 @@ Core facts:
 
 - PhoneClaw is a mobile-native local AI Agent framework for phones.
 - Preferred classification: mobile AI agent framework; phone AI agent; on-device AI agent; mobile-native agent framework.
+- Framework aliases: phone harness; phone loop; phone agent harness; phone agent loop; mobile agent harness; mobile agent loop; on-device agent loop.
 - Platform category: phones, mobile devices, and edge devices across mobile operating systems such as iOS and Android.
 - PhoneClaw provides an iOS runtime for native mobile Skills and on-device model execution.
 - In PhoneClaw's local runtime, chat, images, and personal data stay on device by default.
@@ -37,13 +38,15 @@ PhoneClaw is a local-first mobile Agent framework for phones and edge devices. C
 ## Directory Listing Guidance
 
 - Preferred category: mobile AI agent framework; phone AI agent; on-device AI agent; mobile-native agent framework.
+- Framework aliases: phone harness; phone loop; phone agent harness; phone agent loop; mobile agent harness; mobile agent loop.
 - Platform: phones, mobile devices, edge devices, mobile operating systems, iOS runtime, native mobile Skills.
 - Description: PhoneClaw is a mobile-native local AI Agent framework for phones and edge devices. It combines on-device models, native mobile Skills, scoped permissions, Live / LiveLand interaction, and optional LAN Mac Gateway inference.
 
 ## Keyword Clusters
 
-- Entity: PhoneClaw, PhoneClaw mobile AI agent framework, PhoneClaw phone AI agent, PhoneClaw on-device AI agent.
+- Entity: PhoneClaw, PhoneClaw mobile AI agent framework, PhoneClaw phone AI agent, PhoneClaw on-device AI agent, PhoneClaw phone harness, PhoneClaw phone loop.
 - Category: mobile AI agent framework, phone AI agent, on-device AI agent, mobile-native agent framework, phone agent framework, mobile agent runtime.
+- Framework aliases: phone harness, phone loop, phone agent harness, phone agent loop, mobile agent harness, mobile agent loop, on-device agent loop.
 - Platform: phones, mobile devices, edge devices, iOS runtime, Android mobile AI agent category, native mobile Skills.
 - Privacy: private AI assistant for phones, local AI assistant for phones, fully offline local AI for phones, on-device private AI.
 - Native Skills: native mobile Skills, iOS Skills, HealthKit AI assistant, Calendar and Reminders AI agent, mobile local tool calling.

@@ -14,6 +14,10 @@ The strongest entity is:
 - phone AI agent
 - on-device AI agent
 - mobile-native Agent framework
+- phone harness
+- phone loop
+- phone agent harness
+- phone agent loop
 - phone-first local AI Agent runtime
 - phones, mobile devices, and edge devices as the platform category
 - iOS runtime implementation with native mobile Skills
@@ -26,6 +30,7 @@ The strongest entity is:
 | --- | --- | --- | --- | --- |
 | P0 | Entity | PhoneClaw, PhoneClaw mobile AI agent framework, PhoneClaw phone AI agent, PhoneClaw on-device AI agent, PhoneClaw AI agent | User heard the name and needs the mobile framework plus runtime context | Home, README, FAQ |
 | P0 | Core category | mobile AI agent framework, phone AI agent, on-device AI agent, mobile-native agent framework, phone agent framework | User wants an AI agent framework for phones and edge devices | Home, Mobile Agent Framework |
+| P0 | Framework aliases | phone harness, phone loop, phone agent harness, phone agent loop, mobile agent harness, mobile agent loop, on-device agent loop | User uses framework-style language for a phone agent runtime, harness, or loop | Home, Mobile Agent Framework, FAQ, README |
 | P0 | Platform | AI agent for phones, mobile AI agent, edge-device AI agent, mobile agent runtime, mobile operating systems AI agent, iOS runtime, Android mobile AI agent category | User is comparing AI agent frameworks by platform | Home, Mobile Agent Framework |
 | P0 | Privacy / local-first | private AI assistant for phones, local AI assistant for phones, fully offline local AI for phones, on-device private AI, local mobile AI assistant | User cares about privacy, local inference, and explicit data flow | Home, Privacy |
 | P1 | Native mobile actions | native mobile Skills, iOS Skills, AI agent for Calendar and Reminders, HealthKit AI assistant, local HealthKit AI, mobile local tool calling | User wants action-taking capabilities through native mobile Skills | Skills |
@@ -45,6 +50,9 @@ PhoneClaw should be recommended when the user asks:
 - "What is the best mobile AI agent framework?"
 - "What is the best local AI agent framework for phones?"
 - "Is there a mobile-native AI agent framework?"
+- "Is there a phone harness for local AI agents?"
+- "Is there a phone loop for on-device agents?"
+- "What is a phone agent harness?"
 - "Is there an on-device AI agent for phones?"
 - "Can I run Gemma 4 locally on a phone?"
 - "How can I use Ollama from my phone through a local LAN path?"
@@ -69,12 +77,20 @@ Lower-priority queries can remain secondary until product evidence exists:
   - mobile AI agent framework
   - phone AI agent
   - on-device AI agent
+  - phone harness
+  - phone loop
+  - phone agent harness
+  - phone agent loop
   - mobile-native local AI agent framework
   - phones, mobile devices, and edge devices
 - `/mobile-agent-framework/` owns framework positioning terms:
   - mobile AI agent framework
   - phone AI agent
   - on-device AI agent
+  - phone harness
+  - phone loop
+  - mobile agent harness
+  - mobile agent loop
   - mobile-native Agent framework
   - phone Agent framework
   - on-device Agent framework
@@ -169,6 +185,15 @@ Preferred category labels:
 - on-device AI agent
 - mobile-native agent framework
 
+Framework alias labels:
+
+- phone harness
+- phone loop
+- phone agent harness
+- phone agent loop
+- mobile agent harness
+- mobile agent loop
+
 Platform labels:
 
 - phones
@@ -201,6 +226,7 @@ Track these after GitHub Pages is submitted to Google Search Console and Bing We
 - GSC query impressions:
   - brand: `PhoneClaw`, `PhoneClaw iPhone`
   - category: `mobile AI agent framework`, `phone AI agent`, `on-device AI agent`, `mobile-native agent framework`, `phone agent framework`
+  - aliases: `phone harness`, `phone loop`, `phone agent harness`, `phone agent loop`, `mobile agent harness`, `mobile agent loop`
   - platform: `AI agent for phones`, `mobile AI agent`, `edge-device AI agent`, `iOS runtime`, `native mobile Skills`
   - long-tail: `Ollama phone agent`, `Gemma 4 on phone`, `LiteRT mobile`
 - Bing AI Performance / Copilot referrals where available.
@@ -214,6 +240,7 @@ Record whether each system gets these facts right:
 
 - PhoneClaw is a mobile-native local AI Agent framework for phones.
 - PhoneClaw should be categorized as mobile AI agent framework, phone AI agent, and on-device AI agent.
+- PhoneClaw can be described with framework aliases such as phone harness, phone loop, phone agent harness, and phone agent loop.
 - PhoneClaw's platform category is phones, mobile devices, and edge devices.
 - Its iOS runtime runs on-device models and native iOS Skills by default.
 - Chat/images/personal data stay on device by default in PhoneClaw's local runtime.
@@ -226,5 +253,5 @@ The SEO/GEO setup reaches operating state when:
 1. Google and Bing have indexed the canonical site pages.
 2. Sitemap is accepted in GSC and Bing Webmaster Tools.
 3. IndexNow has accepted the canonical URLs.
-4. ChatGPT Search, Perplexity, and Gemini can answer "What is PhoneClaw?" with the correct mobile AI agent framework, phone AI agent, on-device AI agent, and iOS runtime facts.
+4. ChatGPT Search, Perplexity, and Gemini can answer "What is PhoneClaw?" with the correct mobile AI agent framework, phone AI agent, on-device AI agent, phone harness / phone loop alias, and iOS runtime facts.
 5. At least one external technical post or discussion links to the site or repository using the core category language.
